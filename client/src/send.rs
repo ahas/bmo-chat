@@ -1,5 +1,8 @@
 //! A send, one verb at a time, and what it came to.
 
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::capability::ChatVerb;
@@ -8,13 +11,13 @@ use crate::modes::ChatVoice;
 use crate::refusal::{ChatRefusal, MissedPicture};
 
 /// An agent other than the one the room is answered by, by its registry id.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct ChatSpeaker {
   pub agent: String,
 }
 
 /// One picture of an album: an address the provider can read, or the file itself.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum AlbumItem {
   /// A web address or a file path the provider can read.
@@ -26,7 +29,7 @@ pub enum AlbumItem {
 
 /// The verb of a send with its own fields. `reply_to` is a modifier a provider that does not declare
 /// `replyTo` ignores.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "verb", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ChatSend {
   Text {
@@ -56,6 +59,7 @@ pub enum ChatSend {
   },
   Document {
     #[serde(with = "crate::bytes")]
+    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
     bytes: Vec<u8>,
     file_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +67,7 @@ pub enum ChatSend {
   },
   Audio {
     #[serde(with = "crate::bytes")]
+    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
     audio: Vec<u8>,
     file_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,6 +75,7 @@ pub enum ChatSend {
   },
   Voice {
     #[serde(with = "crate::bytes")]
+    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
     audio: Vec<u8>,
     /// What the line said.
     said: String,
@@ -127,7 +133,7 @@ impl ChatSend {
 }
 
 /// A send into one room.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSendRequest {
   pub chat_id: i64,
@@ -218,6 +224,52 @@ impl Serialize for ChatSendResult {
       },
     }
     .serialize(serializer)
+  }
+}
+
+impl JsonSchema for ChatSendResult {
+  fn schema_name() -> Cow<'static, str> {
+    "ChatSendResult".into()
+  }
+
+  fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+    let described = |mut schema: Schema, description: &str| {
+      schema.insert("description".into(), description.into());
+      schema
+    };
+    let message_id =
+      described(generator.subschema_for::<Option<i64>>(), "Null where the platform hands none back.");
+    let missed = described(
+      generator.subschema_for::<Vec<MissedPicture>>(),
+      "The pictures of an album that did not go; left out where everything went.",
+    );
+    let gone = described(
+      generator.subschema_for::<bool>(),
+      "The refusal is about a message the platform no longer has, or will never let change again.",
+    );
+    json_schema!({
+      "description": "What a send came to, told apart by `sent`.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sent": { "const": true },
+            "messageId": message_id,
+            "missed": missed,
+          },
+          "required": ["sent", "messageId"],
+        },
+        {
+          "type": "object",
+          "properties": {
+            "sent": { "const": false },
+            "refusal": generator.subschema_for::<ChatRefusal>(),
+            "gone": gone,
+          },
+          "required": ["sent", "refusal", "gone"],
+        },
+      ],
+    })
   }
 }
 

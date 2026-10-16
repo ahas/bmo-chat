@@ -1,9 +1,10 @@
 //! Read modes: whose account speaks, what it receives, and where the mode stands.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Whose account speaks on a provider. One axis of a read mode; `ChatReach` is the other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChatVoice {
   /// The platform's official bot interface.
@@ -19,7 +20,7 @@ pub enum ChatVoice {
 }
 
 /// What a mode's account receives. A property of the mode on that platform, not of the platform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChatReach {
   AllMessages,
@@ -27,7 +28,7 @@ pub enum ChatReach {
 }
 
 /// Where a mode stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatModeStanding {
   /// Running.
@@ -39,7 +40,7 @@ pub enum ChatModeStanding {
 }
 
 /// One way a provider's rooms are read.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatReadMode {
   pub voice: ChatVoice,

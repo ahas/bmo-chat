@@ -14,6 +14,19 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
+## The OpenAPI document
+
+`openapi.json`, beside this document, states every route below in OpenAPI 3.1 for a service written in any
+language: each route's method and path, its request body, its answer and the error answers it can give, with
+every body as a JSON Schema. A body is described as its sender writes it, so a field the sender may leave out
+is not required, and a nullable field is required and may be null. Provider routes carry the tag `provider` and
+receiver routes the tag `receiver`.
+
+bmo-chat-client generates the document from the types it sends and reads, and its tests fail when the
+committed file differs from what it generates. `cargo run -p bmo-chat-client --example openapi >
+docs/openapi.json` writes it again. This document is the canonical statement: where the two disagree, the code
+is repaired and the file generated again.
+
 ## Conventions
 
 - **Bodies.** JSON, with field names in camelCase and enum values as `contract.md` writes them. An optional

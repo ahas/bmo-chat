@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::capability::ChatCapability;
@@ -10,7 +11,7 @@ use crate::modes::ChatReadMode;
 use crate::numbering::ChatNumbering;
 
 /// What a provider declares of itself. The base holds no record of a provider anywhere else.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ChatDeclaration {
   /// Short, ASCII and stable; written onto every message the provider hands over.
   pub key: String,

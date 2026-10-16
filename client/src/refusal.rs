@@ -6,18 +6,21 @@
 
 use std::fmt;
 
+use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{Value, json};
 
 use crate::capability::ChatCapability;
 
 /// Why a send was not performed. Every variant carries the provider's label.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
   remote = "Self",
   tag = "code",
   rename_all = "kebab-case",
   rename_all_fields = "camelCase"
 )]
+#[schemars(rename = "ChatRefusal", transform = with_message)]
 pub enum ChatRefusal {
   /// The provider does not declare the capability the send needs.
   UnsupportedCapability {
@@ -91,15 +94,16 @@ impl fmt::Display for ChatRefusal {
 }
 
 /// A picture a send did not carry, by the address it was given as, with why.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct MissedPicture {
   pub address: String,
   pub reason: MissedPictureReason,
 }
 
 /// Why one picture did not go.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(remote = "Self", tag = "code", rename_all = "kebab-case")]
+#[schemars(rename = "MissedPictureReason", transform = with_message)]
 pub enum MissedPictureReason {
   NotAnAddress,
   OutsideDataRoot,
@@ -189,5 +193,25 @@ impl Serialize for MissedPictureReason {
 impl<'de> Deserialize<'de> for MissedPictureReason {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     MissedPictureReason::deserialize(deserializer)
+  }
+}
+
+/// Adds the English sentence every variant carries as `message` to the schema of each variant: the derived
+/// schema has only the code and the fields.
+fn with_message(schema: &mut Schema) {
+  let message = json!({
+    "type": "string",
+    "description": "The English sentence, as the sender rendered it from the code and the fields.",
+  });
+  let Some(Value::Array(variants)) = schema.get_mut("oneOf") else {
+    return;
+  };
+  for variant in variants.iter_mut().filter_map(Value::as_object_mut) {
+    if let Some(Value::Object(properties)) = variant.get_mut("properties") {
+      properties.insert("message".into(), message.clone());
+    }
+    if let Some(Value::Array(required)) = variant.get_mut("required") {
+      required.push("message".into());
+    }
   }
 }

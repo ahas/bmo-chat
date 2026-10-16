@@ -1,12 +1,13 @@
 //! A picture or a file a message carried, fetched from the platform again.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::message::FileItem;
 use crate::refusal::ChatRefusal;
 
 /// The message whose picture or file is wanted again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMediaRequest {
   pub chat_id: i64,
@@ -17,7 +18,7 @@ pub struct ChatMediaRequest {
 }
 
 /// What a fetch came to. On the wire the three are told apart by `outcome`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum ChatMediaResult {
   Fetched(FileItem),

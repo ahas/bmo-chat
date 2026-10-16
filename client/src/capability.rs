@@ -1,11 +1,12 @@
 //! The send verbs, and the capabilities a provider declares.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::VariantArray;
 
 /// The twelve send verbs.
 #[derive(
-  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, VariantArray,
+  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, VariantArray,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum ChatVerb {
@@ -25,7 +26,7 @@ pub enum ChatVerb {
 
 /// What a provider can do: the twelve verbs, and four answers that are not verbs.
 #[derive(
-  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, VariantArray,
+  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, VariantArray,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum ChatCapability {

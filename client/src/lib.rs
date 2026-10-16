@@ -16,6 +16,7 @@ mod media;
 mod message;
 mod modes;
 mod numbering;
+mod openapi;
 mod patience;
 mod provider_client;
 mod refusal;
@@ -37,6 +38,7 @@ pub use message::{
 };
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberSpace, ChatNumbering};
+pub use openapi::{openapi, openapi_json};
 pub use patience::{ChatPatience, ChatWait, RealClock};
 pub use provider_client::{ChatProviderClient, ClientFailure};
 pub use refusal::{ChatRefusal, MissedPicture, MissedPictureReason};

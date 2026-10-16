@@ -1,9 +1,10 @@
 //! The body of every answer that is not a success.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Why a request could not be answered at all. A refusal is an answer and never takes this shape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorCode {
   /// The body is not JSON, or not the shape the route takes.
@@ -32,7 +33,7 @@ impl ErrorCode {
 }
 
 /// The error shape: a code to match on and an English sentence saying what went wrong.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WireError {
   pub code: ErrorCode,
   pub error: String,

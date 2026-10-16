@@ -1,12 +1,13 @@
 //! A message as it crosses from a provider to the receiver, and what crosses beside it.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::modes::ChatVoice;
 
 /// Which kind of room one chat is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RoomKind {
   /// The owner's private chat on this platform.
@@ -16,7 +17,7 @@ pub enum RoomKind {
 }
 
 /// A message a room said. Nothing platform-shaped crosses, and no file path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
   pub chat_id: i64,
@@ -38,7 +39,7 @@ pub struct ChatMessage {
 }
 
 /// What the platform said about a message beyond the message itself.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InboundChatContext {
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -64,7 +65,7 @@ pub struct InboundChatContext {
 }
 
 /// What the provider already knows of the room a hand-over came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomFacts {
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -78,16 +79,17 @@ pub struct RoomFacts {
 }
 
 /// A file as it crosses the wire.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FileItem {
   pub name: String,
   pub mime: String,
   #[serde(with = "crate::bytes")]
+  #[schemars(with = "String", extend("contentEncoding" = "base64"))]
   pub bytes: Vec<u8>,
 }
 
 /// The body of the `message`, `attachment` and `edited` hand-overs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChatHandover {
   pub message: ChatMessage,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,7 +102,7 @@ pub struct ChatHandover {
 }
 
 /// What came of gathering a message's file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum GatheredOutcome {
   Kept {
@@ -113,7 +115,7 @@ pub enum GatheredOutcome {
 }
 
 /// The body of the `gathered` hand-over: the file a message's `gathering` promised.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatGathered {
   pub chat_id: i64,
