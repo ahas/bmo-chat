@@ -30,3 +30,12 @@ description = "Checks that span both chat base libraries; never published."
 version.workspace = true
 edition.workspace = true
 publish = false
+
+[dev-dependencies]
+async-trait.workspace = true
+axum.workspace = true
+bmo-chat = { path = "provider" }
+bmo-chat-client = { path = "client" }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
