@@ -38,3 +38,57 @@ pub struct ChatDialectDeclaration {
   /// Whether this dialect can fold a long answer.
   pub foldable: bool,
 }
+
+/// What the agent's markdown becomes on a provider's rooms. A dialect names no provider, so one dialect may
+/// serve several.
+pub trait ChatDialect: Send + Sync {
+  fn name(&self) -> &str;
+
+  fn limits(&self) -> ChatDialectLimits;
+
+  /// The sentence telling a writer in such a room what its marks become.
+  fn writing(&self) -> &str;
+
+  /// Whether this dialect can fold a long answer. A dialect that cannot is never asked for a fold.
+  fn foldable(&self) -> bool;
+
+  /// The markdown read into what goes out, with the same words stripped of their marks beside it.
+  fn convert(&self, markdown: &str) -> ChatMarkup;
+
+  /// The markdown divided into pieces that each fit one message. A dialect that does not split answers with
+  /// the one piece it was given.
+  fn parts(&self, markdown: &str) -> Vec<String>;
+
+  /// Null when markup this dialect built is sound, else the reason.
+  fn fault(&self, markup: &str) -> Option<String>;
+
+  /// The folded markup, or null when there is nothing worth folding.
+  fn fold(&self, markdown: &str) -> Option<String>;
+
+  /// What a reader actually sees of the markup.
+  fn visible(&self, markup: &str) -> String;
+
+  /// The dialect as a declaration states it.
+  fn declaration(&self) -> ChatDialectDeclaration {
+    ChatDialectDeclaration {
+      name: self.name().to_owned(),
+      limits: self.limits(),
+      writing: self.writing().to_owned(),
+      foldable: self.foldable(),
+    }
+  }
+
+  /// The fold, asked of a foldable dialect only; null for any other.
+  fn folded(&self, markdown: &str) -> Option<String> {
+    if self.foldable() { self.fold(markdown) } else { None }
+  }
+
+  /// The markup a text goes out as: the fold where the send asks for one and the dialect gives one, the
+  /// conversion otherwise.
+  fn outgoing(&self, markdown: &str, fold: bool) -> String {
+    fold
+      .then(|| self.folded(markdown))
+      .flatten()
+      .unwrap_or_else(|| self.convert(markdown).markup)
+  }
+}

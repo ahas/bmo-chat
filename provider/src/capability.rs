@@ -1,9 +1,12 @@
 //! The send verbs, and the capabilities a provider declares.
 
 use serde::{Deserialize, Serialize};
+use strum::VariantArray;
 
 /// The twelve send verbs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, VariantArray,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum ChatVerb {
   Text,
@@ -21,7 +24,9 @@ pub enum ChatVerb {
 }
 
 /// What a provider can do: the twelve verbs, and four answers that are not verbs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, VariantArray,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum ChatCapability {
   Text,
@@ -46,7 +51,15 @@ pub enum ChatCapability {
   History,
 }
 
+impl ChatVerb {
+  /// Every verb, in declaration order, taken from the type itself.
+  pub const ALL: &'static [Self] = <Self as VariantArray>::VARIANTS;
+}
+
 impl ChatCapability {
+  /// The full capability set, in declaration order, taken from the type itself.
+  pub const ALL: &'static [Self] = <Self as VariantArray>::VARIANTS;
+
   /// What the capability is in the words a person reads, as the middle of a sentence.
   pub fn words(self) -> &'static str {
     match self {

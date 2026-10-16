@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 
 use bmo_chat::{
   ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatGathered, ChatHandover,
-  ChatMarkup, ChatMessage, ChatModeStanding, ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode,
-  ChatVerb, ChatVoice, ErrorCode, FileItem, GatheredOutcome, InboundChatContext, RoomFacts, RoomKind,
-  WireError,
+  ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberSpace,
+  ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode, FileItem,
+  GatheredOutcome, InboundChatContext, RoomFacts, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 
@@ -280,6 +280,55 @@ fn declaration() {
       "shows": "The whole line of the room.",
       "numbering": { "rooms": "native", "people": "assigned", "messages": "none" },
       "speakers": true,
+    }),
+  );
+}
+
+#[test]
+fn media_request_and_every_outcome() {
+  crosses(
+    &ChatMediaRequest {
+      chat_id: -100,
+      message_id: 5,
+      sent_at: None,
+    },
+    json!({ "chatId": -100, "messageId": 5 }),
+  );
+  crosses(
+    &ChatMediaRequest {
+      chat_id: -100,
+      message_id: 5,
+      sent_at: Some(1_760_000_000),
+    },
+    json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000 }),
+  );
+  crosses(
+    &ChatMediaResult::Fetched(FileItem {
+      name: "a.png".into(),
+      mime: "image/png".into(),
+      bytes: vec![137, 80],
+    }),
+    json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+  );
+  crosses(
+    &ChatMediaResult::Unavailable {
+      reason: "The platform no longer has it.".into(),
+    },
+    json!({ "outcome": "unavailable", "reason": "The platform no longer has it." }),
+  );
+  crosses(
+    &ChatMediaResult::Refused {
+      refusal: ChatRefusal::UnsupportedCapability {
+        label: "Platform".into(),
+        capability: ChatCapability::FetchMedia,
+      },
+    },
+    json!({
+      "outcome": "refused",
+      "refusal": {
+        "code": "unsupported-capability", "label": "Platform", "capability": "fetchMedia",
+        "message": "Platform cannot fetch a picture or a file later.",
+      },
     }),
   );
 }

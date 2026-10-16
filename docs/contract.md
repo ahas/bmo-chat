@@ -122,7 +122,9 @@ so a dialect names no provider. A dialect has:
 | `visible` | markup in; what a reader actually sees of it |
 
 Whether to fold an answer is decided upstream of the provider. A text send carries that decision as `fold`, and
-the provider applies its dialect's fold where its dialect is foldable.
+the provider applies its dialect's fold where its dialect is foldable. The base supplies that wiring: the
+markup a text goes out as is the dialect's fold when the send asks for one, the dialect is foldable and the
+fold is not null, and its conversion's `markup` otherwise.
 
 The dialect runs in the provider. The receiver reaches it through the dialect routes in `protocol.md`.
 
@@ -162,6 +164,14 @@ A provider answers these about any room number, each through its own route:
 | owner room | (not about a given room) the room to speak into to reach the owner unprompted, or null |
 
 Whether a person behind a private room is a user is the receiver's question, not the provider's.
+
+### Fetching a file again
+
+A provider that declares `fetchMedia` fetches the picture or the file a message carried from the platform
+again, given the message's `chatId`, `messageId` and, for a platform that finds an old message by its time,
+`sentAt`. The answer is `fetched` with a file item, `unavailable` with the platform's reason in English, or
+`refused` with a refusal. A provider that does not declare `fetchMedia` refuses with `unsupported-capability`,
+which is also what the base answers for a provider that supplies no fetch of its own.
 
 ## Messages
 
