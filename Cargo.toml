@@ -9,7 +9,10 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-toml = { version = "0.8.23", default-features = false, features = ["parse"] }
+base64 = "0.22.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.138"
+toml ={ version = "0.8.23", default-features = false, features = ["parse"] }
 
 [package]
 name = "chat-repository-checks"

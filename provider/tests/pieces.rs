@@ -1,0 +1,313 @@
+//! The pieces beside the sends cross the wire in the shape `docs/contract.md` and `docs/protocol.md` state,
+//! and come back as they went.
+
+use std::collections::BTreeSet;
+
+use bmo_chat::{
+  ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatGathered, ChatHandover,
+  ChatMarkup, ChatMessage, ChatModeStanding, ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode,
+  ChatVerb, ChatVoice, ErrorCode, FileItem, GatheredOutcome, InboundChatContext, RoomFacts, RoomKind,
+  WireError,
+};
+use serde_json::{Value, json};
+
+fn crosses<T>(value: &T, wire: Value)
+where
+  T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+{
+  assert_eq!(serde_json::to_value(value).expect("the value encodes"), wire);
+  assert_eq!(&serde_json::from_value::<T>(wire).expect("the wire body decodes"), value);
+}
+
+fn message() -> ChatMessage {
+  ChatMessage {
+    chat_id: -100,
+    message_id: 5,
+    sender_id: Some(42),
+    sender_name: "A Person".into(),
+    sent_at: 1_760_000_000,
+    text: "hello".into(),
+    reply_to_message_id: None,
+    via: "platform".into(),
+    album: None,
+    mode: ChatVoice::BotAccount,
+  }
+}
+
+fn message_wire() -> Value {
+  json!({
+    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000,
+    "text": "hello", "replyToMessageId": null, "via": "platform", "album": null, "mode": "bot-account",
+  })
+}
+
+#[test]
+fn every_enum_member_by_its_wire_name() {
+  fn names<T: serde::Serialize>(members: &[T]) -> Vec<String> {
+    members
+      .iter()
+      .map(|member| serde_json::to_value(member).unwrap().as_str().unwrap().to_owned())
+      .collect()
+  }
+  use ChatVoice::*;
+  assert_eq!(
+    names(&[BotAccount, HumanReader, HumanAvatar, HumanAsAgent, Direct]),
+    ["bot-account", "human-reader", "human-avatar", "human-as-agent", "direct"]
+  );
+  assert_eq!(
+    names(&[ChatReach::AllMessages, ChatReach::MentionsOnly]),
+    ["all-messages", "mentions-only"]
+  );
+  assert_eq!(
+    names(&[ChatModeStanding::Active, ChatModeStanding::Inactive, ChatModeStanding::Unsupported]),
+    ["active", "inactive", "unsupported"]
+  );
+  assert_eq!(
+    names(&[ChatNumberSpace::Native, ChatNumberSpace::Assigned, ChatNumberSpace::None]),
+    ["native", "assigned", "none"]
+  );
+  assert_eq!(names(&[RoomKind::Owner, RoomKind::Group]), ["owner", "group"]);
+  use ChatVerb as V;
+  let verbs = [
+    V::Text,
+    V::Photo,
+    V::Album,
+    V::Document,
+    V::Audio,
+    V::Voice,
+    V::Sticker,
+    V::Reaction,
+    V::Pin,
+    V::Typing,
+    V::Edit,
+    V::Delete,
+  ];
+  let verb_names = [
+    "text", "photo", "album", "document", "audio", "voice", "sticker", "reaction", "pin", "typing", "edit",
+    "delete",
+  ];
+  assert_eq!(names(&verbs), verb_names);
+  let capabilities: Vec<ChatCapability> = verbs.into_iter().map(ChatCapability::from).collect();
+  assert_eq!(names(&capabilities), verb_names);
+  use ChatCapability as C;
+  assert_eq!(
+    names(&[C::ReplyTo, C::FetchMedia, C::Avatars, C::History]),
+    ["replyTo", "fetchMedia", "avatars", "history"]
+  );
+}
+
+#[test]
+fn message_with_every_field_null_that_may_be() {
+  crosses(&message(), message_wire());
+}
+
+#[test]
+fn message_in_an_album_answering_another() {
+  let message = ChatMessage {
+    reply_to_message_id: Some(4),
+    album: Some(3),
+    mode: ChatVoice::HumanReader,
+    ..message()
+  };
+  let mut wire = message_wire();
+  wire["replyToMessageId"] = json!(4);
+  wire["album"] = json!(3);
+  wire["mode"] = json!("human-reader");
+  crosses(&message, wire);
+}
+
+#[test]
+fn bare_handover() {
+  let handover = ChatHandover {
+    message: message(),
+    context: None,
+    room: None,
+    files: vec![],
+  };
+  crosses(&handover, json!({ "message": message_wire() }));
+}
+
+#[test]
+fn handover_with_context_room_and_files() {
+  let handover = ChatHandover {
+    message: message(),
+    context: Some(InboundChatContext {
+      room_title: Some("A Room".into()),
+      sender_username: Some("person".into()),
+      reply_to_sender_id: Some(43),
+      spoken_text: Some("the caption".into()),
+      metadata: Some(json!({ "anything": [1, 2] })),
+      carries_file: true,
+      gathering: true,
+      tag: Some("tag-1".into()),
+    }),
+    room: Some(RoomFacts {
+      kind: Some(RoomKind::Owner),
+      identity: Some(99),
+      private_to: Some(42),
+    }),
+    files: vec![FileItem {
+      name: "a.txt".into(),
+      mime: "text/plain".into(),
+      bytes: b"hi".to_vec(),
+    }],
+  };
+  crosses(
+    &handover,
+    json!({
+      "message": message_wire(),
+      "context": {
+        "roomTitle": "A Room", "senderUsername": "person", "replyToSenderId": 43, "spokenText": "the caption",
+        "metadata": { "anything": [1, 2] }, "carriesFile": true, "gathering": true, "tag": "tag-1",
+      },
+      "room": { "kind": "owner", "identity": 99, "privateTo": 42 },
+      "files": [{ "name": "a.txt", "mime": "text/plain", "bytes": "aGk=" }],
+    }),
+  );
+}
+
+#[test]
+fn empty_context_and_room_facts() {
+  crosses(&InboundChatContext::default(), json!({}));
+  crosses(&RoomFacts::default(), json!({}));
+}
+
+#[test]
+fn gathered_kept() {
+  let gathered = ChatGathered {
+    chat_id: -100,
+    message_id: 5,
+    via: "platform".into(),
+    outcome: GatheredOutcome::Kept {
+      files: vec![FileItem {
+        name: "a.png".into(),
+        mime: "image/png".into(),
+        bytes: vec![137, 80],
+      }],
+    },
+  };
+  crosses(
+    &gathered,
+    json!({
+      "chatId": -100, "messageId": 5, "via": "platform", "outcome": "kept",
+      "files": [{ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+    }),
+  );
+}
+
+#[test]
+fn gathered_not_kept() {
+  let gathered = ChatGathered {
+    chat_id: -100,
+    message_id: 5,
+    via: "platform".into(),
+    outcome: GatheredOutcome::NotKept {
+      reason: "The file was too large to keep.".into(),
+    },
+  };
+  crosses(
+    &gathered,
+    json!({
+      "chatId": -100, "messageId": 5, "via": "platform", "outcome": "not-kept",
+      "reason": "The file was too large to keep.",
+    }),
+  );
+}
+
+#[test]
+fn declaration() {
+  let declaration = ChatDeclaration {
+    key: "platform".into(),
+    label: "Platform".into(),
+    configured: None,
+    modes: vec![
+      ChatReadMode {
+        voice: ChatVoice::BotAccount,
+        reach: ChatReach::AllMessages,
+        standing: ChatModeStanding::Active,
+        reason: None,
+        can_reply_to: true,
+      },
+      ChatReadMode {
+        voice: ChatVoice::HumanReader,
+        reach: ChatReach::MentionsOnly,
+        standing: ChatModeStanding::Inactive,
+        reason: Some("No account is configured.".into()),
+        can_reply_to: false,
+      },
+    ],
+    can: BTreeSet::from([ChatCapability::Text, ChatCapability::ReplyTo]),
+    dialect: ChatDialectDeclaration {
+      name: "plain".into(),
+      limits: ChatDialectLimits {
+        text: Some(4096),
+        caption: None,
+        album_photos: Some(10),
+        file_bytes: None,
+      },
+      writing: "This room shows no formatting.".into(),
+      foldable: false,
+    },
+    shows: Some("The whole line of the room.".into()),
+    numbering: ChatNumbering {
+      rooms: ChatNumberSpace::Native,
+      people: ChatNumberSpace::Assigned,
+      messages: ChatNumberSpace::None,
+    },
+    speakers: true,
+  };
+  crosses(
+    &declaration,
+    json!({
+      "key": "platform", "label": "Platform", "configured": null,
+      "modes": [
+        {
+          "voice": "bot-account", "reach": "all-messages", "standing": "active", "reason": null,
+          "canReplyTo": true,
+        },
+        {
+          "voice": "human-reader", "reach": "mentions-only", "standing": "inactive",
+          "reason": "No account is configured.", "canReplyTo": false,
+        },
+      ],
+      "can": ["text", "replyTo"],
+      "dialect": {
+        "name": "plain",
+        "limits": { "text": 4096, "caption": null, "albumPhotos": 10, "fileBytes": null },
+        "writing": "This room shows no formatting.",
+        "foldable": false,
+      },
+      "shows": "The whole line of the room.",
+      "numbering": { "rooms": "native", "people": "assigned", "messages": "none" },
+      "speakers": true,
+    }),
+  );
+}
+
+#[test]
+fn markup() {
+  let markup = ChatMarkup {
+    markup: "<b>hi</b>".into(),
+    plain: "hi".into(),
+    formatted: true,
+  };
+  crosses(&markup, json!({ "markup": "<b>hi</b>", "plain": "hi", "formatted": true }));
+}
+
+#[test]
+fn error_shape_and_statuses() {
+  let codes = [
+    (ErrorCode::BadRequest, "bad-request", 400),
+    (ErrorCode::Unauthorized, "unauthorized", 401),
+    (ErrorCode::NoRoute, "no-route", 404),
+    (ErrorCode::NotReady, "not-ready", 409),
+    (ErrorCode::Failed, "failed", 500),
+  ];
+  for (code, name, status) in codes {
+    assert_eq!(code.status(), status);
+    crosses(
+      &WireError::new(code, "What went wrong."),
+      json!({ "code": name, "error": "What went wrong." }),
+    );
+  }
+}
