@@ -1,0 +1,10 @@
+[package]
+name = "bmo-chat"
+description = "The chat provider side of the chat protocol: piece types, the provider contract and its server."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+toml.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "bmo-chat-client"
+description = "The receiver side of the chat protocol: one client for every chat provider, and the inbound routes."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+toml.workspace = true

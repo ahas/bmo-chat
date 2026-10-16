@@ -1,0 +1,33 @@
+# Working in this repository
+
+This repository holds the chat protocol's two base libraries: `bmo-chat` in `provider/`, which a chat
+service imports to be a provider, and `bmo-chat-client` in `client/`, which the receiver imports. It holds
+chat piece types and the routes that carry them, and nothing else: no turn templates or their assembly, no
+jobs, memory, agents, gates or archive.
+
+## Rules
+
+- **`docs/` is canonical.** `docs/contract.md` states the piece types and `docs/protocol.md` the routes.
+  Read the one covering a change first. A change that would make it wrong repairs the document first,
+  stating what is true now, and the code is then written to match.
+- **The base libraries depend on nothing `bmo-*`, not even each other.** Each defines the wire shapes it
+  needs on its own; the parity test at the root checks that the two sides agree. Each crate's
+  `tests/dependencies.rs` fails on a `bmo-*` dependency.
+- **Tests live in `tests/`.** A crate's tests are in its own `tests/`; checks that span both crates are in
+  the root `tests/`, which belongs to the root package. No test module sits in `src/`.
+- **English only** in code, comments, strings, tests and documents, and in commit messages. Messages a
+  service shows are English sentences; machine-read outcomes are status codes and kebab-case codes.
+- **No names of agents, owners or hosts, and no personal paths** in code, documents or commits. Write the
+  role instead: the receiver, a provider, the owner.
+- **No directory named after its parent** (no `x/x`). The root `tests/layout.rs` fails on one.
+- **Only Cargo manifests at the root.** The root `Cargo.toml` is the workspace and also the root package,
+  which is never published and exists to hold the root `tests/`. No other build tool's manifest goes
+  anywhere at the root.
+- **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
+
+## Checks
+
+- Static: `cargo check --workspace --all-targets`, then `cargo clippy --workspace --all-targets` and
+  `cargo fmt --all --check` (108 columns, 2-space indentation, as `rustfmt.toml` sets).
+- Tests: `cargo test --workspace`, the command `deploy.toml` declares.
+- The version is the workspace's, in semver, shared by both crates.
