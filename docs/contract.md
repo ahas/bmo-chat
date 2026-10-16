@@ -150,6 +150,13 @@ A provider declares itself and the base holds no record of it anywhere else:
 | `numbering` | its `ChatNumbering` |
 | `speakers` | whether a send may name an agent speaker other than the one the room is answered by |
 
+### Health
+
+A provider says whether it is ready to answer about rooms and to send: `ready`, and where it is not, the
+`reason` in English. A provider that says nothing of its own is ready exactly when `configured` is null, and
+otherwise not ready for the reason `configured` gives. While a provider is not ready, the base answers its
+room, send, media and owner-room routes as not ready without asking it (see `protocol.md`).
+
 ### Questions about a room
 
 A provider answers these about any room number, each through its own route:

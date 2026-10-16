@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::bodies::ChatHealth;
 use crate::capability::ChatCapability;
 use crate::declaration::ChatDeclaration;
 use crate::dialect::ChatDialect;
@@ -54,6 +55,15 @@ pub trait ChatProvider: Send + Sync {
   async fn start(&self, receiver: Arc<dyn ChatReceiver>) -> Result<(), ChatFailure>;
 
   async fn stop(&self);
+
+  /// Whether the provider is ready to answer about rooms and to send. One that says nothing of its own is
+  /// ready exactly when it is configured.
+  fn health(&self) -> ChatHealth {
+    match self.configured() {
+      None => ChatHealth::ready(),
+      Some(reason) => ChatHealth::not_ready(reason),
+    }
+  }
 
   /// Every mode the provider supports, each with where it stands now.
   fn modes(&self) -> Vec<ChatReadMode>;

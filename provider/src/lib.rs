@@ -4,11 +4,13 @@
 //! server for the provider routes and the link that hands what a room said to the receiver. The pieces are
 //! stated in `docs/contract.md` and the routes in `docs/protocol.md`.
 
+mod bodies;
 mod bytes;
 mod capability;
 mod declaration;
 mod dialect;
 mod error;
+mod link;
 mod media;
 mod message;
 mod modes;
@@ -17,11 +19,17 @@ mod plain;
 mod provider;
 mod refusal;
 mod send;
+mod server;
 
+pub use bodies::{
+  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, OwnerRoom, RoomIdentity,
+  RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle,
+};
 pub use capability::{ChatCapability, ChatVerb};
 pub use declaration::ChatDeclaration;
 pub use dialect::{ChatDialect, ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, WireError};
+pub use link::{ChatPatience, ChatReceiverLink, ChatWait, LinkFailure, RealClock};
 pub use media::{ChatMediaRequest, ChatMediaResult};
 pub use message::{
   ChatGathered, ChatHandover, ChatMessage, FileItem, GatheredOutcome, InboundChatContext, RoomFacts,
@@ -33,3 +41,4 @@ pub use plain::PlainDialect;
 pub use provider::{ChatFailure, ChatProvider, ChatReceiver};
 pub use refusal::{ChatRefusal, MissedPicture, MissedPictureReason};
 pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker};
+pub use server::provider_router;

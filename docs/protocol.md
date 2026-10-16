@@ -100,7 +100,7 @@ fields as `contract.md` lists them: `label` on every refusal, plus `capability`,
 A missed picture's `reason` is an object with `code`, `message` and, for `platform`, `detail`.
 
 A send of a verb the provider does not declare is answered `sent: false` with an `unsupported-capability`
-refusal. A provider that fails while sending answers 500 `failed`.
+refusal, by the base before the provider is asked. A provider that fails while sending answers 500 `failed`.
 
 ### `POST /media`
 
