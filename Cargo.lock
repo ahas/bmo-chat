@@ -119,12 +119,14 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
+ "headers",
  "reqwest",
  "serde",
  "serde_json",
  "strum",
  "tokio",
  "toml",
+ "tower",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ mod capability;
 mod declaration;
 mod dialect;
 mod error;
+mod inbound;
 mod media;
 mod message;
 mod modes;
@@ -28,6 +29,7 @@ pub use capability::{ChatCapability, ChatVerb};
 pub use declaration::ChatDeclaration;
 pub use dialect::{ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, WireError};
+pub use inbound::{ChatReceiver, receiver_router};
 pub use media::{ChatMediaRequest, ChatMediaResult};
 pub use message::{
   ChatGathered, ChatHandover, ChatMessage, FileItem, GatheredOutcome, InboundChatContext, RoomFacts,
