@@ -94,7 +94,9 @@ pub fn openapi_json() -> String {
 
 const DESCRIPTION: &str = "The routes between chat providers and the receiver, with JSON bodies. Paths are \
   relative to the base address the caller is configured with, and a service may mount them under a prefix of \
-  its own. Any other method and path is answered 404 `no-route` in the error shape. A refusal is an answer: a \
+  its own. Any other method and path is answered 404 `no-route` in the error shape. A route a service serves of \
+  its own beside these answers 404 `nothing-held` where it keeps nothing at the address its path names, so a \
+  caller tells an empty address from a wrong path by `code`. A refusal is an answer: a \
   send the provider does not perform is answered 200 with a typed refusal. A caller offers a request again \
   only when the connection was refused, so a request that reached a listener is never made twice.";
 

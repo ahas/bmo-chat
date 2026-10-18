@@ -6,7 +6,6 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::StatusCode;
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
@@ -59,49 +58,39 @@ struct Served {
   token: Arc<str>,
 }
 
-/// An answer in the error shape.
-struct Answer(ErrorCode, String);
-
-impl IntoResponse for Answer {
-  fn into_response(self) -> Response {
-    let Answer(code, error) = self;
-    let status = StatusCode::from_u16(code.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    (status, Json(WireError::new(code, error))).into_response()
-  }
-}
-
-impl From<ChatFailure> for Answer {
+/// A provider that failed while answering is answered `failed`, with the failure as the sentence.
+impl From<ChatFailure> for WireError {
   fn from(failure: ChatFailure) -> Self {
-    Answer(ErrorCode::Failed, failure.to_string())
+    WireError::new(ErrorCode::Failed, failure.to_string())
   }
 }
 
-type Answered<T> = Result<Json<T>, Answer>;
+type Answered<T> = Result<Json<T>, WireError>;
 
 async fn authorized(State(served): State<Served>, request: Request, next: Next) -> Response {
   let bearer = request.headers().typed_get::<Authorization<Bearer>>();
   match bearer {
     Some(Authorization(bearer)) if bearer.token() == &*served.token => next.run(request).await,
-    _ => Answer(ErrorCode::Unauthorized, "The bearer token is missing or wrong.".into()).into_response(),
+    _ => WireError::new(ErrorCode::Unauthorized, "The bearer token is missing or wrong.").into_response(),
   }
 }
 
-async fn no_route(request: Request) -> Answer {
-  Answer(
+async fn no_route(request: Request) -> WireError {
+  WireError::new(
     ErrorCode::NoRoute,
     format!("There is no route at {} {}.", request.method(), request.uri().path()),
   )
 }
 
 /// The body read as the shape the route takes.
-fn read<T: DeserializeOwned>(body: &Bytes) -> Result<T, Answer> {
+fn read<T: DeserializeOwned>(body: &Bytes) -> Result<T, WireError> {
   serde_json::from_slice(body).map_err(|error| {
-    Answer(ErrorCode::BadRequest, format!("The body is not the shape this route takes: {error}."))
+    WireError::new(ErrorCode::BadRequest, format!("The body is not the shape this route takes: {error}."))
   })
 }
 
 /// The provider, where it is ready to answer the gated routes.
-fn ready(served: &Served) -> Result<&dyn ChatProvider, Answer> {
+fn ready(served: &Served) -> Result<&dyn ChatProvider, WireError> {
   let provider = &*served.provider;
   let ChatHealth { ready, reason } = provider.health();
   if ready {
@@ -112,7 +101,7 @@ fn ready(served: &Served) -> Result<&dyn ChatProvider, Answer> {
     Some(reason) => format!("{label} is not ready yet: {reason}"),
     None => format!("{label} is not ready yet."),
   };
-  Err(Answer(ErrorCode::NotReady, error))
+  Err(WireError::new(ErrorCode::NotReady, error))
 }
 
 async fn declaration(State(served): State<Served>) -> Json<ChatDeclaration> {

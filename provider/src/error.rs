@@ -1,5 +1,7 @@
 //! The body of every answer that is not a success.
 
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 
 /// Why a request could not be answered at all. A refusal is an answer and never takes this shape.
@@ -12,6 +14,8 @@ pub enum ErrorCode {
   Unauthorized,
   /// No route at this method and path.
   NoRoute,
+  /// The route is right, but nothing is kept at the address the path names.
+  NothingHeld,
   /// The service is up but not ready to answer this route.
   NotReady,
   /// The service failed while answering.
@@ -25,6 +29,7 @@ impl ErrorCode {
       Self::BadRequest => 400,
       Self::Unauthorized => 401,
       Self::NoRoute => 404,
+      Self::NothingHeld => 404,
       Self::NotReady => 409,
       Self::Failed => 500,
     }
@@ -44,5 +49,14 @@ impl WireError {
       code,
       error: error.into(),
     }
+  }
+}
+
+/// The error shape as an answer, with its code's status, for the base's routes and for any route a provider
+/// serves of its own beside them.
+impl IntoResponse for WireError {
+  fn into_response(self) -> Response {
+    let status = StatusCode::from_u16(self.code.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, Json(self)).into_response()
   }
 }

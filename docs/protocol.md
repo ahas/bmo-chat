@@ -55,8 +55,14 @@ Every non-2xx answer has this body:
 | 400 | `bad-request` | the body is not JSON, or not the shape the route takes; the sentence names what is missing |
 | 401 | `unauthorized` | the token is missing or wrong |
 | 404 | `no-route` | no route at this method and path |
+| 404 | `nothing-held` | the route is right, but the service keeps nothing at the address the path names (a profile picture a provider has not kept); the sentence names the address |
 | 409 | `not-ready` | the service is up but not ready to answer this route (a provider whose platform connection is not open yet) |
 | 500 | `failed` | the service failed while answering; the sentence is the failure |
+
+The two 404 codes share a status, so a caller tells a wrong path from an empty address by `code` alone. No
+route listed here answers `nothing-held`; it is for a route a service serves of its own beside them, which
+answers its errors in this same shape. bmo-chat's error shape answers as an HTTP response with its code's
+status, so such a route returns it as it is. Both libraries carry `nothing-held` from version 0.2.0.
 
 ### Retrying
 

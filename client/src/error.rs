@@ -13,6 +13,8 @@ pub enum ErrorCode {
   Unauthorized,
   /// No route at this method and path.
   NoRoute,
+  /// The route is right, but nothing is kept at the address the path names.
+  NothingHeld,
   /// The service is up but not ready to answer this route.
   NotReady,
   /// The service failed while answering.
@@ -26,6 +28,7 @@ impl ErrorCode {
       Self::BadRequest => 400,
       Self::Unauthorized => 401,
       Self::NoRoute => 404,
+      Self::NothingHeld => 404,
       Self::NotReady => 409,
       Self::Failed => 500,
     }

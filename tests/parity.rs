@@ -12,6 +12,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::Router;
+use axum::extract::Path;
+use axum::routing::get;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -618,6 +620,7 @@ macro_rules! fixtures {
           WireError::new(ErrorCode::BadRequest, "The body is not the shape this route takes."),
           WireError::new(ErrorCode::Unauthorized, "The bearer token is missing or wrong."),
           WireError::new(ErrorCode::NoRoute, "There is no route at GET /nowhere."),
+          WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for room 7."),
           WireError::new(ErrorCode::NotReady, "The receiver is still starting."),
           WireError::new(ErrorCode::Failed, "The archive could not be written."),
         ]
@@ -799,6 +802,7 @@ fn the_fixtures_hold_every_member_of_every_set() {
       ErrorCode::BadRequest,
       ErrorCode::Unauthorized,
       ErrorCode::NoRoute,
+      ErrorCode::NothingHeld,
       ErrorCode::NotReady,
       ErrorCode::Failed,
     ]
@@ -1185,6 +1189,59 @@ async fn the_real_routers_errors_reach_the_real_client_in_the_error_shape() {
   );
 
   drop((client, stranger));
+  listening.close().await;
+}
+
+/// A route a provider serves of its own beside the base's, as a provider that declares `avatars` serves its
+/// profile pictures: the picture of room 7, which it keeps, and `nothing-held` for any other address.
+async fn kept_picture(Path((kind, id)): Path<(String, i64)>) -> Result<Vec<u8>, bmo_chat::WireError> {
+  if kind == "room" && id == 7 {
+    return Ok(vec![0xff, 0xd8, 0xff]);
+  }
+  Err(bmo_chat::WireError::new(
+    bmo_chat::ErrorCode::NothingHeld,
+    format!("No profile picture is kept for {kind} {id}."),
+  ))
+}
+
+#[tokio::test]
+async fn a_provider_route_holding_nothing_is_told_apart_from_no_route() {
+  use bmo_chat_client::{ErrorCode, WireError};
+
+  let own = Router::new().route("/avatars/{kind}/{id}", get(kept_picture));
+  let provider = bmo_chat::provider_router(Arc::new(Stand::new()), TOKEN).merge(own);
+  let listening = Listening::start(Router::new().nest("/provider", provider)).await;
+  let http = reqwest::Client::builder().no_proxy().build().expect("a plain client builds");
+  let base = listening.base("provider");
+  let fetch = async |path: &str| {
+    let answer = http
+      .get(format!("{base}{path}"))
+      .bearer_auth(TOKEN)
+      .send()
+      .await
+      .expect("the router answers");
+    let status = answer.status().as_u16();
+    (status, answer.bytes().await.expect("the answer has a body").to_vec())
+  };
+  let read = |body: &[u8]| serde_json::from_slice::<WireError>(body).expect("the body is the error shape");
+
+  assert_eq!(fetch("avatars/room/7").await, (200, vec![0xff, 0xd8, 0xff]));
+
+  let (status, body) = fetch("avatars/person/9").await;
+  assert_eq!(status, 404);
+  assert_eq!(
+    read(&body),
+    WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for person 9.")
+  );
+
+  let (status, body) = fetch("avatar/person/9").await;
+  assert_eq!(status, 404);
+  assert_eq!(
+    read(&body),
+    WireError::new(ErrorCode::NoRoute, "There is no route at GET /avatar/person/9.")
+  );
+
+  drop(http);
   listening.close().await;
 }
 

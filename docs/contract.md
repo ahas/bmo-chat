@@ -104,6 +104,11 @@ The full capability set is all sixteen, taken from the type itself, so a reader 
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a verb it does not declare is refused (see Refusals).
 
+The protocol carries no route for a profile picture. A provider that declares `avatars` serves its pictures on
+a route of its own, and where it keeps none for the room or person asked, that route answers 404
+`nothing-held` in the error shape `protocol.md` states, never `no-route`, so a missing picture is told apart
+from a wrong path.
+
 ## Dialects
 
 A dialect is what the agent's markdown becomes on a provider's rooms. One dialect may serve several providers,

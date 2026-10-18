@@ -349,6 +349,7 @@ fn error_shape_and_statuses() {
     (ErrorCode::BadRequest, "bad-request", 400),
     (ErrorCode::Unauthorized, "unauthorized", 401),
     (ErrorCode::NoRoute, "no-route", 404),
+    (ErrorCode::NothingHeld, "nothing-held", 404),
     (ErrorCode::NotReady, "not-ready", 409),
     (ErrorCode::Failed, "failed", 500),
   ];
