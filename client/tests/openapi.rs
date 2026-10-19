@@ -17,8 +17,9 @@ use bmo_chat_client::{
   ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal,
   ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker, ChatVerb, ChatVoice, DialectCheck,
   DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem, GatheredOutcome, InboundChatContext,
-  MissedPicture, MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind, RoomKindAnswer,
-  RoomOwns, RoomPerson, RoomQuery, RoomTitle, WireError, openapi, openapi_json, receiver_router,
+  MessageFile, MissedPicture, MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind,
+  RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle, WireError, openapi, openapi_json,
+  receiver_router,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -213,6 +214,15 @@ impl Bodies {
 
 fn file() -> FileItem {
   FileItem {
+    name: "a.png".into(),
+    mime: "image/png".into(),
+    bytes: vec![137, 80, 78, 71],
+  }
+}
+
+fn message_file() -> MessageFile {
+  MessageFile {
+    id: "file-1".into(),
     name: "a.png".into(),
     mime: "image/png".into(),
     bytes: vec![137, 80, 78, 71],
@@ -447,7 +457,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     };
     bodies.valid("post", "/media", Request, &request);
   }
-  bodies.valid("post", "/media", Answer, &ChatMediaResult::Fetched(file()));
+  bodies.valid("post", "/media", Answer, &ChatMediaResult::Fetched(message_file()));
   bodies.valid(
     "post",
     "/media",
@@ -526,7 +536,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
       identity: Some(7),
       private_to: Some(42),
     }),
-    files: vec![file()],
+    files: vec![message_file()],
   };
   for path in ["/message", "/attachment", "/edited"] {
     bodies.valid("post", path, Request, &bare);
@@ -543,7 +553,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     "/gathered",
     Request,
     &gathered(GatheredOutcome::Kept {
-      files: vec![file()],
+      files: vec![message_file()],
     }),
   );
   bodies.valid(
@@ -585,7 +595,13 @@ fn a_body_not_of_its_route_shape_is_not_valid() {
     "post",
     "/media",
     Answer,
-    json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png" }),
+    json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png" }),
+  );
+  bodies.invalid(
+    "post",
+    "/media",
+    Answer,
+    json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
   );
   bodies.invalid("get", "/declaration", Answer, json!({ "key": "stand-in" }));
   bodies.invalid("post", "/room/is-owner", Answer, json!({ "kind": "channel" }));

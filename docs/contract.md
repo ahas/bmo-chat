@@ -181,9 +181,9 @@ Whether a person behind a private room is a user is the receiver's question, not
 
 A provider that declares `fetchMedia` fetches the picture or the file a message carried from the platform
 again, given the message's `chatId`, `messageId` and, for a platform that finds an old message by its time,
-`sentAt`. The answer is `fetched` with a file item, `unavailable` with the platform's reason in English, or
-`refused` with a refusal. A provider that does not declare `fetchMedia` refuses with `unsupported-capability`,
-which is also what the base answers for a provider that supplies no fetch of its own.
+`sentAt`. The answer is `fetched` with a message file (see Files), `unavailable` with the platform's reason in
+English, or `refused` with a refusal. A provider that does not declare `fetchMedia` refuses with
+`unsupported-capability`, which is also what the base answers for a provider that supplies no fetch of its own.
 
 ## Messages
 
@@ -228,12 +228,19 @@ optional, and the receiver can always ask the room routes instead.
 
 ### Files
 
-A file crosses as a file item: `name`, `mime` and `bytes`. A provider gathers a file from its platform. Where
-it is kept is the receiver's concern, so the provider hands the bytes over:
+A file crosses as a file item: `name`, `mime` and `bytes`. A file a message carried crosses as a message file:
+a file item and `id`, the provider's identifier of that file among its message's files. The id is an opaque
+string. The same file carries the same id each time it crosses, whichever hand-over or fetch carries it, and no
+two files of one message share an id, so the receiver tells a file it already keeps from another of the same
+name by the message and the id alone. How a provider makes the id is its own: the platform's own name for the
+file where it has one, or the file's place among its message's files where it does not.
 
-- when the file is already gathered, as the files of the `attachment` hand-over;
+A provider gathers a file from its platform. Where it is kept is the receiver's concern, so the provider hands
+the bytes over:
+
+- when the file is already gathered, as the message files of the `attachment` hand-over;
 - when it is still on its way, `attachment` says `gathering` and a `gathered` hand-over follows. Its outcome
-  is either `kept` with the files, or `not-kept` with the reason.
+  is either `kept` with the message files, or `not-kept` with the reason.
 
 ## The receiver, as a provider sees it
 
@@ -266,7 +273,7 @@ A send is one verb at a time. Every send carries `chatId` and its `verb`, and ma
 |---|---|
 | `text` | `text`; optional `replyTo`, `silent` (a notice that must not buzz a phone), `fold` (fold where the dialect can) |
 | `photo` | `imageUrl`; optional `caption`, `replyTo` |
-| `album` | `items`, each either `{ address }` (a web address or a file path the provider can read) or an inline file item `{ name, mime, bytes }`; optional `caption`, `replyTo` |
+| `album` | `items`, each either `{ address }` (a web address or a file path the provider can read) or an inline file item `{ name, mime, bytes }`, which carries no id; optional `caption`, `replyTo` |
 | `document` | `bytes`, `fileName`; optional `replyTo` |
 | `audio` | `audio`, `fileName`; optional `replyTo` |
 | `voice` | `audio`, `said` (what the line said); optional `caption`, `transcript` (what was actually read out), `replyTo` |

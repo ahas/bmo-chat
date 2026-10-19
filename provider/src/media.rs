@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::message::FileItem;
+use crate::message::MessageFile;
 use crate::refusal::ChatRefusal;
 
 /// The message whose picture or file is wanted again.
@@ -20,7 +20,7 @@ pub struct ChatMediaRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum ChatMediaResult {
-  Fetched(FileItem),
+  Fetched(MessageFile),
   /// The platform would not give it; the reason is an English sentence.
   Unavailable {
     reason: String,

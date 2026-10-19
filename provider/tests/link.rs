@@ -16,7 +16,7 @@ use axum::response::Json;
 use axum::routing::post;
 use bmo_chat::{
   ChatFailure, ChatGathered, ChatHandover, ChatMessage, ChatPatience, ChatReceiver, ChatReceiverLink,
-  ChatVoice, ChatWait, ErrorCode, FileItem, GatheredOutcome, InboundChatContext, LinkFailure, WireError,
+  ChatVoice, ChatWait, ErrorCode, GatheredOutcome, InboundChatContext, LinkFailure, MessageFile, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -160,7 +160,8 @@ async fn every_hand_over_reaches_its_route_with_the_token_and_its_body() {
     message_id: 5,
     via: "stand-in".into(),
     outcome: GatheredOutcome::Kept {
-      files: vec![FileItem {
+      files: vec![MessageFile {
+        id: "file-1".into(),
         name: "a.png".into(),
         mime: "image/png".into(),
         bytes: vec![137, 80],

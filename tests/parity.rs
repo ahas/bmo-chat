@@ -39,6 +39,15 @@ macro_rules! fixtures {
         }
       }
 
+      fn message_file(id: &str, name: &str, mime: &str, bytes: &[u8]) -> MessageFile {
+        MessageFile {
+          id: id.into(),
+          name: name.into(),
+          mime: mime.into(),
+          bytes: bytes.to_vec(),
+        }
+      }
+
       fn message(chat_id: i64, message_id: i64) -> ChatMessage {
         ChatMessage {
           chat_id,
@@ -317,7 +326,7 @@ macro_rules! fixtures {
 
       pub fn media_results() -> Vec<ChatMediaResult> {
         vec![
-          ChatMediaResult::Fetched(file("picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0])),
+          ChatMediaResult::Fetched(message_file("photo-5", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0])),
           ChatMediaResult::Unavailable {
             reason: "The platform no longer keeps that file.".into(),
           },
@@ -586,8 +595,8 @@ macro_rules! fixtures {
               private_to: None,
             }),
             files: vec![
-              file("notes.txt", "text/plain", b"some notes"),
-              file("tiny.png", "image/png", &[0x89, b'P', b'N', b'G']),
+              message_file("0", "notes.txt", "text/plain", b"some notes"),
+              message_file("1", "tiny.png", "image/png", &[0x89, b'P', b'N', b'G']),
             ],
           },
         ]
@@ -600,7 +609,7 @@ macro_rules! fixtures {
             message_id: 2,
             via: "stand-in".into(),
             outcome: GatheredOutcome::Kept {
-              files: vec![file("picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff])],
+              files: vec![message_file("photo-2", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff])],
             },
           },
           ChatGathered {

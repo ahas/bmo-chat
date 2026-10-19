@@ -33,8 +33,8 @@ pub use error::{ErrorCode, WireError};
 pub use inbound::{ChatReceiver, receiver_router};
 pub use media::{ChatMediaRequest, ChatMediaResult};
 pub use message::{
-  ChatGathered, ChatHandover, ChatMessage, FileItem, GatheredOutcome, InboundChatContext, RoomFacts,
-  RoomKind,
+  ChatGathered, ChatHandover, ChatMessage, FileItem, GatheredOutcome, InboundChatContext, MessageFile,
+  RoomFacts, RoomKind,
 };
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberSpace, ChatNumbering};

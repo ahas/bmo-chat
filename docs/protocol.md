@@ -129,7 +129,7 @@ old message by its time. The answer is distinguished by `outcome`:
 
 | `outcome` | Other fields |
 |---|---|
-| `fetched` | `name`, `mime`, `bytes` (base64) |
+| `fetched` | `id`, `name`, `mime`, `bytes` (base64): a message file |
 | `unavailable` | `reason`: an English sentence saying why the platform would not give it |
 | `refused` | `refusal`, a refusal object (`unsupported-capability` for a provider that does not declare `fetchMedia`) |
 
@@ -178,10 +178,14 @@ take the same body:
 | `message` | a message: `chatId`, `messageId`, `senderId` (number or null), `senderName`, `sentAt`, `text`, `replyToMessageId` (number or null), `via`, `album` (number or null), `mode` |
 | `context` | optional context: `roomTitle`, `senderUsername`, `replyToSenderId`, `spokenText`, `metadata` (any JSON), `carriesFile`, `gathering`, `tag`, each optional |
 | `room` | optional room facts: `kind` (`owner` or `group`), `identity` (number or null), `privateTo` (number or null), each optional |
-| `files` | optional list of file items, each `name`, `mime`, `bytes` (base64): the files an `attachment` carries when they are already gathered |
+| `files` | optional list of message files, each `id`, `name`, `mime`, `bytes` (base64): the files an `attachment` carries when they are already gathered |
 
 An `attachment` whose file is still being gathered says `gathering: true` in its context, carries no `files`,
 and is followed by a `gathered` hand-over for the same message.
+
+A message file's `id` is a string, required, the same each time the same file crosses and never shared by two
+files of one message (`contract.md`, "Files"). An inline album item of a send is a file item and carries no
+`id`. Both libraries carry the `id` from version 0.3.0.
 
 ### `POST /gathered`
 
@@ -189,7 +193,7 @@ The file a message's `gathering` promised. The body is `chatId`, `messageId` and
 
 | `outcome` | Other fields |
 |---|---|
-| `kept` | `files`, a list of file items |
+| `kept` | `files`, a list of message files |
 | `not-kept` | `reason`: an English sentence saying why the file could not be kept |
 
 ## Routes not in the protocol

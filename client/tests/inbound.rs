@@ -10,8 +10,8 @@ use axum::http::Request;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bmo_chat_client::{
-  ChatGathered, ChatHandover, ChatMessage, ChatReceiver, ChatVoice, ErrorCode, FileItem, GatheredOutcome,
-  InboundChatContext, RoomFacts, RoomKind, WireError, receiver_router,
+  ChatGathered, ChatHandover, ChatMessage, ChatReceiver, ChatVoice, ErrorCode, GatheredOutcome,
+  InboundChatContext, MessageFile, RoomFacts, RoomKind, WireError, receiver_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -130,11 +130,11 @@ async fn every_hand_over_is_handed_to_the_receiver_decoded_and_answered_with_an_
   });
   let with_file = json!({
     "message": message_wire("carried along"),
-    "files": [{ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+    "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
   });
   let kept = json!({
     "chatId": -100, "messageId": 5, "via": "stand-in", "outcome": "kept",
-    "files": [{ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+    "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
   });
   let not_kept = json!({
     "chatId": -100, "messageId": 5, "via": "stand-in", "outcome": "not-kept",
@@ -151,7 +151,8 @@ async fn every_hand_over_is_handed_to_the_receiver_decoded_and_answered_with_an_
     assert_eq!(post(&router, path, body).await, (200, json!({})), "{path}");
   }
 
-  let file = FileItem {
+  let file = MessageFile {
+    id: "file-1".into(),
     name: "a.png".into(),
     mime: "image/png".into(),
     bytes: vec![137, 80],
@@ -278,7 +279,7 @@ async fn a_large_file_is_taken_whole() {
   let bytes = vec![7u8; 5 * 1024 * 1024];
   let body = json!({
     "message": message_wire("a large file"),
-    "files": [{ "name": "large.bin", "mime": "application/octet-stream", "bytes": STANDARD.encode(&bytes) }],
+    "files": [{ "id": "file-1", "name": "large.bin", "mime": "application/octet-stream", "bytes": STANDARD.encode(&bytes) }],
   });
   assert_eq!(post(&router, "/attachment", &body).await, (200, json!({})));
   match &desk.taken()[..] {

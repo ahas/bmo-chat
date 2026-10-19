@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 use bmo_chat_client::{
   ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatGathered, ChatHandover,
   ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberSpace,
-  ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode, FileItem,
-  GatheredOutcome, InboundChatContext, RoomFacts, RoomKind, WireError,
+  ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode, GatheredOutcome,
+  InboundChatContext, MessageFile, RoomFacts, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 
@@ -146,7 +146,8 @@ fn handover_with_context_room_and_files() {
       identity: Some(99),
       private_to: Some(42),
     }),
-    files: vec![FileItem {
+    files: vec![MessageFile {
+      id: "file-1".into(),
       name: "a.txt".into(),
       mime: "text/plain".into(),
       bytes: b"hi".to_vec(),
@@ -161,9 +162,15 @@ fn handover_with_context_room_and_files() {
         "metadata": { "anything": [1, 2] }, "carriesFile": true, "gathering": true, "tag": "tag-1",
       },
       "room": { "kind": "owner", "identity": 99, "privateTo": 42 },
-      "files": [{ "name": "a.txt", "mime": "text/plain", "bytes": "aGk=" }],
+      "files": [{ "id": "file-1", "name": "a.txt", "mime": "text/plain", "bytes": "aGk=" }],
     }),
   );
+}
+
+#[test]
+fn a_message_file_without_an_id_is_not_read() {
+  let file = json!({ "name": "a.txt", "mime": "text/plain", "bytes": "aGk=" });
+  assert!(serde_json::from_value::<MessageFile>(file).is_err());
 }
 
 #[test]
@@ -179,7 +186,8 @@ fn gathered_kept() {
     message_id: 5,
     via: "platform".into(),
     outcome: GatheredOutcome::Kept {
-      files: vec![FileItem {
+      files: vec![MessageFile {
+        id: "file-1".into(),
         name: "a.png".into(),
         mime: "image/png".into(),
         bytes: vec![137, 80],
@@ -190,7 +198,7 @@ fn gathered_kept() {
     &gathered,
     json!({
       "chatId": -100, "messageId": 5, "via": "platform", "outcome": "kept",
-      "files": [{ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+      "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
     }),
   );
 }
@@ -303,12 +311,13 @@ fn media_request_and_every_outcome() {
     json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000 }),
   );
   crosses(
-    &ChatMediaResult::Fetched(FileItem {
+    &ChatMediaResult::Fetched(MessageFile {
+      id: "file-1".into(),
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
     }),
-    json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+    json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
   );
   crosses(
     &ChatMediaResult::Unavailable {

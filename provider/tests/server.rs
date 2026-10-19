@@ -14,7 +14,8 @@ use base64::engine::general_purpose::STANDARD;
 use bmo_chat::{
   ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatMarkup, ChatMediaRequest,
   ChatMediaResult, ChatModeStanding, ChatNumberSpace, ChatNumbering, ChatProvider, ChatReach, ChatReadMode,
-  ChatReceiver, ChatSend, ChatSendRequest, ChatSendResult, ChatVoice, FileItem, RoomKind, provider_router,
+  ChatReceiver, ChatSend, ChatSendRequest, ChatSendResult, ChatVoice, MessageFile, RoomKind,
+  provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -175,7 +176,8 @@ impl ChatProvider for Desk {
   }
   async fn fetch_media(&self, request: ChatMediaRequest) -> Result<ChatMediaResult, ChatFailure> {
     self.ask(format!("media {} {}", request.chat_id, request.message_id))?;
-    Ok(ChatMediaResult::Fetched(FileItem {
+    Ok(ChatMediaResult::Fetched(MessageFile {
+      id: "file-1".into(),
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
@@ -420,7 +422,7 @@ async fn media_is_refused_where_undeclared_and_fetched_where_declared() {
     call(&router(&declared), "POST", "/media", request).await,
     (
       200,
-      json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" })
+      json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" })
     )
   );
   assert_eq!(declared.asked(), ["media -100 5"]);

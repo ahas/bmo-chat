@@ -19,8 +19,8 @@ use bmo_chat_client::{
   ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
   ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberSpace, ChatNumbering, ChatPatience,
   ChatProviderClient, ChatReach, ChatReadMode, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult,
-  ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading, ErrorCode, FileItem, MissedPicture,
-  MissedPictureReason, RoomKind, WireError,
+  ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading, ErrorCode, MessageFile,
+  MissedPicture, MissedPictureReason, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -234,7 +234,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
     (
       "/provider/media",
       ok,
-      json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+      json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
     ),
     (
       "/provider/dialect/read",
@@ -270,7 +270,8 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
   );
   assert_eq!(
     client.media(&media).await.unwrap(),
-    ChatMediaResult::Fetched(FileItem {
+    ChatMediaResult::Fetched(MessageFile {
+      id: "file-1".into(),
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],

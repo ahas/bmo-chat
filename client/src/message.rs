@@ -78,9 +78,22 @@ pub struct RoomFacts {
   pub private_to: Option<i64>,
 }
 
-/// A file as it crosses the wire.
+/// A file as it crosses the wire with no identifier of its own, as a send carries it inline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FileItem {
+  pub name: String,
+  pub mime: String,
+  #[serde(with = "crate::bytes")]
+  #[schemars(with = "String", extend("contentEncoding" = "base64"))]
+  pub bytes: Vec<u8>,
+}
+
+/// A file a message carried, as a provider hands it over or fetches it again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MessageFile {
+  /// The provider's identifier of the file among its message's files: the same each time the same file
+  /// crosses, and never shared by two files of one message.
+  pub id: String,
   pub name: String,
   pub mime: String,
   #[serde(with = "crate::bytes")]
@@ -98,7 +111,7 @@ pub struct ChatHandover {
   pub room: Option<RoomFacts>,
   /// The files an `attachment` carries when they are already gathered.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub files: Vec<FileItem>,
+  pub files: Vec<MessageFile>,
 }
 
 /// What came of gathering a message's file.
@@ -106,7 +119,7 @@ pub struct ChatHandover {
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum GatheredOutcome {
   Kept {
-    files: Vec<FileItem>,
+    files: Vec<MessageFile>,
   },
   /// The reason is an English sentence saying why the file could not be kept.
   NotKept {
