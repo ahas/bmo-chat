@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::rejection::{PathRejection, QueryRejection};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use axum::http::Uri;
+use axum::http::header::CONTENT_TYPE;
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
@@ -13,6 +16,7 @@ use headers::authorization::Bearer;
 use headers::{Authorization, HeaderMapExt};
 use serde::de::DeserializeOwned;
 
+use crate::avatar::{AvatarList, AvatarsQuery, ChatAvatarKind, ChatPicture};
 use crate::bodies::{
   ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, OwnerRoom, RoomIdentity,
   RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle,
@@ -45,6 +49,8 @@ pub fn provider_router(provider: Arc<dyn ChatProvider>, token: impl Into<String>
     .route("/room/private-of", post(room_private_of))
     .route("/room/title", post(room_title))
     .route("/owner-room", get(owner_room))
+    .route("/avatars", get(avatars))
+    .route("/avatars/{kind}/{id}", get(avatar))
     .fallback(no_route)
     .method_not_allowed_fallback(no_route)
     .layer(DefaultBodyLimit::disable())
@@ -76,10 +82,11 @@ async fn authorized(State(served): State<Served>, request: Request, next: Next) 
 }
 
 async fn no_route(request: Request) -> WireError {
-  WireError::new(
-    ErrorCode::NoRoute,
-    format!("There is no route at {} {}.", request.method(), request.uri().path()),
-  )
+  no_route_at(request.method().as_str(), request.uri())
+}
+
+fn no_route_at(method: &str, uri: &Uri) -> WireError {
+  WireError::new(ErrorCode::NoRoute, format!("There is no route at {method} {}.", uri.path()))
 }
 
 /// The body read as the shape the route takes.
@@ -185,4 +192,44 @@ async fn room_title(State(served): State<Served>, body: Bytes) -> Answered<RoomT
 async fn owner_room(State(served): State<Served>) -> Answered<OwnerRoom> {
   let chat_id = ready(&served)?.owner_room().await?;
   Ok(Json(OwnerRoom { chat_id }))
+}
+
+async fn avatars(
+  State(served): State<Served>,
+  query: Result<Query<AvatarsQuery>, QueryRejection>,
+) -> Answered<AvatarList> {
+  let Query(query) = query.map_err(|rejection| {
+    WireError::new(
+      ErrorCode::BadRequest,
+      format!("The query is not the shape this route takes: {rejection}."),
+    )
+  })?;
+  let provider = &*served.provider;
+  if !provider.can().contains(&ChatCapability::Avatars) {
+    return Ok(Json(AvatarList {
+      avatars: Vec::new(),
+    }));
+  }
+  Ok(Json(AvatarList {
+    avatars: query.page(provider.avatars().await?),
+  }))
+}
+
+/// A path whose kind is neither `room` nor `person`, or whose id is not a number, names no route.
+async fn avatar(
+  State(served): State<Served>,
+  uri: Uri,
+  subject: Result<Path<(ChatAvatarKind, i64)>, PathRejection>,
+) -> Result<Response, WireError> {
+  let Path((kind, id)) = subject.map_err(|_| no_route_at("GET", &uri))?;
+  let provider = &*served.provider;
+  let kept = if provider.can().contains(&ChatCapability::Avatars) {
+    provider.avatar(kind, id).await?
+  } else {
+    None
+  };
+  let ChatPicture { mime, bytes } = kept.ok_or_else(|| {
+    WireError::new(ErrorCode::NothingHeld, format!("No profile picture is kept for {kind} {id}."))
+  })?;
+  Ok(([(CONTENT_TYPE, mime)], bytes).into_response())
 }

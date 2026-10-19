@@ -6,10 +6,11 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use bmo_chat::{
-  ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatGathered, ChatHandover, ChatMarkup,
-  ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberSpace, ChatNumbering,
-  ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest,
-  ChatSendResult, ChatVerb, ChatVoice, PlainDialect, RoomKind,
+  AvatarsUpdated, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatGathered, ChatHandover,
+  ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberRange,
+  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
+  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatVerb, ChatVoice, HistoryRoom, ListenedQuery,
+  PlainDialect, RoomKind, RoomsOfQuery,
 };
 
 const ROOM: i64 = -100;
@@ -139,7 +140,7 @@ impl StandIn {
       message_id: 5,
       sender_id: Some(OWNER),
       sender_name: "A Person".into(),
-      sent_at: 1_760_000_000,
+      sent_at: 1_760_000_000_000,
       text: text.into(),
       reply_to_message_id: None,
       via: self.key.into(),
@@ -196,6 +197,16 @@ impl ChatProvider for StandIn {
       rooms: ChatNumberSpace::Assigned,
       people: ChatNumberSpace::Assigned,
       messages: ChatNumberSpace::Assigned,
+      ranges: ChatNumberRanges {
+        rooms: Some(ChatNumberRange {
+          first: -2_000_000,
+          last: -1_000_001,
+        }),
+        people: Some(ChatNumberRange {
+          first: 1_000_001,
+          last: 2_000_000,
+        }),
+      },
     }
   }
   async fn owns_room(&self, chat_id: i64) -> Result<bool, ChatFailure> {
@@ -253,6 +264,18 @@ impl ChatReceiver for Receiver {
   }
   async fn gathered(&self, _gathered: ChatGathered) -> Result<(), ChatFailure> {
     Err("the stand-in receiver takes no gathered file".into())
+  }
+  async fn history(&self, _handover: ChatHandover) -> Result<bool, ChatFailure> {
+    Err("the stand-in receiver takes no past message".into())
+  }
+  async fn avatars_updated(&self, _updated: AvatarsUpdated) -> Result<(), ChatFailure> {
+    Err("the stand-in receiver takes no word of pictures".into())
+  }
+  async fn listened(&self, _query: ListenedQuery) -> Result<bool, ChatFailure> {
+    Ok(true)
+  }
+  async fn rooms_of(&self, _query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, ChatFailure> {
+    Ok(Vec::new())
   }
 }
 

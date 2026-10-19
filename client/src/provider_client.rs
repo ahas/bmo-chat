@@ -6,16 +6,17 @@ use std::io;
 use std::time::Duration;
 
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, Method};
+use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::avatar::{AvatarList, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::{
   ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, OwnerRoom, RoomIdentity,
   RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle,
 };
 use crate::declaration::ChatDeclaration;
-use crate::error::WireError;
+use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, ChatMediaResult};
 use crate::message::RoomKind;
 use crate::patience::ChatPatience;
@@ -175,8 +176,36 @@ impl ChatProviderClient {
     Ok(answer.chat_id)
   }
 
+  /// `GET /avatars`: the profile pictures the provider keeps, oldest taken first.
+  pub async fn avatars(&self, query: &AvatarsQuery) -> Result<Vec<ChatAvatar>, ClientFailure> {
+    let url = self.url("avatars");
+    let answer: AvatarList = self.call(&url, self.client.get(&url).query(query)).await?;
+    Ok(answer.avatars)
+  }
+
+  /// `GET /avatars/{kind}/{id}`: the picture the provider keeps for a room or a person, or null where it
+  /// answers `nothing-held`.
+  pub async fn avatar(&self, kind: ChatAvatarKind, id: i64) -> Result<Option<ChatPicture>, ClientFailure> {
+    let url = self.url(&format!("avatars/{kind}/{id}"));
+    match self.exchange(&url, self.client.get(&url)).await {
+      Ok(Exchanged { mime, bytes }) => Ok(Some(ChatPicture {
+        mime: mime.unwrap_or_else(|| "application/octet-stream".into()),
+        bytes,
+      })),
+      Err(ClientFailure::Answered {
+        answer: Some(WireError {
+          code: ErrorCode::NothingHeld,
+          ..
+        }),
+        ..
+      }) => Ok(None),
+      Err(failure) => Err(failure),
+    }
+  }
+
   async fn get<T: DeserializeOwned>(&self, route: &str) -> Result<T, ClientFailure> {
-    self.call(Method::GET, route, None).await
+    let url = self.url(route);
+    self.call(&url, self.client.get(&url)).await
   }
 
   async fn post<T: DeserializeOwned>(
@@ -184,26 +213,37 @@ impl ChatProviderClient {
     route: &str,
     body: &impl Serialize,
   ) -> Result<T, ClientFailure> {
+    let url = self.url(route);
     let body = serde_json::to_vec(body).map_err(|error| ClientFailure::Transport {
-      url: self.url(route),
+      url: url.clone(),
       why: error.to_string(),
     })?;
-    self.call(Method::POST, route, Some(body)).await
+    let request = self.client.post(&url).header(CONTENT_TYPE, "application/json").body(body);
+    self.call(&url, request).await
   }
 
   fn url(&self, route: &str) -> String {
     format!("{}/{route}", self.base)
   }
 
-  /// Makes the call, offering it again only while the connection is refused and the patience window lasts,
-  /// and decodes a successful answer as the route's.
+  /// Makes the call and decodes a successful answer as the route's.
   async fn call<T: DeserializeOwned>(
     &self,
-    method: Method,
-    route: &str,
-    body: Option<Vec<u8>>,
+    url: &str,
+    request: RequestBuilder,
   ) -> Result<T, ClientFailure> {
-    let url = self.url(route);
+    let Exchanged { bytes, .. } = self.exchange(url, request).await?;
+    serde_json::from_slice(&bytes).map_err(|error| ClientFailure::Undecodable {
+      url: url.to_owned(),
+      why: error.to_string(),
+    })
+  }
+
+  /// Makes the call behind the provider's token, offering it again only while the connection is refused and
+  /// the patience window lasts, and gives a successful answer's type and bytes.
+  async fn exchange(&self, url: &str, request: RequestBuilder) -> Result<Exchanged, ClientFailure> {
+    let url = url.to_owned();
+    let request = request.bearer_auth(&self.token);
     let ChatPatience {
       window,
       every,
@@ -211,13 +251,15 @@ impl ChatProviderClient {
     } = &self.patience;
     let mut waited = Duration::ZERO;
     loop {
-      let mut request = self.client.request(method.clone(), &url).bearer_auth(&self.token);
-      if let Some(body) = &body {
-        request = request.header(CONTENT_TYPE, "application/json").body(body.clone());
-      }
-      let error = match request.send().await {
+      let offered = request.try_clone().expect("a request whose body is bytes always clones");
+      let error = match offered.send().await {
         Ok(answer) => {
           let status = answer.status();
+          let mime = answer
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
           let bytes = answer.bytes().await.map_err(|error| ClientFailure::Transport {
             url: url.clone(),
             why: chain(&error),
@@ -229,9 +271,9 @@ impl ChatProviderClient {
               answer: serde_json::from_slice(&bytes).ok(),
             });
           }
-          return serde_json::from_slice(&bytes).map_err(|error| ClientFailure::Undecodable {
-            url,
-            why: error.to_string(),
+          return Ok(Exchanged {
+            mime,
+            bytes: bytes.to_vec(),
           });
         }
         Err(error) => error,
@@ -253,6 +295,12 @@ impl ChatProviderClient {
       waited += *every;
     }
   }
+}
+
+/// A successful answer: its `Content-Type`, where it gave one, and its bytes.
+struct Exchanged {
+  mime: Option<String>,
+  bytes: Vec<u8>,
 }
 
 /// Whether the connection was refused, so nothing listened and the request cannot have been received.

@@ -12,13 +12,15 @@ use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use bmo_chat_client::{
-  AlbumItem, ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatGathered,
-  ChatHandover, ChatHealth, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding,
-  ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal,
-  ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker, ChatVerb, ChatVoice, DialectCheck,
-  DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem, GatheredOutcome, InboundChatContext,
-  MessageFile, MissedPicture, MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind,
-  RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle, WireError, openapi, openapi_json,
+  AlbumItem, AvatarList, AvatarsQuery, AvatarsUpdated, ChatAvatar, ChatAvatarKind, ChatCapability,
+  ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatGathered, ChatHandover,
+  ChatHealth, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding,
+  ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach,
+  ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker,
+  ChatVerb, ChatVoice, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
+  GatheredOutcome, HistoryKept, HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile,
+  MissedPicture, MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind, RoomKindAnswer,
+  RoomOwns, RoomPerson, RoomQuery, RoomTitle, RoomsOf, RoomsOfQuery, WireError, openapi, openapi_json,
   receiver_router,
 };
 use serde::Serialize;
@@ -93,6 +95,10 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
   });
 
   let client = ChatProviderClient::new(format!("http://{address}"), TOKEN);
+  let listed = AvatarsQuery {
+    after: Some(1_760_000_000_000),
+    limit: Some(10),
+  };
   let send = ChatSendRequest::new(-100, ChatSend::Typing { on: true });
   let media = ChatMediaRequest {
     chat_id: -100,
@@ -112,13 +118,40 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
     client.room_private_of(-100).await.err(),
     client.room_title(-100).await.err(),
     client.owner_room().await.err(),
+    client.avatars(&listed).await.err(),
+    client.avatar(ChatAvatarKind::Room, -100).await.err(),
   ];
   stop.send(()).ok();
   served.await.expect("the stand-in stops cleanly");
 
   assert!(failures.iter().all(Option::is_some), "the stand-in serves nothing: {failures:?}");
-  let called: BTreeSet<(String, String)> = calls.lock().unwrap().iter().cloned().collect();
-  assert_eq!(called, routes_tagged("provider"));
+  let documented = routes_tagged("provider");
+  let called: BTreeSet<(String, String)> = calls
+    .lock()
+    .unwrap()
+    .iter()
+    .map(|(method, path)| (method.clone(), template_of(path, &documented)))
+    .collect();
+  assert_eq!(called, documented);
+}
+
+/// The document's path a called path matches, where a `{name}` segment matches any one segment; the called
+/// path itself where none does.
+fn template_of(path: &str, documented: &BTreeSet<(String, String)>) -> String {
+  let segments: Vec<&str> = path.split('/').collect();
+  documented
+    .iter()
+    .map(|(_, template)| template)
+    .find(|template| {
+      let parts: Vec<&str> = template.split('/').collect();
+      parts.len() == segments.len()
+        && parts
+          .iter()
+          .zip(&segments)
+          .all(|(part, segment)| part.starts_with('{') || part == segment)
+    })
+    .cloned()
+    .unwrap_or_else(|| path.to_owned())
 }
 
 struct Takes;
@@ -137,13 +170,25 @@ impl ChatReceiver for Takes {
   async fn gathered(&self, _: ChatGathered) -> Result<(), WireError> {
     Ok(())
   }
+  async fn history(&self, _: ChatHandover) -> Result<bool, WireError> {
+    Ok(true)
+  }
+  async fn avatars_updated(&self, _: AvatarsUpdated) -> Result<(), WireError> {
+    Ok(())
+  }
+  async fn listened(&self, _: ListenedQuery) -> Result<bool, WireError> {
+    Ok(true)
+  }
+  async fn rooms_of(&self, _: RoomsOfQuery) -> Result<Vec<HistoryRoom>, WireError> {
+    Ok(Vec::new())
+  }
 }
 
 #[tokio::test]
 async fn every_receiver_route_of_the_document_is_served() {
   let router = receiver_router(Arc::new(Takes), TOKEN);
   let routes = routes_tagged("receiver");
-  assert_eq!(routes.len(), 4);
+  assert_eq!(routes.len(), 8);
   for (method, path) in routes {
     let request = Request::builder()
       .method(method.as_str())
@@ -206,6 +251,14 @@ impl Bodies {
     *self.checked.entry((method.to_owned(), path.to_owned())).or_default() += 1;
   }
 
+  /// A route whose answer is bytes of a type the document names, not JSON.
+  fn bytes(&mut self, method: &str, path: &str, mime: &str) {
+    let content = &self.document["paths"][path][method]["responses"]["200"]["content"];
+    assert!(content[mime].is_object(), "{method} {path} answers {mime}: {content}");
+    assert!(content.get("application/json").is_none(), "{method} {path} answers no JSON");
+    *self.checked.entry((method.to_owned(), path.to_owned())).or_default() += 1;
+  }
+
   fn invalid(&self, method: &str, path: &str, part: Part, body: Value) {
     let validator = validator(&self.document, method, path, part);
     assert!(!validator.is_valid(&body), "{method} {path} {part:?} takes {body}");
@@ -226,6 +279,7 @@ fn message_file() -> MessageFile {
     name: "a.png".into(),
     mime: "image/png".into(),
     bytes: vec![137, 80, 78, 71],
+    kind: Some(ChatFileKind::Photo),
   }
 }
 
@@ -387,6 +441,13 @@ fn declaration() -> ChatDeclaration {
       rooms: ChatNumberSpace::Native,
       people: ChatNumberSpace::Assigned,
       messages: ChatNumberSpace::None,
+      ranges: ChatNumberRanges {
+        rooms: None,
+        people: Some(ChatNumberRange {
+          first: 1_000_001,
+          last: 2_000_000,
+        }),
+      },
     },
     speakers: true,
   }
@@ -398,7 +459,7 @@ fn message() -> ChatMessage {
     message_id: 5,
     sender_id: None,
     sender_name: "A Person".into(),
-    sent_at: 1_760_000_000,
+    sent_at: 1_760_000_000_000,
     text: "said".into(),
     reply_to_message_id: Some(4),
     via: "stand-in".into(),
@@ -449,7 +510,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     bodies.valid("post", "/media", Answer, &ChatMediaResult::Refused { refusal });
   }
 
-  for sent_at in [None, Some(1_760_000_000)] {
+  for sent_at in [None, Some(1_760_000_000_000)] {
     let request = ChatMediaRequest {
       chat_id: -100,
       message_id: 5,
@@ -538,10 +599,57 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     }),
     files: vec![message_file()],
   };
-  for path in ["/message", "/attachment", "/edited"] {
+  for path in ["/message", "/attachment", "/edited", "/history"] {
     bodies.valid("post", path, Request, &bare);
     bodies.valid("post", path, Request, &full);
   }
+  for kept in [true, false] {
+    bodies.valid("post", "/history", Answer, &HistoryKept { kept });
+  }
+  let updated = AvatarsUpdated {
+    via: "stand-in".into(),
+    rooms: vec![-100],
+    people: vec![],
+  };
+  bodies.valid("post", "/avatars/updated", Request, &updated);
+  let listened = ListenedQuery {
+    chat_id: -100,
+    via: "stand-in".into(),
+  };
+  bodies.valid("post", "/rooms/listened", Request, &listened);
+  bodies.valid("post", "/rooms/listened", Answer, &Listened { listened: false });
+  for (after, limit) in [(None, None), (Some(-100), Some(50))] {
+    let query = RoomsOfQuery {
+      via: "stand-in".into(),
+      after,
+      limit,
+    };
+    bodies.valid("post", "/rooms/of", Request, &query);
+  }
+  let rooms = RoomsOf {
+    rooms: vec![
+      HistoryRoom {
+        chat_id: -100,
+        oldest_message_id: Some(5),
+        oldest_sent_at: Some(1_760_000_000_000),
+      },
+      HistoryRoom {
+        chat_id: 7,
+        oldest_message_id: None,
+        oldest_sent_at: None,
+      },
+    ],
+  };
+  bodies.valid("post", "/rooms/of", Answer, &rooms);
+  let avatars = AvatarList {
+    avatars: vec![ChatAvatar {
+      kind: ChatAvatarKind::Person,
+      id: 42,
+      taken_at: 1_760_000_000_000,
+    }],
+  };
+  bodies.valid("get", "/avatars", Answer, &avatars);
+  bodies.bytes("get", "/avatars/{kind}/{id}", "image/*");
   let gathered = |outcome| ChatGathered {
     chat_id: -100,
     message_id: 5,
@@ -564,7 +672,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
       reason: "The file was too large to keep.".into(),
     }),
   );
-  for path in ["/message", "/attachment", "/edited", "/gathered"] {
+  for path in ["/message", "/attachment", "/edited", "/gathered", "/avatars/updated"] {
     bodies.valid("post", path, Answer, &json!({}));
   }
 
@@ -612,6 +720,50 @@ fn a_body_not_of_its_route_shape_is_not_valid() {
     json!({ "chatId": -100, "messageId": 5, "via": "stand-in" }),
   );
   bodies.invalid("post", "/message", Answer, json!({ "taken": true }));
+  bodies.invalid("post", "/history", Answer, json!({}));
+  bodies.invalid("post", "/rooms/of", Answer, json!({ "rooms": [{ "chatId": -100 }] }));
+  bodies.invalid("post", "/rooms/listened", Request, json!({ "chatId": -100 }));
+  bodies.invalid(
+    "get",
+    "/avatars",
+    Answer,
+    json!({ "avatars": [{ "kind": "group", "id": 1, "takenAt": 1 }] }),
+  );
+}
+
+#[test]
+fn the_avatar_routes_state_their_parameters_and_what_they_hold() {
+  let document = openapi();
+  let list = &document["paths"]["/avatars"]["get"];
+  let names = |operation: &Value| -> Vec<(String, String, bool)> {
+    operation["parameters"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|parameter| {
+        let name = parameter["name"].as_str().unwrap().to_owned();
+        let place = parameter["in"].as_str().unwrap().to_owned();
+        (name, place, parameter["required"].as_bool().unwrap())
+      })
+      .collect()
+  };
+  let owned = |name: &str, place: &str, required| (name.to_owned(), place.to_owned(), required);
+  assert_eq!(names(list), [owned("after", "query", false), owned("limit", "query", false)]);
+  assert!(list["responses"]["400"].is_object(), "a query not of its shape is a bad request");
+  let picture = &document["paths"]["/avatars/{kind}/{id}"]["get"];
+  assert_eq!(names(picture), [owned("kind", "path", true), owned("id", "path", true)]);
+  assert_eq!(picture["responses"]["404"], json!({ "$ref": "#/components/responses/NothingHeld" }));
+  assert!(list["responses"]["404"].is_null(), "a list holds nothing missing");
+  for operation in [list, picture] {
+    assert!(
+      operation["responses"]["409"].is_null(),
+      "what a provider keeps is answered in any state"
+    );
+    assert!(
+      operation["responses"]["500"].is_object(),
+      "a provider can fail while reading what it keeps"
+    );
+  }
 }
 
 /// Every reference the value makes, wherever it stands in it.

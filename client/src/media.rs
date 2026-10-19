@@ -12,7 +12,7 @@ use crate::refusal::ChatRefusal;
 pub struct ChatMediaRequest {
   pub chat_id: i64,
   pub message_id: i64,
-  /// When the message was sent, for a platform that finds an old message by its time.
+  /// When the message was sent, in epoch milliseconds, for a platform that finds an old message by its time.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub sent_at: Option<i64>,
 }

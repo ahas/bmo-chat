@@ -14,6 +14,9 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
+This document states version 0.4.0 of both libraries; a caller pins that version or a later one for every
+route and field below.
+
 ## The OpenAPI document
 
 `openapi.json`, beside this document, states every route below in OpenAPI 3.1 for a service written in any
@@ -30,9 +33,14 @@ is repaired and the file generated again.
 ## Conventions
 
 - **Bodies.** JSON, with field names in camelCase and enum values as `contract.md` writes them. An optional
-  field may be left out. A field described as nullable is sent as null when it has no value.
+  field may be left out. A field described as nullable is sent as null when it has no value. The one body that
+  is not JSON is a profile picture, which is answered as its own bytes.
 - **Bytes.** Bytes are base64 strings (standard alphabet, with padding) in the field that carries them.
-- **Numbers.** Room, person and message numbers are signed 64-bit integers. Times are Unix seconds.
+- **Numbers.** Room, person and message numbers are signed 64-bit integers. Times are integers of epoch
+  milliseconds.
+- **Lists.** A route that answers a list takes one cursor, `after`, and `limit`: it answers only what comes
+  after the cursor, in the order the route states, and at most `limit` entries. Either may be left out, for a
+  list from its start or one with no bound.
 - **Auth.** Every route, on both sides, needs an `Authorization: Bearer <token>` header. The token is supplied
   by the service that serves the routes, from its own configuration; the libraries read no environment
   variable themselves. A caller is configured with the token of the service it calls. A request with a
@@ -52,17 +60,17 @@ Every non-2xx answer has this body:
 
 | Status | `code` | When |
 |---|---|---|
-| 400 | `bad-request` | the body is not JSON, or not the shape the route takes; the sentence names what is missing |
+| 400 | `bad-request` | the body is not JSON, or the body or the query is not the shape the route takes; the sentence names what is missing |
 | 401 | `unauthorized` | the token is missing or wrong |
 | 404 | `no-route` | no route at this method and path |
 | 404 | `nothing-held` | the route is right, but the service keeps nothing at the address the path names (a profile picture a provider has not kept); the sentence names the address |
 | 409 | `not-ready` | the service is up but not ready to answer this route (a provider whose platform connection is not open yet) |
 | 500 | `failed` | the service failed while answering; the sentence is the failure |
 
-The two 404 codes share a status, so a caller tells a wrong path from an empty address by `code` alone. No
-route listed here answers `nothing-held`; it is for a route a service serves of its own beside them, which
-answers its errors in this same shape. bmo-chat's error shape answers as an HTTP response with its code's
-status, so such a route returns it as it is. Both libraries carry `nothing-held` from version 0.2.0.
+The two 404 codes share a status, so a caller tells a wrong path from an empty address by `code` alone.
+`GET /avatars/{kind}/{id}` answers `nothing-held`, and so may a route a service serves of its own beside the
+protocol's, which answers its errors in this same shape. bmo-chat's error shape answers as an HTTP response with
+its code's status, so such a route returns it as it is. Both libraries carry `nothing-held` from version 0.2.0.
 
 ### Retrying
 
@@ -74,8 +82,8 @@ is never offered again, whatever it was answered. So a send is never made twice.
 
 ## Provider routes
 
-`declaration`, `health`, `dialect/read` and `dialect/check` answer whatever state the provider is in. The
-other routes answer 409 `not-ready` while the provider's health is not ready.
+`declaration`, `health`, `dialect/read`, `dialect/check` and the avatar routes answer whatever state the
+provider is in. The other routes answer 409 `not-ready` while the provider's health is not ready.
 
 ### `GET /declaration`
 
@@ -90,7 +98,7 @@ The provider's self-declaration (`contract.md`, "The provider's declaration"). N
 | `can` | list of capabilities |
 | `dialect` | `name` (string), `limits` (`text`, `caption`, `albumPhotos`, `fileBytes`, each a number or null), `writing` (string), `foldable` (boolean) |
 | `shows` | string or null |
-| `numbering` | `rooms`, `people`, `messages`, each a number space |
+| `numbering` | `rooms`, `people`, `messages`, each a number space; `ranges`: `rooms` and `people`, each a range (`first`, `last`, numbers, both included) or null |
 | `speakers` | boolean |
 
 A mode's standing can change while the provider runs, so the receiver asks again instead of keeping an old
@@ -104,8 +112,8 @@ where it is not ready).
 ### `POST /send`
 
 One send. The body is a send as `contract.md` states it: `verb`, `chatId`, the verb's own fields, and
-optionally `as`, `speaker` and `tag`. Bytes (`bytes` on a document, `audio` on an audio or a voice, `bytes` on
-an inline album item) are base64.
+optionally `as`, `speaker`, `tag` and `prefix`. Bytes (`bytes` on a document, `audio` on an audio or a voice,
+`bytes` on an inline album item) are base64.
 
 The answer is a send result, distinguished by `sent`:
 
@@ -124,12 +132,12 @@ refusal, by the base before the provider is asked. A provider that fails while s
 ### `POST /media`
 
 A picture or a file a message carried, fetched again from the platform. Gated by the `fetchMedia` capability.
-The body is `chatId` and `messageId` (numbers), and optionally `sentAt` (number), for a platform that finds an
-old message by its time. The answer is distinguished by `outcome`:
+The body is `chatId` and `messageId` (numbers), and optionally `sentAt` (number, epoch milliseconds), for a
+platform that finds an old message by its time. The answer is distinguished by `outcome`:
 
 | `outcome` | Other fields |
 |---|---|
-| `fetched` | `id`, `name`, `mime`, `bytes` (base64): a message file |
+| `fetched` | `id`, `name`, `mime`, `bytes` (base64) and optionally `kind`: a message file |
 | `unavailable` | `reason`: an English sentence saying why the platform would not give it |
 | `refused` | `refusal`, a refusal object (`unsupported-capability` for a provider that does not declare `fetchMedia`) |
 
@@ -163,25 +171,47 @@ Each takes `chatId` (number) as its body, except `owner-room`, which takes none.
 | `POST /room/title` | `title`: string or null |
 | `GET /owner-room` | `chatId`: number or null, the room to reach the owner in unprompted |
 
+### `GET /avatars`
+
+The profile pictures the provider keeps (`contract.md`, "Profile pictures"). No body; the query takes `after`
+(a time) and `limit`. The answer is `avatars`, a list of the pictures, each `kind` (`room` or `person`), `id`
+(number) and `takenAt` (number: when the picture was taken), oldest taken first and only those taken after
+`after`. A list never ends between two pictures taken at the same moment, so it holds more than `limit`
+entries where `limit` would part them. A provider that does not declare `avatars` answers an empty list.
+
+### `GET /avatars/{kind}/{id}`
+
+The picture the provider keeps for a room (`kind` `room`) or a person (`kind` `person`) by its number. No body.
+The answer is the picture's bytes, with its type as `Content-Type`. Where none is kept, or the provider does not
+declare `avatars`, the answer is 404 `nothing-held`; where `kind` is neither or `id` is not a number, 404
+`no-route`.
+
 ## Receiver routes
 
-Each hand-over answers 200 with an empty JSON object once the receiver has taken it. A hand-over the receiver
-could not take is answered with the error shape.
+A hand-over answers 200 once the receiver has taken it, with an empty JSON object unless the route states an
+answer of its own; a question answers 200 with its answer. A call the receiver could not take or answer is
+answered with the error shape.
 
-### `POST /message`, `POST /attachment`, `POST /edited`
+### `POST /message`, `POST /attachment`, `POST /edited`, `POST /history`
 
-A message a room said, a message carrying a file, and a message said again with different words. All three
-take the same body:
+A message a room said, a message carrying a file, a message already handed over and changed, and a past message
+read back from a room. All four take the same body:
 
 | Field | Type |
 |---|---|
 | `message` | a message: `chatId`, `messageId`, `senderId` (number or null), `senderName`, `sentAt`, `text`, `replyToMessageId` (number or null), `via`, `album` (number or null), `mode` |
 | `context` | optional context: `roomTitle`, `senderUsername`, `replyToSenderId`, `spokenText`, `metadata` (any JSON), `carriesFile`, `gathering`, `tag`, each optional |
 | `room` | optional room facts: `kind` (`owner` or `group`), `identity` (number or null), `privateTo` (number or null), each optional |
-| `files` | optional list of message files, each `id`, `name`, `mime`, `bytes` (base64): the files an `attachment` carries when they are already gathered |
+| `files` | optional list of message files, each `id`, `name`, `mime`, `bytes` (base64) and optionally `kind`: the files an `attachment` carries when they are already gathered |
 
 An `attachment` whose file is still being gathered says `gathering: true` in its context, carries no `files`,
 and is followed by a `gathered` hand-over for the same message.
+
+An `edited` message replaces the one the receiver holds under its `chatId` and `messageId`: the receiver keeps
+its words and its sender (`senderId`, `senderName`) as the hand-over carries them.
+
+A `history` message is archived where the receiver does not hold it yet, and wakes nobody and routes nothing.
+Its answer is `kept` (boolean): true where the receiver archived it, false where it already held the message.
 
 A message file's `id` is a string, required, the same each time the same file crosses and never shared by two
 files of one message (`contract.md`, "Files"). An inline album item of a send is a file item and carries no
@@ -195,6 +225,23 @@ The file a message's `gathering` promised. The body is `chatId`, `messageId` and
 |---|---|
 | `kept` | `files`, a list of message files |
 | `not-kept` | `reason`: an English sentence saying why the file could not be kept |
+
+### `POST /avatars/updated`
+
+Word that kept profile pictures changed: taken for the first time, taken again, or dropped. The body is `via`,
+`rooms` and `people`, each a list of numbers whose picture changed. The word is for whatever shows the
+pictures, which fetches them again through the provider's avatar routes.
+
+### `POST /rooms/listened`
+
+Whether the receiver listens to a room. The body is `chatId` and `via`; the answer is `listened` (boolean).
+
+### `POST /rooms/of`
+
+The provider's rooms whose past it may read back, each with the oldest message the receiver holds of it. The
+body is `via`, and optionally `after` (a room number) and `limit`. The answer is `rooms`, a list in ascending
+order of `chatId` and only those after `after`, each `chatId` and `oldestMessageId` and `oldestSentAt` (each a
+number, or null where the receiver holds no message of the room).
 
 ## Routes not in the protocol
 

@@ -1,5 +1,5 @@
-//! The receiver link against a receiver listening on the loopback: every hand-over route, its token and
-//! body, and offering a request again only while the connection is refused. No test waits on the real
+//! The receiver link against a receiver listening on the loopback: every receiver route, its token, its
+//! body and its answer, and offering a request again only while the connection is refused. No test waits on the real
 //! clock, and every listener a test starts is taken down before it ends.
 
 use std::net::SocketAddr;
@@ -15,8 +15,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::Json;
 use axum::routing::post;
 use bmo_chat::{
-  ChatFailure, ChatGathered, ChatHandover, ChatMessage, ChatPatience, ChatReceiver, ChatReceiverLink,
-  ChatVoice, ChatWait, ErrorCode, GatheredOutcome, InboundChatContext, LinkFailure, MessageFile, WireError,
+  AvatarsUpdated, ChatFailure, ChatGathered, ChatHandover, ChatMessage, ChatPatience, ChatReceiver,
+  ChatReceiverLink, ChatVoice, ChatWait, ErrorCode, GatheredOutcome, HistoryRoom, InboundChatContext,
+  LinkFailure, ListenedQuery, MessageFile, RoomsOfQuery, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -28,7 +29,8 @@ const TOKEN: &str = "the-receiver-token";
 /// What the receiver was handed: the route, the authorization header and the body.
 type Handed = Arc<Mutex<Vec<(String, Option<String>, Value)>>>;
 
-/// A receiver that takes every hand-over under `/receiver` and keeps it.
+/// A receiver that takes every call under `/receiver` and keeps it, answering `history` as kept,
+/// `rooms/listened` as listened, `rooms/of` with one room and every other route with an empty object.
 fn receiver(handed: Handed) -> Router {
   async fn take(
     State(handed): State<Handed>,
@@ -38,10 +40,16 @@ fn receiver(handed: Handed) -> Router {
   ) -> Json<Value> {
     let authorization = headers.get("authorization").map(|value| value.to_str().unwrap().to_owned());
     let body = serde_json::from_slice(&body).expect("the link posts JSON");
+    let answer = match route.as_str() {
+      "history" => json!({ "kept": true }),
+      "rooms/listened" => json!({ "listened": true }),
+      "rooms/of" => json!({ "rooms": [{ "chatId": -100, "oldestMessageId": 5, "oldestSentAt": null }] }),
+      _ => json!({}),
+    };
     handed.lock().unwrap().push((route, authorization, body));
-    Json(json!({}))
+    Json(answer)
   }
-  Router::new().nest("/receiver", Router::new().route("/{route}", post(take)).with_state(handed))
+  Router::new().nest("/receiver", Router::new().route("/{*route}", post(take)).with_state(handed))
 }
 
 /// A server on the loopback, until it is closed.
@@ -124,7 +132,7 @@ fn handover(text: &str) -> ChatHandover {
       message_id: 5,
       sender_id: Some(42),
       sender_name: "A Person".into(),
-      sent_at: 1_760_000_000,
+      sent_at: 1_760_000_000_000,
       text: text.into(),
       reply_to_message_id: None,
       via: "stand-in".into(),
@@ -165,6 +173,7 @@ async fn every_hand_over_reaches_its_route_with_the_token_and_its_body() {
         name: "a.png".into(),
         mime: "image/png".into(),
         bytes: vec![137, 80],
+        kind: None,
       }],
     },
   };
@@ -179,6 +188,31 @@ async fn every_hand_over_reaches_its_route_with_the_token_and_its_body() {
   link.edited(handover("said again")).await.expect("the edit is taken");
   link.gathered(kept.clone()).await.expect("the kept file is taken");
   link.gathered(not_kept.clone()).await.expect("the not-kept outcome is taken");
+  assert!(link.history(handover("said long ago")).await.expect("the past message is taken"));
+  let updated = AvatarsUpdated {
+    via: "stand-in".into(),
+    rooms: vec![-100],
+    people: vec![42],
+  };
+  link.avatars_updated(updated.clone()).await.expect("the word is taken");
+  let listened = ListenedQuery {
+    chat_id: -100,
+    via: "stand-in".into(),
+  };
+  assert!(link.listened(listened.clone()).await.expect("the question is answered"));
+  let rooms_of = RoomsOfQuery {
+    via: "stand-in".into(),
+    after: None,
+    limit: Some(10),
+  };
+  assert_eq!(
+    link.rooms_of(rooms_of.clone()).await.expect("the question is answered"),
+    [HistoryRoom {
+      chat_id: -100,
+      oldest_message_id: Some(5),
+      oldest_sent_at: None,
+    }]
+  );
   drop(link);
   listening.close().await;
 
@@ -189,6 +223,10 @@ async fn every_hand_over_reaches_its_route_with_the_token_and_its_body() {
     ("edited", serde_json::to_value(handover("said again")).unwrap()),
     ("gathered", serde_json::to_value(&kept).unwrap()),
     ("gathered", serde_json::to_value(&not_kept).unwrap()),
+    ("history", serde_json::to_value(handover("said long ago")).unwrap()),
+    ("avatars/updated", serde_json::to_value(&updated).unwrap()),
+    ("rooms/listened", serde_json::to_value(&listened).unwrap()),
+    ("rooms/of", serde_json::to_value(&rooms_of).unwrap()),
   ]
   .map(|(route, body)| (route.to_owned(), bearer.clone(), body));
   assert_eq!(*handed.lock().unwrap(), expected);
@@ -233,6 +271,26 @@ async fn an_answer_that_is_not_success_is_never_offered_again() {
   assert_eq!(failure.to_string(), format!("{url} answered 500: The archive is closed."));
   assert_eq!(offers.load(Ordering::SeqCst), 1);
   assert_eq!(waiter.waits(), []);
+}
+
+#[tokio::test]
+async fn a_success_not_of_the_routes_answer_is_undecodable() {
+  let answering_nothing =
+    Router::new().route("/receiver/rooms/listened", post(|| async { Json(json!({})) }));
+  let listening = Listening::start(answering_nothing).await;
+  let link = ChatReceiverLink::new(listening.base(), TOKEN);
+  let listened = ListenedQuery {
+    chat_id: -100,
+    via: "stand-in".into(),
+  };
+  let failure = link_failure(link.listened(listened).await.unwrap_err());
+  let url = format!("http://{}/receiver/rooms/listened", listening.address);
+  drop(link);
+  listening.close().await;
+  assert!(
+    matches!(&failure, LinkFailure::Undecodable { url: at, .. } if *at == url),
+    "{failure:?}"
+  );
 }
 
 #[tokio::test]

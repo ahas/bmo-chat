@@ -1,5 +1,6 @@
-//! The server for the receiver routes, driven in process over a stand-in receiver: every hand-over route,
-//! its token, its body handed over decoded, and the error shape, as `docs/protocol.md` states them.
+//! The server for the receiver routes, driven in process over a stand-in receiver: every hand-over and
+//! question route, its token, its body handed over decoded, its answer, and the error shape, as
+//! `docs/protocol.md` states them.
 
 use std::sync::{Arc, Mutex};
 
@@ -10,8 +11,9 @@ use axum::http::Request;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bmo_chat_client::{
-  ChatGathered, ChatHandover, ChatMessage, ChatReceiver, ChatVoice, ErrorCode, GatheredOutcome,
-  InboundChatContext, MessageFile, RoomFacts, RoomKind, WireError, receiver_router,
+  AvatarsUpdated, ChatGathered, ChatHandover, ChatMessage, ChatReceiver, ChatVoice, ErrorCode,
+  GatheredOutcome, HistoryRoom, InboundChatContext, ListenedQuery, MessageFile, RoomFacts, RoomKind,
+  RoomsOfQuery, WireError, receiver_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -25,6 +27,10 @@ enum Taken {
   Attachment(ChatHandover),
   Edited(ChatHandover),
   Gathered(ChatGathered),
+  History(ChatHandover),
+  AvatarsUpdated(AvatarsUpdated),
+  Listened(ListenedQuery),
+  RoomsOf(RoomsOfQuery),
 }
 
 /// The stand-in receiver. It keeps every hand-over it takes, and refuses each with the error it is told to.
@@ -66,6 +72,32 @@ impl ChatReceiver for Desk {
   async fn gathered(&self, gathered: ChatGathered) -> Result<(), WireError> {
     self.take(Taken::Gathered(gathered))
   }
+  /// Kept the first time a message comes, and already held every time after.
+  async fn history(&self, handover: ChatHandover) -> Result<bool, WireError> {
+    let held = self
+      .taken()
+      .iter()
+      .any(|taken| matches!(taken, Taken::History(held) if *held == handover));
+    self.take(Taken::History(handover))?;
+    Ok(!held)
+  }
+  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), WireError> {
+    self.take(Taken::AvatarsUpdated(updated))
+  }
+  /// Only room -100 is listened to.
+  async fn listened(&self, query: ListenedQuery) -> Result<bool, WireError> {
+    let listened = query.chat_id == -100;
+    self.take(Taken::Listened(query))?;
+    Ok(listened)
+  }
+  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, WireError> {
+    self.take(Taken::RoomsOf(query))?;
+    Ok(vec![HistoryRoom {
+      chat_id: -100,
+      oldest_message_id: Some(5),
+      oldest_sent_at: Some(1_760_000_000_000),
+    }])
+  }
 }
 
 fn router(desk: &Arc<Desk>) -> Router {
@@ -101,7 +133,7 @@ fn message(text: &str) -> ChatMessage {
     message_id: 5,
     sender_id: Some(42),
     sender_name: "A Person".into(),
-    sent_at: 1_760_000_000,
+    sent_at: 1_760_000_000_000,
     text: text.into(),
     reply_to_message_id: None,
     via: "stand-in".into(),
@@ -112,7 +144,7 @@ fn message(text: &str) -> ChatMessage {
 
 fn message_wire(text: &str) -> Value {
   json!({
-    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000,
+    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
     "text": text, "replyToMessageId": null, "via": "stand-in", "album": null, "mode": "bot-account",
   })
 }
@@ -156,6 +188,7 @@ async fn every_hand_over_is_handed_to_the_receiver_decoded_and_answered_with_an_
     name: "a.png".into(),
     mime: "image/png".into(),
     bytes: vec![137, 80],
+    kind: None,
   };
   let gathered = |outcome| ChatGathered {
     chat_id: -100,
@@ -203,6 +236,63 @@ async fn every_hand_over_is_handed_to_the_receiver_decoded_and_answered_with_an_
       Taken::Gathered(gathered(GatheredOutcome::NotKept {
         reason: "The file was too large to keep.".into(),
       })),
+    ]
+  );
+}
+
+#[tokio::test]
+async fn every_question_and_the_history_hand_over_are_answered_from_the_receiver() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  let past = json!({ "message": message_wire("said long ago") });
+  assert_eq!(post(&router, "/history", &past).await, (200, json!({ "kept": true })));
+  assert_eq!(post(&router, "/history", &past).await, (200, json!({ "kept": false })));
+  let updated = json!({ "via": "stand-in", "rooms": [-100], "people": [42, 43] });
+  assert_eq!(post(&router, "/avatars/updated", &updated).await, (200, json!({})));
+  let listened = |chat_id: i64| json!({ "chatId": chat_id, "via": "stand-in" });
+  assert_eq!(
+    post(&router, "/rooms/listened", &listened(-100)).await,
+    (200, json!({ "listened": true }))
+  );
+  assert_eq!(
+    post(&router, "/rooms/listened", &listened(7)).await,
+    (200, json!({ "listened": false }))
+  );
+  assert_eq!(
+    post(&router, "/rooms/of", &json!({ "via": "stand-in", "after": -200, "limit": 10 })).await,
+    (
+      200,
+      json!({ "rooms": [{ "chatId": -100, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 }] })
+    )
+  );
+
+  let handover = ChatHandover {
+    message: message("said long ago"),
+    context: None,
+    room: None,
+    files: vec![],
+  };
+  let query = |chat_id| ListenedQuery {
+    chat_id,
+    via: "stand-in".into(),
+  };
+  assert_eq!(
+    desk.taken(),
+    [
+      Taken::History(handover.clone()),
+      Taken::History(handover),
+      Taken::AvatarsUpdated(AvatarsUpdated {
+        via: "stand-in".into(),
+        rooms: vec![-100],
+        people: vec![42, 43],
+      }),
+      Taken::Listened(query(-100)),
+      Taken::Listened(query(7)),
+      Taken::RoomsOf(RoomsOfQuery {
+        via: "stand-in".into(),
+        after: Some(-200),
+        limit: Some(10),
+      }),
     ]
   );
 }

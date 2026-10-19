@@ -4,10 +4,12 @@
 use std::collections::BTreeSet;
 
 use bmo_chat_client::{
-  ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatGathered, ChatHandover,
-  ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberSpace,
-  ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode, GatheredOutcome,
-  InboundChatContext, MessageFile, RoomFacts, RoomKind, WireError,
+  AvatarList, AvatarsUpdated, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
+  ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatGathered, ChatHandover, ChatMarkup,
+  ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberRange, ChatNumberRanges,
+  ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode,
+  GatheredOutcome, HistoryKept, HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile,
+  RoomFacts, RoomKind, RoomsOf, RoomsOfQuery, WireError,
 };
 use serde_json::{Value, json};
 
@@ -25,7 +27,7 @@ fn message() -> ChatMessage {
     message_id: 5,
     sender_id: Some(42),
     sender_name: "A Person".into(),
-    sent_at: 1_760_000_000,
+    sent_at: 1_760_000_000_000,
     text: "hello".into(),
     reply_to_message_id: None,
     via: "platform".into(),
@@ -36,7 +38,7 @@ fn message() -> ChatMessage {
 
 fn message_wire() -> Value {
   json!({
-    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000,
+    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
     "text": "hello", "replyToMessageId": null, "via": "platform", "album": null, "mode": "bot-account",
   })
 }
@@ -67,6 +69,30 @@ fn every_enum_member_by_its_wire_name() {
     ["native", "assigned", "none"]
   );
   assert_eq!(names(&[RoomKind::Owner, RoomKind::Group]), ["owner", "group"]);
+  assert_eq!(names(&[ChatAvatarKind::Room, ChatAvatarKind::Person]), ["room", "person"]);
+  use ChatFileKind as F;
+  assert_eq!(
+    names(&[
+      F::Photo,
+      F::Video,
+      F::RoundVideo,
+      F::Animation,
+      F::Audio,
+      F::VoiceNote,
+      F::Sticker,
+      F::Document
+    ]),
+    [
+      "photo",
+      "video",
+      "round-video",
+      "animation",
+      "audio",
+      "voice-note",
+      "sticker",
+      "document"
+    ]
+  );
   use ChatVerb as V;
   let verbs = [
     V::Text,
@@ -151,6 +177,7 @@ fn handover_with_context_room_and_files() {
       name: "a.txt".into(),
       mime: "text/plain".into(),
       bytes: b"hi".to_vec(),
+      kind: None,
     }],
   };
   crosses(
@@ -191,6 +218,7 @@ fn gathered_kept() {
         name: "a.png".into(),
         mime: "image/png".into(),
         bytes: vec![137, 80],
+        kind: Some(ChatFileKind::Photo),
       }],
     },
   };
@@ -198,7 +226,7 @@ fn gathered_kept() {
     &gathered,
     json!({
       "chatId": -100, "messageId": 5, "via": "platform", "outcome": "kept",
-      "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+      "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=", "kind": "photo" }],
     }),
   );
 }
@@ -261,6 +289,13 @@ fn declaration() {
       rooms: ChatNumberSpace::Native,
       people: ChatNumberSpace::Assigned,
       messages: ChatNumberSpace::None,
+      ranges: ChatNumberRanges {
+        rooms: None,
+        people: Some(ChatNumberRange {
+          first: 1_000_001,
+          last: 2_000_000,
+        }),
+      },
     },
     speakers: true,
   };
@@ -286,7 +321,10 @@ fn declaration() {
         "foldable": false,
       },
       "shows": "The whole line of the room.",
-      "numbering": { "rooms": "native", "people": "assigned", "messages": "none" },
+      "numbering": {
+        "rooms": "native", "people": "assigned", "messages": "none",
+        "ranges": { "rooms": null, "people": { "first": 1_000_001, "last": 2_000_000 } },
+      },
       "speakers": true,
     }),
   );
@@ -306,9 +344,9 @@ fn media_request_and_every_outcome() {
     &ChatMediaRequest {
       chat_id: -100,
       message_id: 5,
-      sent_at: Some(1_760_000_000),
+      sent_at: Some(1_760_000_000_000),
     },
-    json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000 }),
+    json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000_000_i64 }),
   );
   crosses(
     &ChatMediaResult::Fetched(MessageFile {
@@ -316,6 +354,7 @@ fn media_request_and_every_outcome() {
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
+      kind: None,
     }),
     json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
   );
@@ -369,4 +408,115 @@ fn error_shape_and_statuses() {
       json!({ "code": name, "error": "What went wrong." }),
     );
   }
+}
+
+#[test]
+fn the_list_of_kept_profile_pictures() {
+  let list = AvatarList {
+    avatars: vec![
+      ChatAvatar {
+        kind: ChatAvatarKind::Room,
+        id: -100,
+        taken_at: 1_760_000_000_000,
+      },
+      ChatAvatar {
+        kind: ChatAvatarKind::Person,
+        id: 42,
+        taken_at: 1_760_000_000_500,
+      },
+    ],
+  };
+  crosses(
+    &list,
+    json!({ "avatars": [
+      { "kind": "room", "id": -100, "takenAt": 1_760_000_000_000_i64 },
+      { "kind": "person", "id": 42, "takenAt": 1_760_000_000_500_i64 },
+    ] }),
+  );
+}
+
+#[test]
+fn the_receiver_questions_and_their_answers() {
+  crosses(
+    &ListenedQuery {
+      chat_id: -100,
+      via: "platform".into(),
+    },
+    json!({ "chatId": -100, "via": "platform" }),
+  );
+  crosses(&Listened { listened: false }, json!({ "listened": false }));
+  crosses(
+    &RoomsOfQuery {
+      via: "platform".into(),
+      after: None,
+      limit: None,
+    },
+    json!({ "via": "platform" }),
+  );
+  crosses(
+    &RoomsOfQuery {
+      via: "platform".into(),
+      after: Some(-100),
+      limit: Some(50),
+    },
+    json!({ "via": "platform", "after": -100, "limit": 50 }),
+  );
+  crosses(
+    &RoomsOf {
+      rooms: vec![
+        HistoryRoom {
+          chat_id: -100,
+          oldest_message_id: Some(5),
+          oldest_sent_at: Some(1_760_000_000_000),
+        },
+        HistoryRoom {
+          chat_id: 7,
+          oldest_message_id: None,
+          oldest_sent_at: None,
+        },
+      ],
+    },
+    json!({ "rooms": [
+      { "chatId": -100, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 },
+      { "chatId": 7, "oldestMessageId": null, "oldestSentAt": null },
+    ] }),
+  );
+  crosses(&HistoryKept { kept: true }, json!({ "kept": true }));
+  crosses(
+    &AvatarsUpdated {
+      via: "platform".into(),
+      rooms: vec![-100],
+      people: vec![],
+    },
+    json!({ "via": "platform", "rooms": [-100], "people": [] }),
+  );
+}
+
+#[test]
+fn assigned_numbers_carry_their_ranges() {
+  let numbering = ChatNumbering {
+    rooms: ChatNumberSpace::Assigned,
+    people: ChatNumberSpace::Assigned,
+    messages: ChatNumberSpace::Assigned,
+    ranges: ChatNumberRanges {
+      rooms: Some(ChatNumberRange {
+        first: i64::MIN,
+        last: -9_000_000_000_000,
+      }),
+      people: Some(ChatNumberRange {
+        first: 9_000_000_000_000,
+        last: i64::MAX,
+      }),
+    },
+  };
+  crosses(
+    &numbering,
+    json!({
+      "rooms": "assigned", "people": "assigned", "messages": "assigned",
+      "ranges": {
+        "rooms": { "first": i64::MIN, "last": -9_000_000_000_000_i64 },
+        "people": { "first": 9_000_000_000_000_i64, "last": i64::MAX },
+      },
+    }),
+  );
 }

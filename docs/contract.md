@@ -50,8 +50,19 @@ and crosses as `senderName`.
 | `assigned` | numbers the provider gave out because the platform's cannot be used |
 | `none` | none of its own: the provider speaks into rooms and people another provider numbers |
 
-`ChatNumbering` declares one number space for each of `rooms`, `people` and `messages`. How a provider assigns
-numbers, and where it keeps them, is the provider's own.
+`ChatNumbering` declares one number space for each of `rooms`, `people` and `messages`, and `ranges`: for
+`rooms` and for `people`, the `ChatNumberRange` every number the provider assigns in that space falls in, as
+`first` and `last`, both included. A space numbered `assigned` carries its range, and a space numbered any other
+way carries null. Messages carry no range: a message is numbered within its room, so two providers' messages
+never meet where their rooms do not.
+
+Two providers' ranges of the same space never overlap, so no number one provider gives out is ever another's.
+bmo-chat-client checks a numbering on its own (an `assigned` space without a range, a range for a space that
+is not `assigned`, a range whose `first` is above its `last`) and against another provider's (a range of the
+same space that overlaps). The receiver takes in no provider whose numbering fails either check. The protocol is
+told no platform's native numbers, so keeping a range clear of them is the provider's own choice of range.
+
+How a provider assigns numbers within its range, and where it keeps them, is the provider's own.
 
 ## Read modes
 
@@ -104,10 +115,18 @@ The full capability set is all sixteen, taken from the type itself, so a reader 
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a verb it does not declare is refused (see Refusals).
 
-The protocol carries no route for a profile picture. A provider that declares `avatars` serves its pictures on
-a route of its own, and where it keeps none for the room or person asked, that route answers 404
-`nothing-held` in the error shape `protocol.md` states, never `no-route`, so a missing picture is told apart
-from a wrong path.
+### Profile pictures
+
+A provider that declares `avatars` keeps profile pictures of rooms and people and serves them through the
+avatar routes in `protocol.md`. A kept picture is known by its subject, `ChatAvatarKind` (`room` or `person`)
+and the subject's number, and is listed as a `ChatAvatar`: `kind`, `id` and `takenAt`, the moment the provider
+took the picture it keeps now. The picture itself is a `ChatPicture`: its `mime` type and its bytes.
+
+Where a provider keeps no picture for the subject asked, the picture route answers 404 `nothing-held`, never
+`no-route`, so a missing picture is told apart from a wrong path. A provider that does not declare `avatars`
+keeps none: the base answers its list as empty and every picture as `nothing-held` without asking it. Which
+pictures a provider takes, how often, and where it keeps them is the provider's own; it tells the receiver
+which subjects' pictures changed (see "The receiver, as a provider sees it").
 
 ## Dialects
 
@@ -181,9 +200,10 @@ Whether a person behind a private room is a user is the receiver's question, not
 
 A provider that declares `fetchMedia` fetches the picture or the file a message carried from the platform
 again, given the message's `chatId`, `messageId` and, for a platform that finds an old message by its time,
-`sentAt`. The answer is `fetched` with a message file (see Files), `unavailable` with the platform's reason in
-English, or `refused` with a refusal. A provider that does not declare `fetchMedia` refuses with
-`unsupported-capability`, which is also what the base answers for a provider that supplies no fetch of its own.
+`sentAt` in epoch milliseconds. The answer is `fetched` with a message file (see Files), `unavailable` with
+the platform's reason in English, or `refused` with a refusal. A provider that does not declare `fetchMedia`
+refuses with `unsupported-capability`, which is also what the base answers for a provider that supplies no
+fetch of its own.
 
 ## Messages
 
@@ -195,7 +215,7 @@ English, or `refused` with a refusal. A provider that does not declare `fetchMed
 | `messageId` | number | the message |
 | `senderId` | number or null | who said it |
 | `senderName` | string | the name the platform shows for who said it |
-| `sentAt` | number | when, in Unix seconds |
+| `sentAt` | number | when, in epoch milliseconds |
 | `text` | string | its words, or a placeholder the provider wrote for what was sent |
 | `replyToMessageId` | number or null | the message it answers |
 | `via` | string | the key of the provider that took it in |
@@ -229,11 +249,29 @@ optional, and the receiver can always ask the room routes instead.
 ### Files
 
 A file crosses as a file item: `name`, `mime` and `bytes`. A file a message carried crosses as a message file:
-a file item and `id`, the provider's identifier of that file among its message's files. The id is an opaque
-string. The same file carries the same id each time it crosses, whichever hand-over or fetch carries it, and no
-two files of one message share an id, so the receiver tells a file it already keeps from another of the same
-name by the message and the id alone. How a provider makes the id is its own: the platform's own name for the
-file where it has one, or the file's place among its message's files where it does not.
+a file item, `id`, the provider's identifier of that file among its message's files, and optionally `kind`.
+The id is an opaque string. The same file carries the same id each time it crosses, whichever hand-over or
+fetch carries it, and no two files of one message share an id, so the receiver tells a file it already keeps
+from another of the same name by the message and the id alone. How a provider makes the id is its own: the
+platform's own name for the file where it has one, or the file's place among its message's files where it does
+not.
+
+`kind` is the `ChatFileKind`, what the file is as the platform showed it, so a voice note is told from a sound
+file and a round video from a plain one:
+
+| Value | Meaning |
+|---|---|
+| `photo` | a picture |
+| `video` | a video |
+| `round-video` | a short video the platform shows in a circle |
+| `animation` | a short looping video without sound, or an animated image |
+| `audio` | a sound file |
+| `voice-note` | a recording made in the room to be heard as speech |
+| `sticker` | a sticker |
+| `document` | any other file |
+
+A provider fills `kind` as far as its platform tells it and leaves it out where it cannot tell. An inline file
+item of a send carries no `kind`.
 
 A provider gathers a file from its platform. Where it is kept is the receiver's concern, so the provider hands
 the bytes over:
@@ -247,15 +285,29 @@ the bytes over:
 `ChatReceiver` is the receiver's side as a provider calls it, and a provider asks nothing else of the
 receiver:
 
-| Call | What it hands over |
+| Call | What it hands over or asks |
 |---|---|
 | message | a message a room said |
 | attachment | a message carrying a file, with the file or the promise of it |
-| edited | a message already handed over, said again with different words |
+| edited | a message already handed over, changed: its words, its sender, or both |
 | gathered | the file a message's `gathering` promised, or why it was not kept |
+| history | a past message read back from a room, archived where the receiver lacks it and waking nobody; the answer says whether it was archived |
+| avatars updated | the rooms and people whose kept profile picture changed |
+| listened | whether the receiver listens to a room |
+| rooms of | the provider's rooms whose past it may read back, each with the oldest message the receiver holds of it |
 
 The receiver archives what it is handed whatever its origin. A provider never hands over a message as already
 archived.
+
+An edited message is held as the hand-over carries it: the receiver takes its words and its sender from the
+hand-over, so a provider that learns a message's sender was another (an account the owner took over, for
+example) hands the message over again as edited, under the right sender.
+
+A provider asks whether a room is listened to where it must decide by itself what to read or gather there; it
+keeps no switch of its own for it. A provider that reads rooms' past back, one that declares `history`, asks
+which rooms it may read back and from where, and hands each past message over as history, never as a message,
+so nothing is woken for words said long ago. Its provider key, `via`, names the provider in every call that is
+not about a message it carries.
 
 ## Sends
 
@@ -268,6 +320,9 @@ A send is one verb at a time. Every send carries `chatId` and its `verb`, and ma
   provider that declares `speakers` takes it.
 - `tag`: an opaque string the provider returns on the inbound message that is the platform's echo of this
   send. It is meant for a provider whose platform gives no message number back for a send.
+- `prefix`: the words the agent's lines carry before them in the `human-avatar` voice, which the caller
+  supplies. A provider puts them before the words of a send that goes out in that voice, and ignores them in
+  any other voice.
 
 | Verb | Fields beyond `chatId` |
 |---|---|

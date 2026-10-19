@@ -142,10 +142,13 @@ pub struct ChatSendRequest {
   /// Returned on the inbound message that is the platform's echo of this send.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub tag: Option<String>,
+  /// The words the agent's lines carry before them in the `human-avatar` voice; ignored in any other voice.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub prefix: Option<String>,
 }
 
 impl ChatSendRequest {
-  /// A send in the room's own voice, with no speaker and no tag.
+  /// A send in the room's own voice, with no speaker, no tag and no prefix.
   pub fn new(chat_id: i64, send: ChatSend) -> Self {
     Self {
       chat_id,
@@ -153,6 +156,7 @@ impl ChatSendRequest {
       voice: None,
       speaker: None,
       tag: None,
+      prefix: None,
     }
   }
 }

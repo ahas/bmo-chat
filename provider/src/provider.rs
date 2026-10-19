@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::avatar::{ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::ChatHealth;
 use crate::capability::ChatCapability;
 use crate::declaration::ChatDeclaration;
@@ -14,6 +15,7 @@ use crate::media::{ChatMediaRequest, ChatMediaResult};
 use crate::message::{ChatGathered, ChatHandover, RoomKind};
 use crate::modes::{ChatModeStanding, ChatReadMode, ChatVoice};
 use crate::numbering::ChatNumbering;
+use crate::receiver_bodies::{AvatarsUpdated, HistoryRoom, ListenedQuery, RoomsOfQuery};
 use crate::refusal::ChatRefusal;
 use crate::send::{ChatSendRequest, ChatSendResult};
 
@@ -30,11 +32,25 @@ pub trait ChatReceiver: Send + Sync {
   /// A message carrying a file, with the file or the promise of it.
   async fn attachment(&self, handover: ChatHandover) -> Result<(), ChatFailure>;
 
-  /// A message already handed over, said again with different words.
+  /// A message already handed over, changed: the receiver keeps its words and its sender as handed over.
   async fn edited(&self, handover: ChatHandover) -> Result<(), ChatFailure>;
 
   /// The file a message's `gathering` promised, or why it was not kept.
   async fn gathered(&self, gathered: ChatGathered) -> Result<(), ChatFailure>;
+
+  /// A past message read back from a room, archived where the receiver lacks it and waking nobody. True
+  /// where the receiver archived it, false where it already held it.
+  async fn history(&self, handover: ChatHandover) -> Result<bool, ChatFailure>;
+
+  /// Word that the kept profile pictures of these rooms and people changed.
+  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), ChatFailure>;
+
+  /// Whether the receiver listens to the room.
+  async fn listened(&self, query: ListenedQuery) -> Result<bool, ChatFailure>;
+
+  /// The provider's rooms whose past it may read back, each with the oldest message the receiver holds of
+  /// it, in ascending order of room number.
+  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, ChatFailure>;
 }
 
 /// A chat service's one platform, as the base serves it. Every difference between providers is what the
@@ -113,6 +129,18 @@ pub trait ChatProvider: Send + Sync {
     Ok(ChatMediaResult::Refused {
       refusal: self.unsupported(ChatCapability::FetchMedia),
     })
+  }
+
+  /// Every profile picture the provider keeps. The base pages the list and asks only a provider that declares
+  /// `avatars`; one that supplies no list of its own keeps none.
+  async fn avatars(&self) -> Result<Vec<ChatAvatar>, ChatFailure> {
+    Ok(Vec::new())
+  }
+
+  /// The profile picture the provider keeps for a room or a person, or null where it keeps none. The base asks
+  /// only a provider that declares `avatars`.
+  async fn avatar(&self, _kind: ChatAvatarKind, _id: i64) -> Result<Option<ChatPicture>, ChatFailure> {
+    Ok(None)
   }
 
   /// The provider's mode for a voice, or null where it has none.

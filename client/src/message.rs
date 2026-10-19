@@ -25,7 +25,7 @@ pub struct ChatMessage {
   pub sender_id: Option<i64>,
   /// The name the platform shows for who said it.
   pub sender_name: String,
-  /// When, in Unix seconds.
+  /// When, in epoch milliseconds.
   pub sent_at: i64,
   /// Its words, or a placeholder the provider wrote for what was sent.
   pub text: String,
@@ -88,6 +88,25 @@ pub struct FileItem {
   pub bytes: Vec<u8>,
 }
 
+/// What a file a message carried is, as the platform showed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChatFileKind {
+  Photo,
+  Video,
+  /// A short video the platform shows in a circle.
+  RoundVideo,
+  /// A short looping video without sound, or an animated image.
+  Animation,
+  /// A sound file.
+  Audio,
+  /// A recording made in the room to be heard as speech.
+  VoiceNote,
+  Sticker,
+  /// Any other file.
+  Document,
+}
+
 /// A file a message carried, as a provider hands it over or fetches it again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct MessageFile {
@@ -99,9 +118,12 @@ pub struct MessageFile {
   #[serde(with = "crate::bytes")]
   #[schemars(with = "String", extend("contentEncoding" = "base64"))]
   pub bytes: Vec<u8>,
+  /// What the file is, as far as the platform tells; left out where the provider cannot tell.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub kind: Option<ChatFileKind>,
 }
 
-/// The body of the `message`, `attachment` and `edited` hand-overs.
+/// The body of the `message`, `attachment`, `edited` and `history` hand-overs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChatHandover {
   pub message: ChatMessage,

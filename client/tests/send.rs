@@ -30,6 +30,7 @@ fn text_with_every_field() {
       agent: "agent-2".into(),
     }),
     tag: Some("tag-1".into()),
+    prefix: Some("[agent] ".into()),
     ..send(ChatSend::Text {
       text: "**hello**".into(),
       reply_to: Some(3),
@@ -41,7 +42,7 @@ fn text_with_every_field() {
     &request,
     json!({
       "verb": "text", "chatId": 7, "text": "**hello**", "replyTo": 3, "silent": true, "fold": true,
-      "as": "human-reader", "speaker": { "agent": "agent-2" }, "tag": "tag-1",
+      "as": "human-reader", "speaker": { "agent": "agent-2" }, "tag": "tag-1", "prefix": "[agent] ",
     }),
   );
 }

@@ -12,15 +12,17 @@ use std::time::Duration;
 use async_trait::async_trait;
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Json, Response};
+use axum::routing::get;
 use bmo_chat_client::{
-  ChatCapability, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
-  ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberSpace, ChatNumbering, ChatPatience,
-  ChatProviderClient, ChatReach, ChatReadMode, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult,
-  ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading, ErrorCode, MessageFile,
-  MissedPicture, MissedPictureReason, RoomKind, WireError,
+  AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration, ChatDialectDeclaration,
+  ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatModeStanding,
+  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient,
+  ChatReach, ChatReadMode, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatVoice, ChatWait,
+  ClientFailure, DialectChecked, DialectReading, ErrorCode, MessageFile, MissedPicture,
+  MissedPictureReason, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -188,6 +190,7 @@ fn declaration() -> (ChatDeclaration, Value) {
       rooms: ChatNumberSpace::Native,
       people: ChatNumberSpace::Native,
       messages: ChatNumberSpace::Native,
+      ranges: ChatNumberRanges::default(),
     },
     speakers: false,
   };
@@ -205,7 +208,10 @@ fn declaration() -> (ChatDeclaration, Value) {
       "foldable": false,
     },
     "shows": null,
-    "numbering": { "rooms": "native", "people": "native", "messages": "native" },
+    "numbering": {
+      "rooms": "native", "people": "native", "messages": "native",
+      "ranges": { "rooms": null, "people": null },
+    },
     "speakers": false,
   });
   (declaration, wire)
@@ -256,7 +262,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
   let media = ChatMediaRequest {
     chat_id: -100,
     message_id: 5,
-    sent_at: Some(1_760_000_000),
+    sent_at: Some(1_760_000_000_000),
   };
 
   assert_eq!(client.declaration().await.unwrap(), declared);
@@ -275,6 +281,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
+      kind: None,
     })
   );
   assert_eq!(
@@ -314,7 +321,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
     (
       "POST",
       "media",
-      Some(json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000 })),
+      Some(json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000_000_i64 })),
     ),
     ("POST", "dialect/read", Some(json!({ "text": "hello" }))),
     ("POST", "dialect/check", Some(json!({ "markup": "shut" }))),
@@ -647,4 +654,107 @@ fn the_default_patience_is_two_minutes_every_two_seconds() {
   let patience = ChatPatience::default();
   assert_eq!(patience.window, Duration::from_secs(120));
   assert_eq!(patience.every, Duration::from_secs(2));
+}
+
+/// A provider's avatar routes: a list of one picture whatever the query, the picture of room -100,
+/// `nothing-held` for person 7, and no route at all for anything else.
+fn avatar_routes() -> Router {
+  async fn list() -> Json<Value> {
+    Json(json!({ "avatars": [{ "kind": "person", "id": 7, "takenAt": 1_760_000_000_000_i64 }] }))
+  }
+  async fn picture(Path((kind, id)): Path<(String, String)>) -> Response {
+    match (kind.as_str(), id.as_str()) {
+      ("room", "-100") => ([("content-type", "image/png")], vec![137_u8, 80]).into_response(),
+      ("person", "7") => {
+        let error = WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for person 7.");
+        (StatusCode::NOT_FOUND, Json(error)).into_response()
+      }
+      _ => (StatusCode::NOT_FOUND, "nothing here").into_response(),
+    }
+  }
+  Router::new()
+    .route("/provider/avatars", get(list))
+    .route("/provider/avatars/{kind}/{id}", get(picture))
+}
+
+#[tokio::test]
+async fn a_kept_picture_comes_as_its_bytes_and_nothing_held_as_none() {
+  let listening = Listening::start(avatar_routes()).await;
+  let client = ChatProviderClient::new(listening.base(), TOKEN);
+  let listed = client
+    .avatars(&AvatarsQuery {
+      after: Some(1_759_000_000_000),
+      limit: Some(20),
+    })
+    .await
+    .unwrap();
+  let everything = client.avatars(&AvatarsQuery::default()).await.unwrap();
+  let kept = client.avatar(ChatAvatarKind::Room, -100).await.unwrap();
+  let none = client.avatar(ChatAvatarKind::Person, 7).await.unwrap();
+  let wrong = client.avatar(ChatAvatarKind::Person, 8).await.unwrap_err();
+  drop(client);
+  listening.close().await;
+
+  let avatar = ChatAvatar {
+    kind: ChatAvatarKind::Person,
+    id: 7,
+    taken_at: 1_760_000_000_000,
+  };
+  assert_eq!((listed, everything), (vec![avatar], vec![avatar]));
+  assert_eq!(
+    kept,
+    Some(ChatPicture {
+      mime: "image/png".into(),
+      bytes: vec![137, 80],
+    })
+  );
+  assert_eq!(none, None);
+  assert!(
+    matches!(
+      wrong,
+      ClientFailure::Answered {
+        status: 404,
+        answer: None,
+        ..
+      }
+    ),
+    "{wrong:?}"
+  );
+}
+
+#[tokio::test]
+async fn the_list_query_carries_only_what_was_given() {
+  let asked = Arc::new(Mutex::new(Vec::new()));
+  let kept = asked.clone();
+  let router = Router::new().route(
+    "/provider/avatars",
+    get(move |RawQuery(query): RawQuery| {
+      let kept = kept.clone();
+      async move {
+        kept.lock().unwrap().push(query);
+        Json(json!({ "avatars": [] }))
+      }
+    }),
+  );
+  let listening = Listening::start(router).await;
+  let client = ChatProviderClient::new(listening.base(), TOKEN);
+  let query = AvatarsQuery {
+    after: Some(1_759_000_000_000),
+    limit: Some(20),
+  };
+  client.avatars(&query).await.unwrap();
+  client.avatars(&AvatarsQuery::default()).await.unwrap();
+  client
+    .avatars(&AvatarsQuery {
+      after: None,
+      limit: Some(5),
+    })
+    .await
+    .unwrap();
+  drop(client);
+  listening.close().await;
+  assert_eq!(
+    *asked.lock().unwrap(),
+    [Some("after=1759000000000&limit=20".to_owned()), None, Some("limit=5".to_owned())]
+  );
 }

@@ -105,4 +105,3 @@ flowchart TD
 - A service's own document states the wire it serves now, and its callers rely on that document.
 - Where that wire differs from this document, the service is brought into line when its API is fixed, in the
   order above, and its document is repaired with it.
-- The chat protocol in this repository is one such service: its times are Unix seconds.
