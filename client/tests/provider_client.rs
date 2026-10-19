@@ -18,11 +18,10 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use bmo_chat_client::{
   AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration, ChatDialectDeclaration,
-  ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatModeStanding,
-  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient,
-  ChatReach, ChatReadMode, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatVoice, ChatWait,
-  ClientFailure, DialectChecked, DialectReading, ErrorCode, MessageFile, MissedPicture,
-  MissedPictureReason, RoomKind, WireError,
+  ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding, ChatNumberRanges,
+  ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient, ChatReach, ChatReadMode,
+  ChatSend, ChatSendRequest, ChatSent, ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading,
+  ErrorCode, MessageFile, MissedPicture, MissedPictureReason, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -236,11 +235,11 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
   let stand = Stand::answering([
     ("/provider/declaration", ok, declaration_wire),
     ("/provider/health", ok, json!({ "ready": true, "reason": null })),
-    ("/provider/send", ok, json!({ "sent": true, "messageId": 77 })),
+    ("/provider/send", ok, json!({ "messageId": 77 })),
     (
       "/provider/media",
       ok,
-      json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+      json!({ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
     ),
     (
       "/provider/dialect/read",
@@ -269,20 +268,20 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
   assert_eq!(client.health().await.unwrap(), ChatHealth::ready());
   assert_eq!(
     client.send(&text("hello")).await.unwrap(),
-    ChatSendResult::Sent {
+    ChatSent {
       message_id: Some(77),
       missed: vec![],
     }
   );
   assert_eq!(
     client.media(&media).await.unwrap(),
-    ChatMediaResult::Fetched(MessageFile {
+    MessageFile {
       id: "file-1".into(),
       name: "a.png".into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
       kind: None,
-    })
+    }
   );
   assert_eq!(
     client.dialect_read("hello").await.unwrap(),
@@ -340,28 +339,22 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
 }
 
 #[tokio::test]
-async fn refusals_are_answers_and_decode_typed() {
-  let ok = StatusCode::OK;
-  let unsupported = json!({
-    "code": "unsupported-capability", "message": "Platform cannot pin a message.", "label": "Platform",
-    "capability": "pin",
-  });
+async fn refusals_come_back_in_the_error_shape_with_their_code_and_status() {
+  let unsupported =
+    WireError::new(ErrorCode::UnsupportedCapability, "Platform cannot fetch a picture or a file later.");
+  let gone = WireError::new(ErrorCode::Gone, "Platform: Message 5 is no longer there.");
   let stand = Stand::answering([
+    ("/provider/send", StatusCode::GONE, serde_json::to_value(&gone).unwrap()),
     (
-      "/provider/send",
-      ok,
-      json!({ "sent": false, "refusal": unsupported.clone(), "gone": false }),
+      "/provider/media",
+      StatusCode::UNPROCESSABLE_ENTITY,
+      serde_json::to_value(&unsupported).unwrap(),
     ),
-    ("/provider/media", ok, json!({ "outcome": "refused", "refusal": unsupported })),
   ]);
   let listening = Listening::start(stand.router()).await;
   let client = ChatProviderClient::new(listening.base(), TOKEN);
-  let refusal = ChatRefusal::UnsupportedCapability {
-    label: "Platform".into(),
-    capability: ChatCapability::Pin,
-  };
 
-  let sent = client.send(&text("hello")).await.unwrap();
+  let sent = client.send(&text("hello")).await.unwrap_err();
   let fetched = client
     .media(&ChatMediaRequest {
       chat_id: -100,
@@ -369,40 +362,37 @@ async fn refusals_are_answers_and_decode_typed() {
       sent_at: None,
     })
     .await
-    .unwrap();
+    .unwrap_err();
   drop(client);
   listening.close().await;
 
-  assert_eq!(
-    sent,
-    ChatSendResult::Refused {
-      refusal: refusal.clone(),
-      gone: false,
-    }
+  assert_eq!(sent.code(), Some(ErrorCode::Gone));
+  assert!(
+    matches!(sent, ClientFailure::Answered { status: 410, answer: Some(answer), .. } if answer == gone)
   );
-  assert_eq!(fetched, ChatMediaResult::Refused { refusal });
+  assert_eq!(fetched.code(), Some(ErrorCode::UnsupportedCapability));
+  assert!(
+    matches!(fetched, ClientFailure::Answered { status: 422, answer: Some(answer), .. } if answer == unsupported)
+  );
 }
 
 #[tokio::test]
-async fn missed_pictures_and_an_unavailable_file_decode_typed() {
+async fn missed_pictures_decode_typed_and_an_unavailable_file_comes_back_unavailable() {
   let ok = StatusCode::OK;
+  let unavailable = WireError::new(ErrorCode::Unavailable, "The platform no longer has it.");
   let stand = Stand::answering([
     (
       "/provider/send",
       ok,
       json!({
-        "sent": true, "messageId": null,
+        "messageId": null,
         "missed": [{
           "address": "/elsewhere/a.png",
           "reason": { "code": "outside-data-root", "message": "whatever the provider rendered" },
         }],
       }),
     ),
-    (
-      "/provider/media",
-      ok,
-      json!({ "outcome": "unavailable", "reason": "The platform no longer has it." }),
-    ),
+    ("/provider/media", StatusCode::NOT_FOUND, serde_json::to_value(&unavailable).unwrap()),
   ]);
   let listening = Listening::start(stand.router()).await;
   let client = ChatProviderClient::new(listening.base(), TOKEN);
@@ -414,13 +404,13 @@ async fn missed_pictures_and_an_unavailable_file_decode_typed() {
       sent_at: None,
     })
     .await
-    .unwrap();
+    .unwrap_err();
   drop(client);
   listening.close().await;
 
   assert_eq!(
     sent,
-    ChatSendResult::Sent {
+    ChatSent {
       message_id: None,
       missed: vec![MissedPicture {
         address: "/elsewhere/a.png".into(),
@@ -428,12 +418,7 @@ async fn missed_pictures_and_an_unavailable_file_decode_typed() {
       }],
     }
   );
-  assert_eq!(
-    fetched,
-    ChatMediaResult::Unavailable {
-      reason: "The platform no longer has it.".into(),
-    }
-  );
+  assert_eq!(fetched.code(), Some(ErrorCode::Unavailable));
 }
 
 #[tokio::test]
@@ -595,7 +580,7 @@ async fn a_provider_that_comes_back_within_the_window_is_sent_the_request_once()
   let address = closed_address().await;
   let restarting = Arc::new(Restarting {
     address,
-    stand: Stand::answering([("/provider/send", StatusCode::OK, json!({ "sent": true, "messageId": 9 }))]),
+    stand: Stand::answering([("/provider/send", StatusCode::OK, json!({ "messageId": 9 }))]),
     waits: AtomicUsize::new(0),
     started: Mutex::new(None),
   });
@@ -608,7 +593,7 @@ async fn a_provider_that_comes_back_within_the_window_is_sent_the_request_once()
 
   assert_eq!(
     sent.expect("the send goes once the provider is back"),
-    ChatSendResult::Sent {
+    ChatSent {
       message_id: Some(9),
       missed: vec![],
     }

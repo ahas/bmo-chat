@@ -1,14 +1,12 @@
 //! A send, one verb at a time, and what it came to.
 
-use std::borrow::Cow;
-
-use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::capability::ChatVerb;
 use crate::message::FileItem;
+use crate::missed::MissedPicture;
 use crate::modes::ChatVoice;
-use crate::refusal::{ChatRefusal, MissedPicture};
 
 /// An agent other than the one the room is answered by, by its registry id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -167,131 +165,13 @@ impl ChatSendRequest {
   }
 }
 
-/// What a send came to. On the wire the two are told apart by `sent`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatSendResult {
-  Sent {
-    /// Null where the platform hands none back.
-    message_id: Option<i64>,
-    /// The pictures of an album that did not go; empty where everything went.
-    missed: Vec<MissedPicture>,
-  },
-  Refused {
-    refusal: ChatRefusal,
-    /// The refusal is about a message the platform no longer has, or will never let change again.
-    gone: bool,
-  },
-}
-
-#[derive(Serialize)]
-#[serde(untagged, rename_all_fields = "camelCase")]
-enum ResultOut<'a> {
-  Sent {
-    sent: bool,
-    message_id: Option<i64>,
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    missed: &'a [MissedPicture],
-  },
-  Refused {
-    sent: bool,
-    refusal: &'a ChatRefusal,
-    gone: bool,
-  },
-}
-
-#[derive(Deserialize)]
+/// A send the provider performed: the answer of `send`. A refusal is answered in the error shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct ResultIn {
-  sent: bool,
-  #[serde(default)]
-  message_id: Option<i64>,
-  #[serde(default)]
-  missed: Vec<MissedPicture>,
-  #[serde(default)]
-  refusal: Option<ChatRefusal>,
-  #[serde(default)]
-  gone: bool,
-}
-
-impl Serialize for ChatSendResult {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    match self {
-      Self::Sent { message_id, missed } => ResultOut::Sent {
-        sent: true,
-        message_id: *message_id,
-        missed,
-      },
-      Self::Refused { refusal, gone } => ResultOut::Refused {
-        sent: false,
-        refusal,
-        gone: *gone,
-      },
-    }
-    .serialize(serializer)
-  }
-}
-
-impl JsonSchema for ChatSendResult {
-  fn schema_name() -> Cow<'static, str> {
-    "ChatSendResult".into()
-  }
-
-  fn json_schema(generator: &mut SchemaGenerator) -> Schema {
-    let described = |mut schema: Schema, description: &str| {
-      schema.insert("description".into(), description.into());
-      schema
-    };
-    let message_id =
-      described(generator.subschema_for::<Option<i64>>(), "Null where the platform hands none back.");
-    let missed = described(
-      generator.subschema_for::<Vec<MissedPicture>>(),
-      "The pictures of an album that did not go; left out where everything went.",
-    );
-    let gone = described(
-      generator.subschema_for::<bool>(),
-      "The refusal is about a message the platform no longer has, or will never let change again.",
-    );
-    json_schema!({
-      "description": "What a send came to, told apart by `sent`.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "sent": { "const": true },
-            "messageId": message_id,
-            "missed": missed,
-          },
-          "required": ["sent", "messageId"],
-        },
-        {
-          "type": "object",
-          "properties": {
-            "sent": { "const": false },
-            "refusal": generator.subschema_for::<ChatRefusal>(),
-            "gone": gone,
-          },
-          "required": ["sent", "refusal", "gone"],
-        },
-      ],
-    })
-  }
-}
-
-impl<'de> Deserialize<'de> for ChatSendResult {
-  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    let fields = ResultIn::deserialize(deserializer)?;
-    if fields.sent {
-      return Ok(Self::Sent {
-        message_id: fields.message_id,
-        missed: fields.missed,
-      });
-    }
-    let refusal = fields
-      .refusal
-      .ok_or_else(|| serde::de::Error::custom("a send result that was not sent carries a refusal"))?;
-    Ok(Self::Refused {
-      refusal,
-      gone: fields.gone,
-    })
-  }
+pub struct ChatSent {
+  /// Null where the platform hands none back.
+  pub message_id: Option<i64>,
+  /// The pictures of an album that did not go; left out where everything went.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub missed: Vec<MissedPicture>,
 }

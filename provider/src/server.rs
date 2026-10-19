@@ -25,8 +25,9 @@ use crate::capability::ChatCapability;
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, ChatMediaResult};
+use crate::message::MessageFile;
 use crate::provider::{ChatFailure, ChatProvider};
-use crate::send::{ChatSendRequest, ChatSendResult};
+use crate::send::{ChatSendRequest, ChatSendResult, ChatSent};
 
 /// The provider routes over `provider`, each answering only a request that carries `token` as its bearer
 /// token. The serving service mounts the router where it likes and supplies the token from its own
@@ -119,25 +120,32 @@ async fn health(State(served): State<Served>) -> Json<ChatHealth> {
   Json(served.provider.health())
 }
 
-async fn send(State(served): State<Served>, body: Bytes) -> Answered<ChatSendResult> {
+/// A send the provider performed is answered with what it came to; a refusal, in the error shape.
+async fn send(State(served): State<Served>, body: Bytes) -> Answered<ChatSent> {
   let request: ChatSendRequest = read(&body)?;
   let provider = ready(&served)?;
   if let Some(refusal) = provider.undeclared(request.send.verb().into()) {
-    return Ok(Json(ChatSendResult::Refused {
-      refusal,
-      gone: false,
-    }));
+    return Err(refusal.into());
   }
-  Ok(Json(provider.send(request).await?))
+  match provider.send(request).await? {
+    ChatSendResult::Sent(sent) => Ok(Json(sent)),
+    ChatSendResult::Refused(refusal) => Err(refusal.into()),
+  }
 }
 
-async fn media(State(served): State<Served>, body: Bytes) -> Answered<ChatMediaResult> {
+/// A fetched file is answered as itself; a file the platform would not give, and a refusal, in the error
+/// shape.
+async fn media(State(served): State<Served>, body: Bytes) -> Answered<MessageFile> {
   let request: ChatMediaRequest = read(&body)?;
   let provider = ready(&served)?;
   if let Some(refusal) = provider.undeclared(ChatCapability::FetchMedia) {
-    return Ok(Json(ChatMediaResult::Refused { refusal }));
+    return Err(refusal.into());
   }
-  Ok(Json(provider.fetch_media(request).await?))
+  match provider.fetch_media(request).await? {
+    ChatMediaResult::Fetched(file) => Ok(Json(file)),
+    ChatMediaResult::Unavailable { reason } => Err(WireError::new(ErrorCode::Unavailable, reason)),
+    ChatMediaResult::Refused(refusal) => Err(refusal.into()),
+  }
 }
 
 async fn dialect_read(State(served): State<Served>, body: Bytes) -> Answered<DialectReading> {

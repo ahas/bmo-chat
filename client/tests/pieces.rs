@@ -6,10 +6,10 @@ use std::collections::BTreeSet;
 use bmo_chat_client::{
   AvatarList, AvatarsUpdated, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
   ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatGathered, ChatHandover, ChatMarkup,
-  ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberRange, ChatNumberRanges,
-  ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode, ChatRefusal, ChatVerb, ChatVoice, ErrorCode,
-  GatheredOutcome, HistoryKept, HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile,
-  RoomFacts, RoomKind, RoomsOf, RoomsOfQuery, WireError,
+  ChatMediaRequest, ChatMessage, ChatModeStanding, ChatNumberRange, ChatNumberRanges, ChatNumberSpace,
+  ChatNumbering, ChatReach, ChatReadMode, ChatVerb, ChatVoice, ErrorCode, GatheredOutcome, HistoryKept,
+  HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile, RoomFacts, RoomKind, RoomsOf,
+  RoomsOfQuery, WireError,
 };
 use serde_json::{Value, json};
 
@@ -331,7 +331,7 @@ fn declaration() {
 }
 
 #[test]
-fn media_request_and_every_outcome() {
+fn media_request() {
   crosses(
     &ChatMediaRequest {
       chat_id: -100,
@@ -347,37 +347,6 @@ fn media_request_and_every_outcome() {
       sent_at: Some(1_760_000_000_000),
     },
     json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000_000_i64 }),
-  );
-  crosses(
-    &ChatMediaResult::Fetched(MessageFile {
-      id: "file-1".into(),
-      name: "a.png".into(),
-      mime: "image/png".into(),
-      bytes: vec![137, 80],
-      kind: None,
-    }),
-    json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
-  );
-  crosses(
-    &ChatMediaResult::Unavailable {
-      reason: "The platform no longer has it.".into(),
-    },
-    json!({ "outcome": "unavailable", "reason": "The platform no longer has it." }),
-  );
-  crosses(
-    &ChatMediaResult::Refused {
-      refusal: ChatRefusal::UnsupportedCapability {
-        label: "Platform".into(),
-        capability: ChatCapability::FetchMedia,
-      },
-    },
-    json!({
-      "outcome": "refused",
-      "refusal": {
-        "code": "unsupported-capability", "label": "Platform", "capability": "fetchMedia",
-        "message": "Platform cannot fetch a picture or a file later.",
-      },
-    }),
   );
 }
 
@@ -400,7 +369,15 @@ fn error_shape_and_statuses() {
     (ErrorCode::NothingHeld, "nothing-held", 404),
     (ErrorCode::NotReady, "not-ready", 409),
     (ErrorCode::Failed, "failed", 500),
+    (ErrorCode::Unavailable, "unavailable", 404),
+    (ErrorCode::UnsupportedCapability, "unsupported-capability", 422),
+    (ErrorCode::NoPictureSent, "no-picture-sent", 422),
+    (ErrorCode::SpeakerNotAllowed, "speaker-not-allowed", 403),
+    (ErrorCode::SpeakerUnnumbered, "speaker-unnumbered", 422),
+    (ErrorCode::Platform, "platform", 422),
+    (ErrorCode::Gone, "gone", 410),
   ];
+  assert_eq!(codes.len(), <ErrorCode as strum::VariantArray>::VARIANTS.len(), "every code is listed");
   for (code, name, status) in codes {
     assert_eq!(code.status(), status);
     crosses(

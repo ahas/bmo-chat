@@ -46,5 +46,5 @@ pub use receiver_bodies::{
   AvatarsUpdated, HistoryKept, HistoryRoom, Listened, ListenedQuery, RoomsOf, RoomsOfQuery,
 };
 pub use refusal::{ChatRefusal, MissedPicture, MissedPictureReason};
-pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker};
+pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatSpeaker};
 pub use server::provider_router;

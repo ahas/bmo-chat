@@ -21,6 +21,36 @@
         },
         "description": "`failed`: the service failed while answering; the sentence is the failure."
       },
+      "Gone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`gone`: refused: the message is one the platform no longer has, or will never let change again, so the caller lets go of it instead of asking again."
+      },
+      "NoPictureSent": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`no-picture-sent`: refused: none of the pictures of the send went; the sentence names each with why."
+      },
+      "NoRoute": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`no-route`: there is no route at this method and path."
+      },
       "NotReady": {
         "content": {
           "application/json": {
@@ -41,6 +71,36 @@
         },
         "description": "`nothing-held`: the route is right, but nothing is kept at the address the path names; a path whose parameters name no address the route can hold is answered `no-route`."
       },
+      "Platform": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`platform`: refused by the platform; the sentence is the provider's own English reason."
+      },
+      "SpeakerNotAllowed": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`speaker-not-allowed`: refused: the provider speaks as the room's own agent alone, so it takes no other speaker."
+      },
+      "SpeakerUnnumbered": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`speaker-unnumbered`: refused: the provider has no number in the room for the agent named as speaker."
+      },
       "Unauthorized": {
         "content": {
           "application/json": {
@@ -50,6 +110,26 @@
           }
         },
         "description": "`unauthorized`: the bearer token is missing or wrong."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`unavailable`: the platform would not give the file asked for; the sentence says why."
+      },
+      "UnsupportedCapability": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`unsupported-capability`: refused: the provider does not declare the capability the call needs."
       }
     },
     "schemas": {
@@ -510,57 +590,6 @@
         ],
         "type": "object"
       },
-      "ChatMediaResult": {
-        "description": "What a fetch came to. On the wire the three are told apart by `outcome`.",
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/MessageFile",
-            "properties": {
-              "outcome": {
-                "const": "fetched",
-                "type": "string"
-              }
-            },
-            "required": [
-              "outcome"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "The platform would not give it; the reason is an English sentence.",
-            "properties": {
-              "outcome": {
-                "const": "unavailable",
-                "type": "string"
-              },
-              "reason": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "outcome",
-              "reason"
-            ],
-            "type": "object"
-          },
-          {
-            "properties": {
-              "outcome": {
-                "const": "refused",
-                "type": "string"
-              },
-              "refusal": {
-                "$ref": "#/components/schemas/ChatRefusal"
-              }
-            },
-            "required": [
-              "outcome",
-              "refusal"
-            ],
-            "type": "object"
-          }
-        ]
-      },
       "ChatMessage": {
         "description": "A message a room said. Nothing platform-shaped crosses, and no file path.",
         "properties": {
@@ -782,166 +811,6 @@
           "canReplyTo"
         ],
         "type": "object"
-      },
-      "ChatRefusal": {
-        "description": "Why a send was not performed. Every variant carries the provider's label.",
-        "oneOf": [
-          {
-            "description": "The provider does not declare the capability the send needs.",
-            "properties": {
-              "capability": {
-                "$ref": "#/components/schemas/ChatCapability"
-              },
-              "code": {
-                "const": "unsupported-capability",
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "capability",
-              "message"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "None of the pictures went, each with why.",
-            "properties": {
-              "code": {
-                "const": "no-picture-sent",
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              },
-              "missed": {
-                "items": {
-                  "$ref": "#/components/schemas/MissedPicture"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "missed",
-              "message"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "The provider speaks as the room's own agent alone, so it takes no other speaker.",
-            "properties": {
-              "agent": {
-                "type": "string"
-              },
-              "code": {
-                "const": "speaker-not-allowed",
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "agent",
-              "message"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "The provider has no number in the room for the agent named as speaker.",
-            "properties": {
-              "agent": {
-                "type": "string"
-              },
-              "code": {
-                "const": "speaker-unnumbered",
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "agent",
-              "message"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "The provider is not ready yet.",
-            "properties": {
-              "code": {
-                "const": "not-ready",
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "message"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "The provider's own English reason.",
-            "properties": {
-              "code": {
-                "const": "platform",
-                "type": "string"
-              },
-              "detail": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "message": {
-                "description": "The English sentence, as the sender rendered it from the code and the fields.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "label",
-              "detail",
-              "message"
-            ],
-            "type": "object"
-          }
-        ]
       },
       "ChatSendRequest": {
         "description": "A send into one room.",
@@ -1300,57 +1169,29 @@
         ],
         "type": "object"
       },
-      "ChatSendResult": {
-        "description": "What a send came to, told apart by `sent`.",
-        "oneOf": [
-          {
-            "properties": {
-              "messageId": {
-                "description": "Null where the platform hands none back.",
-                "format": "int64",
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "missed": {
-                "description": "The pictures of an album that did not go; left out where everything went.",
-                "items": {
-                  "$ref": "#/components/schemas/MissedPicture"
-                },
-                "type": "array"
-              },
-              "sent": {
-                "const": true
-              }
-            },
-            "required": [
-              "sent",
-              "messageId"
-            ],
-            "type": "object"
+      "ChatSent": {
+        "description": "A send the provider performed: the answer of `send`. A refusal is answered in the error shape.",
+        "properties": {
+          "messageId": {
+            "description": "Null where the platform hands none back.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
-          {
-            "properties": {
-              "gone": {
-                "description": "The refusal is about a message the platform no longer has, or will never let change again.",
-                "type": "boolean"
-              },
-              "refusal": {
-                "$ref": "#/components/schemas/ChatRefusal"
-              },
-              "sent": {
-                "const": false
-              }
+          "missed": {
+            "description": "The pictures of an album that did not go; left out where everything went.",
+            "items": {
+              "$ref": "#/components/schemas/MissedPicture"
             },
-            "required": [
-              "sent",
-              "refusal",
-              "gone"
-            ],
-            "type": "object"
+            "type": "array"
           }
-        ]
+        },
+        "required": [
+          "messageId"
+        ],
+        "type": "object"
       },
       "ChatSpeaker": {
         "description": "An agent other than the one the room is answered by, by its registry id.",
@@ -1479,7 +1320,7 @@
         "type": "object"
       },
       "ErrorCode": {
-        "description": "Why a request could not be answered at all. A refusal is an answer and never takes this shape.",
+        "description": "Why a request was not answered with success: it could not be answered at all, or it was refused.",
         "oneOf": [
           {
             "const": "bad-request",
@@ -1509,6 +1350,41 @@
           {
             "const": "failed",
             "description": "The service failed while answering.",
+            "type": "string"
+          },
+          {
+            "const": "unavailable",
+            "description": "The platform would not give the file asked for.",
+            "type": "string"
+          },
+          {
+            "const": "unsupported-capability",
+            "description": "Refused: the provider does not declare the capability the call needs.",
+            "type": "string"
+          },
+          {
+            "const": "no-picture-sent",
+            "description": "Refused: none of the pictures of the send went.",
+            "type": "string"
+          },
+          {
+            "const": "speaker-not-allowed",
+            "description": "Refused: the provider speaks as the room's own agent alone, so it takes no other speaker.",
+            "type": "string"
+          },
+          {
+            "const": "speaker-unnumbered",
+            "description": "Refused: the provider has no number in the room for the agent named as speaker.",
+            "type": "string"
+          },
+          {
+            "const": "platform",
+            "description": "Refused by the platform, for the provider's own English reason.",
+            "type": "string"
+          },
+          {
+            "const": "gone",
+            "description": "Refused: the message is one the platform no longer has, or will never let change again.",
             "type": "string"
           }
         ]
@@ -2019,9 +1895,9 @@
     }
   },
   "info": {
-    "description": "The routes between chat providers and the receiver, with JSON bodies. Paths are relative to the base address the caller is configured with, and a service may mount them under a prefix of its own. Bodies are JSON, except a profile picture, which is answered as its own bytes. Times are integers of epoch milliseconds. Any other method and path is answered 404 `no-route` in the error shape. A route that keeps pictures, and any route a service serves of its own beside these, answers 404 `nothing-held` where it keeps nothing at the address its path names, so a caller tells an empty address from a wrong path by `code`. A route answering a list takes one cursor, `after`, and `limit`. A refusal is an answer: a send the provider does not perform is answered 200 with a typed refusal. A caller offers a request again only when the connection was refused, so a request that reached a listener is never made twice.",
+    "description": "The routes between chat providers and the receiver, with JSON bodies. Paths are relative to the base address the caller is configured with, and a service may mount them under a prefix of its own. Bodies are JSON, except a profile picture, which is answered as its own bytes. Times are integers of epoch milliseconds. Any other method and path is answered 404 `no-route` in the error shape. A route that keeps pictures, and any route a service serves of its own beside these, answers 404 `nothing-held` where it keeps nothing at the address its path names, so a caller tells an empty address from a wrong path by `code`. A route answering a list takes one cursor, `after`, and `limit`. A refusal is answered like any error: a send or a fetch the provider does not perform is answered with its refusal's status in the error shape, with the refusal's kind as `code` and its English sentence as `error`, so a 2xx answer is always the route's success. A caller offers a request again only when the connection was refused, so a request that reached a listener is never made twice.",
     "title": "The chat wire protocol",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2492,7 +2368,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatMediaResult"
+                  "$ref": "#/components/schemas/MessageFile"
                 }
               }
             },
@@ -2504,14 +2380,30 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "$ref": "#/components/responses/Unavailable"
+          },
           "409": {
             "$ref": "#/components/responses/NotReady"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WireError"
+                }
+              }
+            },
+            "description": "- `unsupported-capability`: refused: the provider does not declare the capability the call needs.\n- `platform`: refused by the platform; the sentence is the provider's own English reason."
           },
           "500": {
             "$ref": "#/components/responses/Failed"
           }
         },
-        "summary": "A picture or a file a message carried, fetched again from the platform; refused where the provider does not declare `fetchMedia`.",
+        "summary": "A picture or a file a message carried, fetched again from the platform; `unavailable` where the platform would not give it, and refused `unsupported-capability` where the provider does not declare `fetchMedia`.",
         "tags": [
           "provider"
         ]
@@ -2911,7 +2803,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatSendResult"
+                  "$ref": "#/components/schemas/ChatSent"
                 }
               }
             },
@@ -2923,14 +2815,30 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/SpeakerNotAllowed"
+          },
           "409": {
             "$ref": "#/components/responses/NotReady"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WireError"
+                }
+              }
+            },
+            "description": "- `unsupported-capability`: refused: the provider does not declare the capability the call needs.\n- `no-picture-sent`: refused: none of the pictures of the send went; the sentence names each with why.\n- `speaker-unnumbered`: refused: the provider has no number in the room for the agent named as speaker.\n- `platform`: refused by the platform; the sentence is the provider's own English reason."
           },
           "500": {
             "$ref": "#/components/responses/Failed"
           }
         },
-        "summary": "One send into one room. A send of a verb the provider does not declare is refused `unsupported-capability`.",
+        "summary": "One send into one room, answered with what it came to; a send the provider does not perform is answered with its refusal. A send of a verb the provider does not declare is refused `unsupported-capability`.",
         "tags": [
           "provider"
         ]

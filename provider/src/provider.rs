@@ -126,9 +126,7 @@ pub trait ChatProvider: Send + Sync {
   /// The picture or the file a message carried, fetched from the platform again. A provider that supplies
   /// no fetch of its own refuses with `unsupported-capability`.
   async fn fetch_media(&self, _request: ChatMediaRequest) -> Result<ChatMediaResult, ChatFailure> {
-    Ok(ChatMediaResult::Refused {
-      refusal: self.unsupported(ChatCapability::FetchMedia),
-    })
+    Ok(ChatMediaResult::Refused(self.unsupported(ChatCapability::FetchMedia)))
   }
 
   /// Every profile picture the provider keeps. The base pages the list and asks only a provider that declares

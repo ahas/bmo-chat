@@ -16,16 +16,14 @@ pub struct ChatMediaRequest {
   pub sent_at: Option<i64>,
 }
 
-/// What a fetch came to. On the wire the three are told apart by `outcome`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
+/// What a fetch came to. Only the file is an answer: `unavailable` and a refusal cross the wire in the error
+/// shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatMediaResult {
   Fetched(MessageFile),
   /// The platform would not give it; the reason is an English sentence.
   Unavailable {
     reason: String,
   },
-  Refused {
-    refusal: ChatRefusal,
-  },
+  Refused(ChatRefusal),
 }

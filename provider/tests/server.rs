@@ -14,8 +14,8 @@ use base64::engine::general_purpose::STANDARD;
 use bmo_chat::{
   ChatAvatar, ChatAvatarKind, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatMarkup,
   ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering,
-  ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest,
-  ChatSendResult, ChatVoice, MessageFile, RoomKind, provider_router,
+  ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest,
+  ChatSendResult, ChatSent, ChatVoice, MessageFile, RoomKind, provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -170,10 +170,16 @@ impl ChatProvider for Desk {
       send => format!("send {:?} to {}", send.verb(), request.chat_id),
     };
     self.ask(what)?;
-    Ok(ChatSendResult::Sent {
+    if let ChatSend::Delete { message_id } = request.send {
+      return Ok(ChatSendResult::Refused(ChatRefusal::Gone {
+        label: self.label().to_owned(),
+        detail: format!("Message {message_id} is no longer there."),
+      }));
+    }
+    Ok(ChatSendResult::Sent(ChatSent {
       message_id: Some(40),
       missed: vec![],
-    })
+    }))
   }
   async fn avatars(&self) -> Result<Vec<ChatAvatar>, ChatFailure> {
     self.ask("avatars".into())?;
@@ -188,6 +194,11 @@ impl ChatProvider for Desk {
   }
   async fn fetch_media(&self, request: ChatMediaRequest) -> Result<ChatMediaResult, ChatFailure> {
     self.ask(format!("media {} {}", request.chat_id, request.message_id))?;
+    if request.message_id != 5 {
+      return Ok(ChatMediaResult::Unavailable {
+        reason: "The platform no longer has it.".into(),
+      });
+    }
     Ok(ChatMediaResult::Fetched(MessageFile {
       id: "file-1".into(),
       name: "a.png".into(),
@@ -369,10 +380,7 @@ async fn a_body_not_of_the_route_shape_is_a_bad_request_naming_what_is_missing()
 async fn a_declared_send_reaches_the_provider() {
   let desk = Desk::new(&[ChatCapability::Text]);
   let router = router(&desk);
-  assert_eq!(
-    call(&router, "POST", "/send", text()).await,
-    (200, json!({ "sent": true, "messageId": 40 }))
-  );
+  assert_eq!(call(&router, "POST", "/send", text()).await, (200, json!({ "messageId": 40 })));
   assert_eq!(desk.asked(), ["send Text to -100"]);
 }
 
@@ -384,10 +392,7 @@ async fn a_send_carrying_a_large_file_is_taken_whole() {
   let send = json!({
     "verb": "document", "chatId": ROOM, "bytes": STANDARD.encode(&bytes), "fileName": "large.bin",
   });
-  assert_eq!(
-    call(&router, "POST", "/send", Some(send)).await,
-    (200, json!({ "sent": true, "messageId": 40 }))
-  );
+  assert_eq!(call(&router, "POST", "/send", Some(send)).await, (200, json!({ "messageId": 40 })));
   assert_eq!(desk.asked(), [format!("send a document of {} bytes", bytes.len())]);
 }
 
@@ -399,17 +404,21 @@ async fn an_undeclared_send_is_refused_before_the_provider_is_asked() {
   assert_eq!(
     call(&router, "POST", "/send", Some(pin)).await,
     (
-      200,
-      json!({
-        "sent": false, "gone": false,
-        "refusal": {
-          "code": "unsupported-capability", "label": "Platform", "capability": "pin",
-          "message": desk.unsupported(ChatCapability::Pin).to_string(),
-        },
-      })
+      422,
+      json!({ "code": "unsupported-capability", "error": desk.unsupported(ChatCapability::Pin).to_string() })
     )
   );
   assert_eq!(desk.asked(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn a_refusal_the_provider_answers_crosses_with_its_code_and_status() {
+  let desk = Desk::new(&[ChatCapability::Delete]);
+  let delete = json!({ "verb": "delete", "chatId": ROOM, "messageId": 5 });
+  assert_eq!(
+    call(&router(&desk), "POST", "/send", Some(delete)).await,
+    (410, json!({ "code": "gone", "error": "Platform: Message 5 is no longer there." }))
+  );
 }
 
 #[tokio::test]
@@ -434,13 +443,9 @@ async fn media_is_refused_where_undeclared_and_fetched_where_declared() {
   assert_eq!(
     call(&router(&undeclared), "POST", "/media", request.clone()).await,
     (
-      200,
+      422,
       json!({
-        "outcome": "refused",
-        "refusal": {
-          "code": "unsupported-capability", "label": "Platform", "capability": "fetchMedia",
-          "message": "Platform cannot fetch a picture or a file later.",
-        },
+        "code": "unsupported-capability", "error": "Platform cannot fetch a picture or a file later.",
       })
     )
   );
@@ -448,12 +453,14 @@ async fn media_is_refused_where_undeclared_and_fetched_where_declared() {
   let declared = Desk::new(&[ChatCapability::FetchMedia]);
   assert_eq!(
     call(&router(&declared), "POST", "/media", request).await,
-    (
-      200,
-      json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" })
-    )
+    (200, json!({ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }))
   );
-  assert_eq!(declared.asked(), ["media -100 5"]);
+  let withheld = Some(json!({ "chatId": ROOM, "messageId": 6 }));
+  assert_eq!(
+    call(&router(&declared), "POST", "/media", withheld).await,
+    (404, json!({ "code": "unavailable", "error": "The platform no longer has it." }))
+  );
+  assert_eq!(declared.asked(), ["media -100 5", "media -100 6"]);
 }
 
 #[tokio::test]

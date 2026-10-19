@@ -15,13 +15,13 @@ mod error;
 mod inbound;
 mod media;
 mod message;
+mod missed;
 mod modes;
 mod numbering;
 mod openapi;
 mod patience;
 mod provider_client;
 mod receiver_bodies;
-mod refusal;
 mod send;
 
 pub use avatar::{AvatarList, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
@@ -34,11 +34,12 @@ pub use declaration::ChatDeclaration;
 pub use dialect::{ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, WireError};
 pub use inbound::{ChatReceiver, receiver_router};
-pub use media::{ChatMediaRequest, ChatMediaResult};
+pub use media::ChatMediaRequest;
 pub use message::{
   ChatFileKind, ChatGathered, ChatHandover, ChatMessage, FileItem, GatheredOutcome, InboundChatContext,
   MessageFile, RoomFacts, RoomKind,
 };
+pub use missed::{MissedPicture, MissedPictureReason};
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering};
 pub use openapi::{openapi, openapi_json};
@@ -47,5 +48,4 @@ pub use provider_client::{ChatProviderClient, ClientFailure};
 pub use receiver_bodies::{
   AvatarsUpdated, HistoryKept, HistoryRoom, Listened, ListenedQuery, RoomsOf, RoomsOfQuery,
 };
-pub use refusal::{ChatRefusal, MissedPicture, MissedPictureReason};
-pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker};
+pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatSpeaker};

@@ -2,9 +2,12 @@
 //! request body, its answer and the error answers it can give, for a service written in any language. The
 //! body schemas come from the types this crate sends and reads, each described as its sender writes it.
 
+use std::collections::BTreeMap;
+
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema, json_schema};
 use serde_json::{Map, Value, json};
+use strum::VariantArray;
 
 use crate::avatar::{AvatarList, ChatAvatarKind};
 use crate::bodies::{
@@ -12,11 +15,31 @@ use crate::bodies::{
   RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle,
 };
 use crate::declaration::ChatDeclaration;
-use crate::error::WireError;
-use crate::media::{ChatMediaRequest, ChatMediaResult};
-use crate::message::{ChatGathered, ChatHandover};
+use crate::error::{ErrorCode, WireError};
+use crate::media::ChatMediaRequest;
+use crate::message::{ChatGathered, ChatHandover, MessageFile};
 use crate::receiver_bodies::{AvatarsUpdated, HistoryKept, Listened, ListenedQuery, RoomsOf, RoomsOfQuery};
-use crate::send::{ChatSendRequest, ChatSendResult};
+use crate::send::{ChatSendRequest, ChatSent};
+
+/// The refusals a send can answer.
+const SEND_REFUSALS: &[ErrorCode] = &[
+  ErrorCode::SpeakerNotAllowed,
+  ErrorCode::NotReady,
+  ErrorCode::Gone,
+  ErrorCode::UnsupportedCapability,
+  ErrorCode::NoPictureSent,
+  ErrorCode::SpeakerUnnumbered,
+  ErrorCode::Platform,
+];
+
+/// The answers short of a file that a fetch can give: the file withheld, and the refusals.
+const MEDIA_REFUSALS: &[ErrorCode] = &[
+  ErrorCode::Unavailable,
+  ErrorCode::NotReady,
+  ErrorCode::Gone,
+  ErrorCode::UnsupportedCapability,
+  ErrorCode::Platform,
+];
 
 /// Where the schemas the routes refer to stand in the document.
 const SCHEMAS: &str = "/components/schemas";
@@ -33,14 +56,12 @@ pub fn openapi() -> Value {
   let error = generator.subschema_for::<WireError>();
   let paths: Map<String, Value> = routes(&mut generator)
     .into_iter()
-    .map(|route| (route.path.to_owned(), json!({ route.method: route.operation() })))
+    .map(|route| (route.path.to_owned(), json!({ route.method: route.operation(&error) })))
     .collect();
-  let answered = |description: &str| {
-    json!({
-      "description": description,
-      "content": { "application/json": { "schema": error } },
-    })
-  };
+  let responses: Map<String, Value> = ErrorCode::VARIANTS
+    .iter()
+    .map(|&code| (response_name(code), answered(&error, &[code])))
+    .collect();
   json!({
     "openapi": "3.1.0",
     "info": {
@@ -64,22 +85,7 @@ pub fn openapi() -> Value {
     "paths": paths,
     "components": {
       "schemas": generator.take_definitions(true),
-      "responses": {
-        "BadRequest": answered(
-          "`bad-request`: the body is not JSON, or the body or the query is not the shape the route takes; the \
-           sentence names what is missing."
-        ),
-        "Unauthorized": answered("`unauthorized`: the bearer token is missing or wrong."),
-        "NothingHeld": answered(
-          "`nothing-held`: the route is right, but nothing is kept at the address the path names; a path whose \
-           parameters name no address the route can hold is answered `no-route`."
-        ),
-        "NotReady": answered(
-          "`not-ready`: the service is up but not ready to answer this route, such as a provider whose \
-           platform connection is not open yet."
-        ),
-        "Failed": answered("`failed`: the service failed while answering; the sentence is the failure."),
-      },
+      "responses": responses,
       "securitySchemes": {
         "bearer": {
           "type": "http",
@@ -104,9 +110,37 @@ const DESCRIPTION: &str = "The routes between chat providers and the receiver, w
   epoch milliseconds. Any other method and path is answered 404 `no-route` in the error shape. A route that keeps \
   pictures, and any route a service serves of its own beside these, answers 404 `nothing-held` where it keeps \
   nothing at the address its path names, so a caller tells an empty address from a wrong path by `code`. A route \
-  answering a list takes one cursor, `after`, and `limit`. A refusal is an answer: a \
-  send the provider does not perform is answered 200 with a typed refusal. A caller offers a request again \
-  only when the connection was refused, so a request that reached a listener is never made twice.";
+  answering a list takes one cursor, `after`, and `limit`. A refusal is answered like any error: a send or a \
+  fetch the provider does not perform is answered with its refusal's status in the error shape, with the \
+  refusal's kind as `code` and its English sentence as `error`, so a 2xx answer is always the route's success. \
+  A caller offers a request again only when the connection was refused, so a request that reached a listener is \
+  never made twice.";
+
+/// An answer in the error shape with one of these codes, all answered with one status.
+fn answered(error: &Schema, codes: &[ErrorCode]) -> Value {
+  let meaning = |code: ErrorCode| format!("`{}`: {}", code_name(code), code.meaning());
+  let description = match codes {
+    [code] => meaning(*code),
+    _ => codes.iter().map(|&code| format!("- {}", meaning(code))).collect::<Vec<_>>().join("\n"),
+  };
+  json!({
+    "description": description,
+    "content": { "application/json": { "schema": error } },
+  })
+}
+
+/// The code as it crosses the wire.
+fn code_name(code: ErrorCode) -> String {
+  match serde_json::to_value(code) {
+    Ok(Value::String(name)) => name,
+    _ => unreachable!("an error code is a unit variant, so it renders as a string"),
+  }
+}
+
+/// The name the document's answer of one code stands under: the code's own name in Rust.
+fn response_name(code: ErrorCode) -> String {
+  format!("{code:?}")
+}
 
 /// Which side serves a route.
 #[derive(Clone, Copy)]
@@ -135,15 +169,39 @@ struct Route {
   can_fail: bool,
   /// Whether the route can answer 404 `nothing-held`.
   holds: bool,
+  /// The refusals the route can answer, each with its code's status.
+  refuses: &'static [ErrorCode],
 }
 
 impl Route {
-  fn operation(self) -> Value {
+  /// The route's operation. A status that one code answers refers to that code's answer; a status that
+  /// several share describes them together.
+  fn operation(self, error: &Schema) -> Value {
     let tag = match self.side {
       Side::Provider => "provider",
       Side::Receiver => "receiver",
     };
-    let answered = |name: &str| json!({ "$ref": format!("#/components/responses/{name}") });
+    let mut codes = Vec::new();
+    if self.body.is_some() || self.parameters.iter().any(|parameter| parameter["in"] == "query") {
+      codes.push(ErrorCode::BadRequest);
+    }
+    codes.push(ErrorCode::Unauthorized);
+    if self.holds {
+      codes.push(ErrorCode::NothingHeld);
+    }
+    if self.can_wait {
+      codes.push(ErrorCode::NotReady);
+    }
+    if self.can_fail {
+      codes.push(ErrorCode::Failed);
+    }
+    let mut statuses: BTreeMap<u16, Vec<ErrorCode>> = BTreeMap::new();
+    for &code in codes.iter().chain(self.refuses) {
+      let shared = statuses.entry(code.status()).or_default();
+      if !shared.contains(&code) {
+        shared.push(code);
+      }
+    }
     let mut responses = Map::new();
     responses.insert(
       "200".into(),
@@ -152,18 +210,12 @@ impl Route {
         "content": self.answer,
       }),
     );
-    if self.body.is_some() || self.parameters.iter().any(|parameter| parameter["in"] == "query") {
-      responses.insert("400".into(), answered("BadRequest"));
-    }
-    responses.insert("401".into(), answered("Unauthorized"));
-    if self.holds {
-      responses.insert("404".into(), answered("NothingHeld"));
-    }
-    if self.can_wait {
-      responses.insert("409".into(), answered("NotReady"));
-    }
-    if self.can_fail {
-      responses.insert("500".into(), answered("Failed"));
+    for (status, codes) in statuses {
+      let answer = match codes.as_slice() {
+        [code] => json!({ "$ref": format!("#/components/responses/{}", response_name(*code)) }),
+        _ => answered(error, &codes),
+      };
+      responses.insert(status.to_string(), answer);
     }
     let mut operation = json!({
       "tags": [tag],
@@ -220,6 +272,7 @@ fn get<Answer: JsonSchema>(
     can_wait: can_fail,
     can_fail,
     holds: false,
+    refuses: &[],
   }
 }
 
@@ -243,6 +296,7 @@ fn post<Body: JsonSchema, Answer: JsonSchema>(
     can_wait: can_fail,
     can_fail,
     holds: false,
+    refuses: &[],
   }
 }
 
@@ -270,6 +324,7 @@ fn avatar_routes(generator: &mut SchemaGenerator) -> [Route; 2] {
     can_wait: false,
     can_fail: true,
     holds: false,
+    refuses: &[],
   };
   let picture = Route {
     side: Side::Provider,
@@ -292,6 +347,7 @@ fn avatar_routes(generator: &mut SchemaGenerator) -> [Route; 2] {
     can_wait: false,
     can_fail: true,
     holds: true,
+    refuses: &[],
   };
   [list, picture]
 }
@@ -323,6 +379,7 @@ fn receiver<Body: JsonSchema>(
     can_wait: true,
     can_fail: true,
     holds: false,
+    refuses: &[],
   }
 }
 
@@ -345,6 +402,7 @@ fn receiver_answering<Body: JsonSchema, Answer: JsonSchema>(
     can_wait: true,
     can_fail: true,
     holds: false,
+    refuses: &[],
   }
 }
 
@@ -361,22 +419,30 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       false,
     ),
     get::<ChatHealth>(generator, "/health", "health", "Whether the provider is ready.", false),
-    post::<ChatSendRequest, ChatSendResult>(
-      generator,
-      "/send",
-      "send",
-      "One send into one room. A send of a verb the provider does not declare is refused \
-       `unsupported-capability`.",
-      true,
-    ),
-    post::<ChatMediaRequest, ChatMediaResult>(
-      generator,
-      "/media",
-      "media",
-      "A picture or a file a message carried, fetched again from the platform; refused where the provider \
-       does not declare `fetchMedia`.",
-      true,
-    ),
+    Route {
+      refuses: SEND_REFUSALS,
+      ..post::<ChatSendRequest, ChatSent>(
+        generator,
+        "/send",
+        "send",
+        "One send into one room, answered with what it came to; a send the provider does not perform is \
+         answered with its refusal. A send of a verb the provider does not declare is refused \
+         `unsupported-capability`.",
+        true,
+      )
+    },
+    Route {
+      refuses: MEDIA_REFUSALS,
+      ..post::<ChatMediaRequest, MessageFile>(
+        generator,
+        "/media",
+        "media",
+        "A picture or a file a message carried, fetched again from the platform; `unavailable` where the \
+         platform would not give it, and refused `unsupported-capability` where the provider does not \
+         declare `fetchMedia`.",
+        true,
+      )
+    },
     post::<DialectRead, DialectReading>(
       generator,
       "/dialect/read",

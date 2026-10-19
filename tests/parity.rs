@@ -255,60 +255,20 @@ macro_rules! fixtures {
         .collect()
       }
 
-      /// Every way a send comes out: sent with and without a number and with missed pictures, and every
-      /// refusal.
-      pub fn send_results() -> Vec<ChatSendResult> {
+      /// Every way a performed send comes out: with and without a number, and with missed pictures.
+      pub fn sents() -> Vec<ChatSent> {
         vec![
-          ChatSendResult::Sent {
+          ChatSent {
             message_id: Some(501),
             missed: vec![],
           },
-          ChatSendResult::Sent {
+          ChatSent {
             message_id: None,
             missed: vec![],
           },
-          ChatSendResult::Sent {
+          ChatSent {
             message_id: Some(502),
             missed: missed(),
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::UnsupportedCapability {
-              label: label(),
-              capability: ChatCapability::Sticker,
-            },
-            gone: false,
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::NoPictureSent {
-              label: label(),
-              missed: missed(),
-            },
-            gone: false,
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::SpeakerNotAllowed {
-              label: label(),
-              agent: "helper".into(),
-            },
-            gone: false,
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::SpeakerUnnumbered {
-              label: label(),
-              agent: "helper".into(),
-            },
-            gone: false,
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::NotReady { label: label() },
-            gone: false,
-          },
-          ChatSendResult::Refused {
-            refusal: ChatRefusal::Platform {
-              label: label(),
-              detail: "That message can no longer be edited.".into(),
-            },
-            gone: true,
           },
         ]
       }
@@ -328,19 +288,8 @@ macro_rules! fixtures {
         ]
       }
 
-      pub fn media_results() -> Vec<ChatMediaResult> {
-        vec![
-          ChatMediaResult::Fetched(message_file("photo-5", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0])),
-          ChatMediaResult::Unavailable {
-            reason: "The platform no longer keeps that file.".into(),
-          },
-          ChatMediaResult::Refused {
-            refusal: ChatRefusal::UnsupportedCapability {
-              label: label(),
-              capability: ChatCapability::FetchMedia,
-            },
-          },
-        ]
+      pub fn fetched() -> MessageFile {
+        message_file("photo-5", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0])
       }
 
       /// A provider that can do everything, in every mode, and one that is not configured and declares
@@ -748,7 +697,7 @@ macro_rules! fixtures {
         vec![HistoryKept { kept: true }, HistoryKept { kept: false }, HistoryKept { kept: true }]
       }
 
-      /// The error shape with every code.
+      /// The error shape with every code, the refusals' among them.
       pub fn wire_errors() -> Vec<WireError> {
         vec![
           WireError::new(ErrorCode::BadRequest, "The body is not the shape this route takes."),
@@ -757,6 +706,16 @@ macro_rules! fixtures {
           WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for room 7."),
           WireError::new(ErrorCode::NotReady, "The receiver is still starting."),
           WireError::new(ErrorCode::Failed, "The archive could not be written."),
+          WireError::new(ErrorCode::Unavailable, "The platform no longer keeps that file."),
+          WireError::new(ErrorCode::UnsupportedCapability, "Stand-in cannot send a sticker."),
+          WireError::new(ErrorCode::NoPictureSent, "Stand-in: no picture was sent."),
+          WireError::new(ErrorCode::SpeakerNotAllowed, "Stand-in cannot send in the name of agent helper."),
+          WireError::new(
+            ErrorCode::SpeakerUnnumbered,
+            "Stand-in has no number for agent helper, so it cannot send in that agent's name.",
+          ),
+          WireError::new(ErrorCode::Platform, "Stand-in: That message cannot be pinned."),
+          WireError::new(ErrorCode::Gone, "Stand-in: That message can no longer be edited."),
         ]
       }
     }
@@ -798,9 +757,21 @@ where
 #[test]
 fn every_send_and_what_it_came_to_crosses_both_ways() {
   crosses("send", on_provider::sends(), on_client::sends());
-  crosses("send result", on_provider::send_results(), on_client::send_results());
+  crosses("sent", on_provider::sents(), on_client::sents());
   crosses("media request", on_provider::media_requests(), on_client::media_requests());
-  crosses("media result", on_provider::media_results(), on_client::media_results());
+}
+
+#[test]
+fn both_crates_answer_every_code_with_the_same_status() {
+  use strum::VariantArray;
+  let provider = bmo_chat::ErrorCode::VARIANTS;
+  let client = bmo_chat_client::ErrorCode::VARIANTS;
+  assert_eq!(provider.len(), client.len(), "both crates have every code");
+  for code in provider {
+    let read: bmo_chat_client::ErrorCode =
+      serde_json::from_value(serde_json::to_value(code).unwrap()).unwrap();
+    assert_eq!(code.status(), read.status(), "{code:?}");
+  }
 }
 
 #[test]
@@ -842,57 +813,31 @@ fn every_inbound_body_and_the_error_shape_cross_both_ways() {
 #[test]
 fn the_fixtures_hold_every_member_of_every_set() {
   use bmo_chat::{
-    ChatAvatarKind, ChatCapability, ChatFileKind, ChatMediaResult, ChatModeStanding, ChatNumberSpace,
-    ChatReach, ChatRefusal, ChatSendResult, ChatVerb, ChatVoice, ErrorCode, GatheredOutcome, RoomKind,
+    ChatAvatarKind, ChatCapability, ChatFileKind, ChatModeStanding, ChatNumberSpace, ChatReach, ChatVerb,
+    ChatVoice, ErrorCode, GatheredOutcome, RoomKind,
   };
 
   let verbs: BTreeSet<ChatVerb> = on_provider::sends().iter().map(|request| request.send.verb()).collect();
   assert_eq!(verbs, ChatVerb::ALL.iter().copied().collect());
 
-  let mut given = Vec::new();
-  let mut missed = Vec::new();
-  for result in on_provider::send_results() {
-    match result {
-      ChatSendResult::Sent {
-        missed: pictures, ..
-      } => missed.extend(pictures),
-      ChatSendResult::Refused { refusal, .. } => given.push(refusal),
-    }
-  }
-  let media = on_provider::media_results();
-  for result in &media {
-    if let ChatMediaResult::Refused { refusal } = result {
-      given.push(refusal.clone());
-    }
-  }
-  for refusal in &given {
-    if let ChatRefusal::NoPictureSent {
-      missed: pictures, ..
-    } = refusal
-    {
-      missed.extend(pictures.iter().cloned());
-    }
-  }
-  let refusals: BTreeSet<_> = given.iter().map(ChatRefusal::code).collect();
+  let missed: Vec<_> = on_provider::sents().into_iter().flat_map(|sent| sent.missed).collect();
   let reasons: BTreeSet<_> = missed.iter().map(|picture| picture.reason.code()).collect();
-  assert_eq!(
-    refusals,
-    BTreeSet::from([
-      "unsupported-capability",
-      "no-picture-sent",
-      "speaker-not-allowed",
-      "speaker-unnumbered",
-      "not-ready",
-      "platform",
-    ])
-  );
   assert_eq!(
     reasons,
     BTreeSet::from(["not-an-address", "outside-data-root", "missing-file", "unfetched", "platform"])
   );
-  assert!(media.iter().any(|result| matches!(result, ChatMediaResult::Fetched(_))));
-  assert!(media.iter().any(|result| matches!(result, ChatMediaResult::Unavailable { .. })));
-  assert!(media.iter().any(|result| matches!(result, ChatMediaResult::Refused { .. })));
+  let refused: Vec<ErrorCode> = refusals().iter().map(bmo_chat::ChatRefusal::code).collect();
+  for code in [
+    ErrorCode::UnsupportedCapability,
+    ErrorCode::NoPictureSent,
+    ErrorCode::SpeakerNotAllowed,
+    ErrorCode::SpeakerUnnumbered,
+    ErrorCode::NotReady,
+    ErrorCode::Platform,
+    ErrorCode::Gone,
+  ] {
+    assert!(refused.contains(&code), "the stand-in refuses with {code:?}");
+  }
 
   let declarations = on_provider::declarations();
   let modes: Vec<_> = declarations.iter().flat_map(|declaration| declaration.modes.clone()).collect();
@@ -954,17 +899,81 @@ fn the_fixtures_hold_every_member_of_every_set() {
   assert!(gathered.iter().any(|body| matches!(body.outcome, GatheredOutcome::Kept { .. })));
   assert!(gathered.iter().any(|body| matches!(body.outcome, GatheredOutcome::NotKept { .. })));
   let codes: Vec<ErrorCode> = on_provider::wire_errors().iter().map(|error| error.code).collect();
-  assert_eq!(
-    codes,
-    [
-      ErrorCode::BadRequest,
-      ErrorCode::Unauthorized,
-      ErrorCode::NoRoute,
-      ErrorCode::NothingHeld,
-      ErrorCode::NotReady,
-      ErrorCode::Failed,
-    ]
-  );
+  assert_eq!(codes, <ErrorCode as strum::VariantArray>::VARIANTS);
+}
+
+/// Every refusal the stand-in provider gives, as the provider builds it.
+fn refusals() -> Vec<bmo_chat::ChatRefusal> {
+  use bmo_chat::{ChatCapability, ChatRefusal};
+  let label = || "Stand-in".to_owned();
+  let missed = on_provider::sents().into_iter().flat_map(|sent| sent.missed).collect();
+  vec![
+    ChatRefusal::UnsupportedCapability {
+      label: label(),
+      capability: ChatCapability::Sticker,
+    },
+    ChatRefusal::NoPictureSent {
+      label: label(),
+      missed,
+    },
+    ChatRefusal::SpeakerNotAllowed {
+      label: label(),
+      agent: "helper".into(),
+    },
+    ChatRefusal::SpeakerUnnumbered {
+      label: label(),
+      agent: "helper".into(),
+    },
+    ChatRefusal::NotReady { label: label() },
+    ChatRefusal::Platform {
+      label: label(),
+      detail: "That message cannot be pinned.".into(),
+    },
+    ChatRefusal::Gone {
+      label: label(),
+      detail: "That message can no longer be edited.".into(),
+    },
+  ]
+}
+
+/// What the stand-in provider's sends come to, in turn: every performed send, then every refusal.
+fn send_outcomes() -> Vec<bmo_chat::ChatSendResult> {
+  use bmo_chat::ChatSendResult;
+  let sent = on_provider::sents().into_iter().map(ChatSendResult::Sent);
+  sent.chain(refusals().into_iter().map(ChatSendResult::Refused)).collect()
+}
+
+/// What the stand-in provider's fetches come to, in turn: the file, the file withheld, and two refusals.
+fn media_outcomes() -> Vec<bmo_chat::ChatMediaResult> {
+  use bmo_chat::ChatMediaResult;
+  let mut refusals = refusals();
+  vec![
+    ChatMediaResult::Fetched(on_provider::fetched()),
+    ChatMediaResult::Unavailable {
+      reason: "The platform no longer keeps that file.".into(),
+    },
+    ChatMediaResult::Refused(refusals.remove(0)),
+    ChatMediaResult::Refused(refusals.pop().expect("a refusal that the message is gone")),
+  ]
+}
+
+/// The provider's error shape as the client reads it, with the status the client expects for its code.
+fn as_the_client_reads(error: bmo_chat::WireError) -> (u16, bmo_chat_client::WireError) {
+  let read: bmo_chat_client::WireError =
+    serde_json::from_value(serde_json::to_value(error).unwrap()).expect("the client reads the error shape");
+  (read.code.status(), read)
+}
+
+/// The client's failure as the status and the error shape it was answered with.
+fn answered_with(failure: bmo_chat_client::ClientFailure) -> (u16, bmo_chat_client::WireError) {
+  match failure {
+    bmo_chat_client::ClientFailure::Answered {
+      status,
+      answer: Some(answer),
+      ..
+    } => (status, answer),
+    other => panic!("the router answered in the error shape, so the client says so: {other:?}"),
+  }
 }
 
 /// A waiter for both crates' patience that fails the test if it is ever asked to wait. The patience every
@@ -1220,7 +1229,7 @@ impl bmo_chat::ChatProvider for Stand {
       return Err("The platform dropped the connection.".into());
     }
     let mut sends = self.sends.lock().unwrap();
-    let mut results = on_provider::send_results();
+    let mut results = send_outcomes();
     let answer = results.swap_remove(sends.len() % results.len());
     sends.push(request);
     Ok(answer)
@@ -1245,7 +1254,7 @@ impl bmo_chat::ChatProvider for Stand {
     request: bmo_chat::ChatMediaRequest,
   ) -> Result<bmo_chat::ChatMediaResult, bmo_chat::ChatFailure> {
     let mut fetches = self.fetches.lock().unwrap();
-    let mut results = on_provider::media_results();
+    let mut results = media_outcomes();
     let answer = results.swap_remove(fetches.len() % results.len());
     fetches.push(request);
     Ok(answer)
@@ -1267,19 +1276,40 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
   assert_eq!(client.declaration().await.unwrap(), on_client::declarations().swap_remove(0));
   assert_eq!(client.health().await.unwrap(), on_client::healths().swap_remove(0));
 
-  let results = on_client::send_results();
+  let outcomes = send_outcomes();
+  assert!(on_client::sends().len() >= outcomes.len(), "every outcome is answered at least once");
   for (index, request) in on_client::sends().iter().enumerate() {
-    let result = client.send(request).await.unwrap();
-    assert_eq!(result, results[index % results.len()], "send {index}");
+    let result = client.send(request).await;
+    match &outcomes[index % outcomes.len()] {
+      bmo_chat::ChatSendResult::Sent(_) => {
+        let sent = on_client::sents().swap_remove(index % outcomes.len());
+        assert_eq!(result.unwrap(), sent, "send {index}");
+      }
+      bmo_chat::ChatSendResult::Refused(refusal) => assert_eq!(
+        answered_with(result.unwrap_err()),
+        as_the_client_reads(refusal.clone().into()),
+        "send {index}"
+      ),
+    }
   }
   assert_eq!(*stand.sends.lock().unwrap(), on_provider::sends());
 
   let requests = on_client::media_requests();
-  let results = on_client::media_results();
-  let fetched = requests.len().max(results.len());
+  let outcomes = media_outcomes();
+  let fetched = requests.len().max(outcomes.len());
   for index in 0..fetched {
-    let result = client.media(&requests[index % requests.len()]).await.unwrap();
-    assert_eq!(result, results[index % results.len()], "media {index}");
+    let result = client.media(&requests[index % requests.len()]).await;
+    let refused = match &outcomes[index % outcomes.len()] {
+      bmo_chat::ChatMediaResult::Fetched(_) => {
+        assert_eq!(result.unwrap(), on_client::fetched(), "media {index}");
+        continue;
+      }
+      bmo_chat::ChatMediaResult::Unavailable { reason } => {
+        bmo_chat::WireError::new(bmo_chat::ErrorCode::Unavailable, reason.clone())
+      }
+      bmo_chat::ChatMediaResult::Refused(refusal) => refusal.clone().into(),
+    };
+    assert_eq!(answered_with(result.unwrap_err()), as_the_client_reads(refused), "media {index}");
   }
   let provider_requests = on_provider::media_requests();
   let heard: Vec<_> =

@@ -2,8 +2,8 @@
 //! back as it went.
 
 use bmo_chat::{
-  AlbumItem, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker, ChatVerb, ChatVoice,
-  FileItem, MissedPicture, MissedPictureReason,
+  AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatSpeaker, ChatVerb, ChatVoice, FileItem,
+  MissedPicture, MissedPictureReason,
 };
 use serde_json::{Value, json};
 
@@ -330,26 +330,26 @@ fn bytes_that_are_not_base64_are_refused() {
 }
 
 #[test]
-fn sent_result() {
+fn sent() {
   crosses(
-    &ChatSendResult::Sent {
+    &ChatSent {
       message_id: Some(40),
       missed: vec![],
     },
-    json!({ "sent": true, "messageId": 40 }),
+    json!({ "messageId": 40 }),
   );
   crosses(
-    &ChatSendResult::Sent {
+    &ChatSent {
       message_id: None,
       missed: vec![],
     },
-    json!({ "sent": true, "messageId": null }),
+    json!({ "messageId": null }),
   );
 }
 
 #[test]
-fn sent_result_with_missed_pictures() {
-  let result = ChatSendResult::Sent {
+fn sent_with_missed_pictures() {
+  let sent = ChatSent {
     message_id: Some(41),
     missed: vec![MissedPicture {
       address: "/elsewhere/a.png".into(),
@@ -357,9 +357,9 @@ fn sent_result_with_missed_pictures() {
     }],
   };
   crosses(
-    &result,
+    &sent,
     json!({
-      "sent": true, "messageId": 41,
+      "messageId": 41,
       "missed": [{
         "address": "/elsewhere/a.png",
         "reason": {
@@ -368,29 +368,4 @@ fn sent_result_with_missed_pictures() {
       }],
     }),
   );
-}
-
-#[test]
-fn refused_result() {
-  let result = ChatSendResult::Refused {
-    refusal: ChatRefusal::NotReady {
-      label: "Platform".into(),
-    },
-    gone: true,
-  };
-  crosses(
-    &result,
-    json!({
-      "sent": false, "gone": true,
-      "refusal": { "code": "not-ready", "label": "Platform", "message": "Platform is not ready yet." },
-    }),
-  );
-}
-
-#[test]
-fn a_refused_result_without_a_refusal_is_refused() {
-  let why = serde_json::from_value::<ChatSendResult>(json!({ "sent": false }))
-    .unwrap_err()
-    .to_string();
-  assert!(why.contains("carries a refusal"), "{why}");
 }

@@ -14,7 +14,7 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 0.4.0 of both libraries; a caller pins that version or a later one for every
+This document states version 0.5.0 of both libraries; a caller pins that version or a later one for every
 route and field below.
 
 ## The OpenAPI document
@@ -45,9 +45,9 @@ is repaired and the file generated again.
   by the service that serves the routes, from its own configuration; the libraries read no environment
   variable themselves. A caller is configured with the token of the service it calls. A request with a
   missing or wrong token is answered 401.
-- **Refusals are answers.** A send the provider does not perform, a picture it cannot fetch and the like are
-  answered 200 with a typed refusal in the body. The error shape below is only for a request that could not be
-  answered at all.
+- **Refusals are errors.** A send the provider does not perform and a file it cannot fetch are answered with a
+  non-2xx status in the error shape below, like a request that could not be answered at all. A 2xx answer is
+  always the route's success.
 
 ### The error shape
 
@@ -67,10 +67,28 @@ Every non-2xx answer has this body:
 | 409 | `not-ready` | the service is up but not ready to answer this route (a provider whose platform connection is not open yet) |
 | 500 | `failed` | the service failed while answering; the sentence is the failure |
 
-The two 404 codes share a status, so a caller tells a wrong path from an empty address by `code` alone.
+Codes that share a status are told apart by `code` alone: a wrong path from an empty address, and one refusal
+from another.
 `GET /avatars/{kind}/{id}` answers `nothing-held`, and so may a route a service serves of its own beside the
 protocol's, which answers its errors in this same shape. bmo-chat's error shape answers as an HTTP response with
 its code's status, so such a route returns it as it is. Both libraries carry `nothing-held` from version 0.2.0.
+
+### Refusals
+
+A refusal of `send` or `media` is answered in the error shape. Its `code` is the refusal's kind as `contract.md`
+lists it, and `error` is the refusal's English sentence as the provider rendered it, which carries the
+refusal's own fields (the capability, the agent, each missed picture with its reason). No other key crosses.
+
+| Status | `code` | When |
+|---|---|---|
+| 403 | `speaker-not-allowed` | the send names a speaker, and the provider speaks as the room's own agent alone |
+| 404 | `unavailable` | the platform would not give the file a `media` call asked for; the sentence says why |
+| 409 | `not-ready` | the provider is not ready yet: the same code and status as the error above |
+| 410 | `gone` | the message the call is about is one the platform no longer has, or will never let change again, so the caller lets go of it instead of asking again |
+| 422 | `unsupported-capability` | the provider does not declare the capability the send or the call needs |
+| 422 | `no-picture-sent` | none of the pictures of a send went |
+| 422 | `speaker-unnumbered` | the provider has no number in the room for the agent named as speaker |
+| 422 | `platform` | the platform refused, for the provider's own English reason |
 
 ### Retrying
 
@@ -115,31 +133,24 @@ One send. The body is a send as `contract.md` states it: `verb`, `chatId`, the v
 optionally `as`, `speaker`, `tag` and `prefix`. Bytes (`bytes` on a document, `audio` on an audio or a voice,
 `bytes` on an inline album item) are base64.
 
-The answer is a send result, distinguished by `sent`:
+The answer, for a send the provider performed, is `messageId` (number or null) and optionally `missed`, a
+list of the pictures of an album that did not go, each `address` and `reason`. A missed picture's `reason` is
+an object with `code`, `message` (the English sentence) and, for `platform`, `detail`.
 
-| `sent` | Other fields |
-|---|---|
-| true | `messageId` (number or null); optional `missed`, a list of missed pictures, each `address` and `reason` |
-| false | `refusal`, a refusal object; `gone` (boolean) |
-
-A refusal object is `code`, `message` (the English sentence as the provider rendered it) and the variant's own
-fields as `contract.md` lists them: `label` on every refusal, plus `capability`, `missed`, `agent` or `detail`.
-A missed picture's `reason` is an object with `code`, `message` and, for `platform`, `detail`.
-
-A send of a verb the provider does not declare is answered `sent: false` with an `unsupported-capability`
-refusal, by the base before the provider is asked. A provider that fails while sending answers 500 `failed`.
+A send the provider does not perform is answered with a refusal (see Refusals). A send of a verb the provider
+does not declare is refused `unsupported-capability` by the base before the provider is asked. A provider that
+fails while sending answers 500 `failed`.
 
 ### `POST /media`
 
 A picture or a file a message carried, fetched again from the platform. Gated by the `fetchMedia` capability.
 The body is `chatId` and `messageId` (numbers), and optionally `sentAt` (number, epoch milliseconds), for a
-platform that finds an old message by its time. The answer is distinguished by `outcome`:
+platform that finds an old message by its time. The answer is a message file: `id`, `name`, `mime`, `bytes`
+(base64) and optionally `kind`.
 
-| `outcome` | Other fields |
-|---|---|
-| `fetched` | `id`, `name`, `mime`, `bytes` (base64) and optionally `kind`: a message file |
-| `unavailable` | `reason`: an English sentence saying why the platform would not give it |
-| `refused` | `refusal`, a refusal object (`unsupported-capability` for a provider that does not declare `fetchMedia`) |
+A file the platform would not give is answered 404 `unavailable`, and a call the provider refuses is answered
+with its refusal (see Refusals). A provider that does not declare `fetchMedia` is refused
+`unsupported-capability` by the base before the provider is asked.
 
 ### `POST /dialect/read`
 

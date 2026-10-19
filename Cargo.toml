@@ -5,7 +5,7 @@ members = ["provider", "client"]
 resolver = "3"
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 
 [workspace.dependencies]
@@ -39,4 +39,5 @@ bmo-chat-client = { path = "client" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+strum.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }

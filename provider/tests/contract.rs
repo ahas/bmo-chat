@@ -9,8 +9,8 @@ use bmo_chat::{
   AvatarsUpdated, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatGathered, ChatHandover,
   ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberRange,
   ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
-  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatVerb, ChatVoice, HistoryRoom, ListenedQuery,
-  PlainDialect, RoomKind, RoomsOfQuery,
+  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatVerb, ChatVoice, ErrorCode,
+  HistoryRoom, ListenedQuery, PlainDialect, RoomKind, RoomsOfQuery,
 };
 
 const ROOM: i64 = -100;
@@ -229,18 +229,15 @@ impl ChatProvider for StandIn {
   }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
     if let Some(refusal) = self.undeclared(request.send.verb().into()) {
-      return Ok(ChatSendResult::Refused {
-        refusal,
-        gone: false,
-      });
+      return Ok(ChatSendResult::Refused(refusal));
     }
     if let ChatSend::Text { text, fold, .. } = &request.send {
       self.sent.lock().unwrap().push(self.dialect.outgoing(text, *fold));
     }
-    Ok(ChatSendResult::Sent {
+    Ok(ChatSendResult::Sent(ChatSent {
       message_id: Some(1),
       missed: vec![],
-    })
+    }))
   }
 }
 
@@ -313,10 +310,10 @@ async fn the_stand_in_answers_the_whole_contract_as_a_shared_provider() {
   assert_eq!(provider.room_title(OWNER).await.unwrap(), None);
   assert_eq!(
     provider.send(text("hello", false)).await.unwrap(),
-    ChatSendResult::Sent {
+    ChatSendResult::Sent(ChatSent {
       message_id: Some(1),
       missed: vec![]
-    }
+    })
   );
 }
 
@@ -378,7 +375,7 @@ fn an_undeclared_verb_is_refused_with_one_sentence_naming_what_was_asked_and_the
       capability: ChatCapability::Sticker
     }
   );
-  assert_eq!(refusal.code(), "unsupported-capability");
+  assert_eq!(refusal.code(), ErrorCode::UnsupportedCapability);
   assert_eq!(refusal.to_string(), "Platform cannot send a sticker.");
   assert_eq!(provider.undeclared(ChatCapability::Text), None);
 }
@@ -395,12 +392,9 @@ async fn and_the_refusal_is_what_the_send_answers_rather_than_a_failure_or_a_sil
 
   assert_eq!(
     provider.send(sticker).await.unwrap(),
-    ChatSendResult::Refused {
-      refusal: provider.unsupported(ChatCapability::Sticker),
-      gone: false
-    }
+    ChatSendResult::Refused(provider.unsupported(ChatCapability::Sticker))
   );
-  assert!(matches!(provider.send(text("here", false)).await.unwrap(), ChatSendResult::Sent { .. }));
+  assert!(matches!(provider.send(text("here", false)).await.unwrap(), ChatSendResult::Sent(_)));
 }
 
 #[tokio::test]
@@ -413,7 +407,7 @@ async fn every_verb_a_provider_does_not_declare_is_refused_by_the_one_mechanism(
   }
   let result = provider.send(text("hello", false)).await.unwrap();
   assert!(
-    matches!(result, ChatSendResult::Refused { refusal, .. } if refusal.code() == "unsupported-capability")
+    matches!(result, ChatSendResult::Refused(refusal) if refusal.code() == ErrorCode::UnsupportedCapability)
   );
 }
 
@@ -428,12 +422,10 @@ async fn a_provider_with_no_fetch_of_its_own_refuses_one() {
 
   assert_eq!(
     provider.fetch_media(request).await.unwrap(),
-    ChatMediaResult::Refused {
-      refusal: ChatRefusal::UnsupportedCapability {
-        label: "Platform".into(),
-        capability: ChatCapability::FetchMedia
-      }
-    }
+    ChatMediaResult::Refused(ChatRefusal::UnsupportedCapability {
+      label: "Platform".into(),
+      capability: ChatCapability::FetchMedia
+    })
   );
 }
 

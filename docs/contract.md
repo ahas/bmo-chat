@@ -200,10 +200,10 @@ Whether a person behind a private room is a user is the receiver's question, not
 
 A provider that declares `fetchMedia` fetches the picture or the file a message carried from the platform
 again, given the message's `chatId`, `messageId` and, for a platform that finds an old message by its time,
-`sentAt` in epoch milliseconds. The answer is `fetched` with a message file (see Files), `unavailable` with
-the platform's reason in English, or `refused` with a refusal. A provider that does not declare `fetchMedia`
-refuses with `unsupported-capability`, which is also what the base answers for a provider that supplies no
-fetch of its own.
+`sentAt` in epoch milliseconds. The fetch comes to a message file (see Files), to `unavailable` with the
+platform's reason in English, or to a refusal. A provider that does not declare `fetchMedia` refuses with
+`unsupported-capability`, which is also what the base answers for a provider that supplies no fetch of its
+own. Only the file crosses as an answer; `unavailable` and a refusal cross as errors (see Refusals).
 
 ## Messages
 
@@ -347,16 +347,14 @@ holds the bytes it sent, and the send's result gives it the message number to ke
 
 ### Results
 
-`ChatSendResult` is one of:
+A send comes to one of:
 
-- **sent**: `messageId` (null where the platform hands none back), and optionally `missed`, the pictures
-  of an album that did not go, each a `MissedPicture`.
-- **refused**: a `refusal` (see below), and `gone` (true when the refusal is about a message the
-  platform no longer has, or will never let change again, so the caller lets go of it instead of asking
-  again).
+- **sent**: a `ChatSent`, which is `messageId` (null where the platform hands none back), and optionally
+  `missed`, the pictures of an album that did not go, each a `MissedPicture`. This is the send's answer.
+- **refused**: a `ChatRefusal` (see below), which crosses as an error.
 
-A send that the provider does not perform is answered as refused and never dropped. A provider that fails
-while performing a send answers with the error shape in `protocol.md`.
+A send that the provider does not perform is refused and never dropped. A provider that fails while
+performing a send answers with the error shape in `protocol.md`.
 
 `MissedPicture` is a picture by the `address` it was given as, with a `reason`.
 
@@ -366,16 +364,24 @@ Every refusal is a fixed English sentence and a code a caller can match on. Tran
 language happens where the language packs are, never here. The sentence takes `label`, the provider's label,
 and the variant's own fields.
 
+A refusal crosses the wire in the error shape of `protocol.md`: its code as `code`, its sentence as `error`,
+with the status below. The fields stay with the provider, which renders them into the sentence; a caller
+matches on the code and shows the sentence.
+
 `ChatRefusal`:
 
-| Code | Fields | Sentence |
-|---|---|---|
-| `unsupported-capability` | `label`, `capability` | "{label} cannot {what}." where {what} is the capability's words below |
-| `no-picture-sent` | `label`, `missed` | "{label}: no picture was sent." followed by one line per missed picture, "{address}: {reason}" |
-| `speaker-not-allowed` | `label`, `agent` | "{label} cannot send in the name of agent {agent}." |
-| `speaker-unnumbered` | `label`, `agent` | "{label} has no number for agent {agent}, so it cannot send in that agent's name." |
-| `not-ready` | `label` | "{label} is not ready yet." |
-| `platform` | `label`, `detail` | "{label}: {detail}" where {detail} is the provider's own English reason |
+| Code | Status | Fields | Sentence |
+|---|---|---|---|
+| `unsupported-capability` | 422 | `label`, `capability` | "{label} cannot {what}." where {what} is the capability's words below |
+| `no-picture-sent` | 422 | `label`, `missed` | "{label}: no picture was sent." followed by one line per missed picture, "{address}: {reason}" |
+| `speaker-not-allowed` | 403 | `label`, `agent` | "{label} cannot send in the name of agent {agent}." |
+| `speaker-unnumbered` | 422 | `label`, `agent` | "{label} has no number for agent {agent}, so it cannot send in that agent's name." |
+| `not-ready` | 409 | `label` | "{label} is not ready yet." |
+| `platform` | 422 | `label`, `detail` | "{label}: {detail}" where {detail} is the provider's own English reason |
+| `gone` | 410 | `label`, `detail` | "{label}: {detail}", for a message the platform no longer has or will never let change again, so the caller lets go of it instead of asking again |
+
+A fetch the platform would not give is no refusal: it crosses as 404 `unavailable`, with the platform's reason
+as `error`.
 
 The capability words:
 

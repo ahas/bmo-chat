@@ -1,6 +1,6 @@
 //! A send, one verb at a time, and what it came to.
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::capability::ChatVerb;
 use crate::message::FileItem;
@@ -161,85 +161,20 @@ impl ChatSendRequest {
   }
 }
 
-/// What a send came to. On the wire the two are told apart by `sent`.
+/// A send the provider performed: the answer of `send`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSent {
+  /// Null where the platform hands none back.
+  pub message_id: Option<i64>,
+  /// The pictures of an album that did not go; empty where everything went, and then left out.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub missed: Vec<MissedPicture>,
+}
+
+/// What a send came to. A refusal crosses the wire in the error shape, so only `Sent` is an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatSendResult {
-  Sent {
-    /// Null where the platform hands none back.
-    message_id: Option<i64>,
-    /// The pictures of an album that did not go; empty where everything went.
-    missed: Vec<MissedPicture>,
-  },
-  Refused {
-    refusal: ChatRefusal,
-    /// The refusal is about a message the platform no longer has, or will never let change again.
-    gone: bool,
-  },
-}
-
-#[derive(Serialize)]
-#[serde(untagged, rename_all_fields = "camelCase")]
-enum ResultOut<'a> {
-  Sent {
-    sent: bool,
-    message_id: Option<i64>,
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    missed: &'a [MissedPicture],
-  },
-  Refused {
-    sent: bool,
-    refusal: &'a ChatRefusal,
-    gone: bool,
-  },
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ResultIn {
-  sent: bool,
-  #[serde(default)]
-  message_id: Option<i64>,
-  #[serde(default)]
-  missed: Vec<MissedPicture>,
-  #[serde(default)]
-  refusal: Option<ChatRefusal>,
-  #[serde(default)]
-  gone: bool,
-}
-
-impl Serialize for ChatSendResult {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    match self {
-      Self::Sent { message_id, missed } => ResultOut::Sent {
-        sent: true,
-        message_id: *message_id,
-        missed,
-      },
-      Self::Refused { refusal, gone } => ResultOut::Refused {
-        sent: false,
-        refusal,
-        gone: *gone,
-      },
-    }
-    .serialize(serializer)
-  }
-}
-
-impl<'de> Deserialize<'de> for ChatSendResult {
-  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    let fields = ResultIn::deserialize(deserializer)?;
-    if fields.sent {
-      return Ok(Self::Sent {
-        message_id: fields.message_id,
-        missed: fields.missed,
-      });
-    }
-    let refusal = fields
-      .refusal
-      .ok_or_else(|| serde::de::Error::custom("a send result that was not sent carries a refusal"))?;
-    Ok(Self::Refused {
-      refusal,
-      gone: fields.gone,
-    })
-  }
+  Sent(ChatSent),
+  Refused(ChatRefusal),
 }

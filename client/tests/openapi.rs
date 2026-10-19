@@ -14,14 +14,13 @@ use axum::response::{IntoResponse, Response};
 use bmo_chat_client::{
   AlbumItem, AvatarList, AvatarsQuery, AvatarsUpdated, ChatAvatar, ChatAvatarKind, ChatCapability,
   ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatGathered, ChatHandover,
-  ChatHealth, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding,
-  ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach,
-  ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSpeaker,
-  ChatVerb, ChatVoice, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
-  GatheredOutcome, HistoryKept, HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile,
-  MissedPicture, MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind, RoomKindAnswer,
-  RoomOwns, RoomPerson, RoomQuery, RoomTitle, RoomsOf, RoomsOfQuery, WireError, openapi, openapi_json,
-  receiver_router,
+  ChatHealth, ChatMarkup, ChatMediaRequest, ChatMessage, ChatModeStanding, ChatNumberRange,
+  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode,
+  ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatSpeaker, ChatVerb, ChatVoice, DialectCheck,
+  DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem, GatheredOutcome, HistoryKept,
+  HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile, MissedPicture,
+  MissedPictureReason, OwnerRoom, RoomFacts, RoomIdentity, RoomKind, RoomKindAnswer, RoomOwns, RoomPerson,
+  RoomQuery, RoomTitle, RoomsOf, RoomsOfQuery, WireError, openapi, openapi_json, receiver_router,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -362,9 +361,8 @@ fn every_send() -> Vec<ChatSendRequest> {
     .collect()
 }
 
-fn every_refusal() -> Vec<ChatRefusal> {
-  let label = || "The Platform".to_owned();
-  let missed = [
+fn every_missed_picture() -> Vec<MissedPicture> {
+  [
     MissedPictureReason::NotAnAddress,
     MissedPictureReason::OutsideDataRoot,
     MissedPictureReason::MissingFile,
@@ -378,30 +376,7 @@ fn every_refusal() -> Vec<ChatRefusal> {
     address: "/nowhere.png".into(),
     reason,
   })
-  .collect();
-  vec![
-    ChatRefusal::UnsupportedCapability {
-      label: label(),
-      capability: ChatCapability::FetchMedia,
-    },
-    ChatRefusal::NoPictureSent {
-      label: label(),
-      missed,
-    },
-    ChatRefusal::SpeakerNotAllowed {
-      label: label(),
-      agent: "helper".into(),
-    },
-    ChatRefusal::SpeakerUnnumbered {
-      label: label(),
-      agent: "helper".into(),
-    },
-    ChatRefusal::NotReady { label: label() },
-    ChatRefusal::Platform {
-      label: label(),
-      detail: "The room is closed.".into(),
-    },
-  ]
+  .collect()
 }
 
 fn declaration() -> ChatDeclaration {
@@ -484,7 +459,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     "post",
     "/send",
     Answer,
-    &ChatSendResult::Sent {
+    &ChatSent {
       message_id: Some(9),
       missed: vec![],
     },
@@ -493,22 +468,11 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     "post",
     "/send",
     Answer,
-    &ChatSendResult::Sent {
+    &ChatSent {
       message_id: None,
-      missed: vec![MissedPicture {
-        address: "/nowhere.png".into(),
-        reason: MissedPictureReason::MissingFile,
-      }],
+      missed: every_missed_picture(),
     },
   );
-  for (at, refusal) in every_refusal().into_iter().enumerate() {
-    let refused = ChatSendResult::Refused {
-      refusal: refusal.clone(),
-      gone: at % 2 == 0,
-    };
-    bodies.valid("post", "/send", Answer, &refused);
-    bodies.valid("post", "/media", Answer, &ChatMediaResult::Refused { refusal });
-  }
 
   for sent_at in [None, Some(1_760_000_000_000)] {
     let request = ChatMediaRequest {
@@ -518,15 +482,7 @@ fn every_body_the_crate_writes_is_valid_against_the_schema_of_its_route() {
     };
     bodies.valid("post", "/media", Request, &request);
   }
-  bodies.valid("post", "/media", Answer, &ChatMediaResult::Fetched(message_file()));
-  bodies.valid(
-    "post",
-    "/media",
-    Answer,
-    &ChatMediaResult::Unavailable {
-      reason: "The message is too old.".into(),
-    },
-  );
+  bodies.valid("post", "/media", Answer, &message_file());
 
   bodies.valid("post", "/dialect/read", Request, &DialectRead { text: "*a*".into() });
   for fold in [None, Some("a".to_owned())] {
@@ -692,24 +648,24 @@ fn a_body_not_of_its_route_shape_is_not_valid() {
   bodies.invalid("post", "/send", Request, json!({ "verb": "text", "text": "Hello." }));
   bodies.invalid("post", "/send", Request, json!({ "chatId": -100, "verb": "shout", "text": "Hello." }));
   bodies.invalid("post", "/send", Request, json!({ "chatId": -100, "verb": "document", "fileName": "a" }));
-  bodies.invalid("post", "/send", Answer, json!({ "sent": false, "gone": false }));
+  bodies.invalid("post", "/send", Answer, json!({ "missed": [] }));
   bodies.invalid(
     "post",
     "/send",
     Answer,
-    json!({ "sent": false, "gone": false, "refusal": { "code": "not-ready", "label": "The Platform" } }),
+    json!({ "messageId": 9, "missed": [{ "address": "/nowhere.png", "reason": { "code": "lost" } }] }),
   );
   bodies.invalid(
     "post",
     "/media",
     Answer,
-    json!({ "outcome": "fetched", "id": "file-1", "name": "a.png", "mime": "image/png" }),
+    json!({ "id": "file-1", "name": "a.png", "mime": "image/png" }),
   );
   bodies.invalid(
     "post",
     "/media",
     Answer,
-    json!({ "outcome": "fetched", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+    json!({ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
   );
   bodies.invalid("get", "/declaration", Answer, json!({ "key": "stand-in" }));
   bodies.invalid("post", "/room/is-owner", Answer, json!({ "kind": "channel" }));
@@ -763,6 +719,82 @@ fn the_avatar_routes_state_their_parameters_and_what_they_hold() {
       operation["responses"]["500"].is_object(),
       "a provider can fail while reading what it keeps"
     );
+  }
+}
+
+/// The codes an answer of the document names: the one its reference stands for, or those its description
+/// lists.
+fn codes_of(document: &Value, answer: &Value) -> Vec<String> {
+  let answer = match answer["$ref"].as_str() {
+    Some(reference) => document.pointer(reference.trim_start_matches('#')).expect("the reference resolves"),
+    None => answer,
+  };
+  assert_eq!(
+    answer["content"]["application/json"]["schema"],
+    json!({ "$ref": "#/components/schemas/WireError" })
+  );
+  let description = answer["description"].as_str().unwrap();
+  description
+    .split('`')
+    .skip(1)
+    .step_by(2)
+    .filter(|code| !code.contains(' '))
+    .map(str::to_owned)
+    .collect()
+}
+
+/// A route's path, with each status it refuses at and the codes it names there.
+type Refusing = (&'static str, &'static [(&'static str, &'static [&'static str])]);
+
+#[test]
+fn every_refusal_is_answered_at_its_status_in_the_error_shape() {
+  let document = openapi();
+  let refusals: &[Refusing] = &[
+    (
+      "/send",
+      &[
+        ("403", &["speaker-not-allowed"]),
+        ("409", &["not-ready"]),
+        ("410", &["gone"]),
+        ("422", &["unsupported-capability", "no-picture-sent", "speaker-unnumbered", "platform"]),
+      ],
+    ),
+    (
+      "/media",
+      &[
+        ("404", &["unavailable"]),
+        ("409", &["not-ready"]),
+        ("410", &["gone"]),
+        ("422", &["unsupported-capability", "platform"]),
+      ],
+    ),
+  ];
+  for (path, statuses) in refusals {
+    let responses = &document["paths"][path]["post"]["responses"];
+    for (status, codes) in *statuses {
+      let named = codes_of(&document, &responses[status]);
+      for code in *codes {
+        assert!(named.iter().any(|named| named == code), "{path} {status} names `{code}`: {named:?}");
+      }
+    }
+  }
+  let refusal_codes = [
+    "speaker-not-allowed",
+    "gone",
+    "unsupported-capability",
+    "no-picture-sent",
+    "unavailable",
+  ];
+  for path in ["/declaration", "/health", "/dialect/read", "/room/owns"] {
+    let method = if path.starts_with("/room") || path.starts_with("/dialect") { "post" } else { "get" };
+    let responses = document["paths"][path][method]["responses"].as_object().unwrap();
+    for answer in responses.iter().filter(|(status, _)| *status != "200").map(|(_, answer)| answer) {
+      let named = codes_of(&document, answer);
+      assert!(
+        named.iter().all(|code| !refusal_codes.contains(&code.as_str())),
+        "{path} refuses nothing: {named:?}"
+      );
+    }
   }
 }
 

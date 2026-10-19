@@ -17,13 +17,13 @@ use crate::bodies::{
 };
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
-use crate::media::{ChatMediaRequest, ChatMediaResult};
-use crate::message::RoomKind;
+use crate::media::ChatMediaRequest;
+use crate::message::{MessageFile, RoomKind};
 use crate::patience::ChatPatience;
-use crate::send::{ChatSendRequest, ChatSendResult};
+use crate::send::{ChatSendRequest, ChatSent};
 
-/// Why a call to a provider came to no answer of the route's shape. A refusal is an answer, so it is never
-/// one of these.
+/// Why a call to a provider came to no answer of the route's shape. A refusal is answered in the error
+/// shape, so it is `Answered` with the refusal's code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientFailure {
   /// Nothing listened at the address for the whole patience window.
@@ -71,6 +71,19 @@ impl fmt::Display for ClientFailure {
 
 impl std::error::Error for ClientFailure {}
 
+impl ClientFailure {
+  /// The code of the error shape the provider answered with, where it answered with one.
+  pub fn code(&self) -> Option<ErrorCode> {
+    match self {
+      Self::Answered {
+        answer: Some(answer),
+        ..
+      } => Some(answer.code),
+      _ => None,
+    }
+  }
+}
+
 /// One provider as the receiver reaches it: the provider routes at a base address, behind the provider's
 /// token. The receiver's own deployment configuration gives both, and the receiver holds one client for
 /// each provider it lists.
@@ -113,13 +126,15 @@ impl ChatProviderClient {
     self.get("health").await
   }
 
-  /// `POST /send`. A send the provider does not perform comes back as `ChatSendResult::Refused`.
-  pub async fn send(&self, request: &ChatSendRequest) -> Result<ChatSendResult, ClientFailure> {
+  /// `POST /send`. A send the provider does not perform comes back as `ClientFailure::Answered` with the
+  /// refusal's code.
+  pub async fn send(&self, request: &ChatSendRequest) -> Result<ChatSent, ClientFailure> {
     self.post("send", request).await
   }
 
-  /// `POST /media`.
-  pub async fn media(&self, request: &ChatMediaRequest) -> Result<ChatMediaResult, ClientFailure> {
+  /// `POST /media`. A file the platform would not give comes back as `ClientFailure::Answered` with
+  /// `unavailable`, and a refusal with the refusal's code.
+  pub async fn media(&self, request: &ChatMediaRequest) -> Result<MessageFile, ClientFailure> {
     self.post("media", request).await
   }
 
