@@ -6,9 +6,72 @@ routes and the pieces they carry, and take the format from here rather than rest
 
 ## Upstream and downstream
 
-An **upstream** is a repository whose API another calls or imports; that other is its **downstream**. A
-repository is often both: the receiver is downstream of the chat protocol and the agency, and upstream of the
-chat services that call it.
+Units are split by independence. An **upstream** is a unit a coding harness (Claude Code, Codex, a DeepSeek
+harness and the like) can take as its first entry point with no web console: offered to the harness as an MCP
+server, or imported by what the harness builds, it is of use with no other BMO unit running. A
+**downstream** is a unit that depends on BMO: its first entry point is BMO itself, a person talking to BMO's
+agents, BMO's console or BMO's chat platforms.
+
+This split is neither repository independence, which every repository keeps on its own, nor the rule that an
+upstream carries no context of its downstreams; both hold beside it. The test for a unit whose side is in doubt
+is whether it can be offered to a harness as an MCP server and be of use there: if it can, it is upstream.
+
+### The units
+
+| Side | Units |
+|---|---|
+| Upstream libraries | bmo-chat (the chat protocol), bmo-text, bmo-ui |
+| Upstream services | bmo-job (todo), bmo-brain, bmo-graph, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
+| Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-kakaotalk, bmo-discord, bmo-ms-teams, bmo-remote, bmo-cli, bmo-web |
+| Downstream content | bmo-gate-harvest, bmo-persona |
+| Skills | an `ahas-` skill is upstream, a `bmo-` skill is downstream |
+
+The units whose side needs a reason:
+
+- **The chat providers are downstream and the chat protocol upstream.** A provider's first entry point is a
+  person on its platform, and everything it takes in goes to the receiver. The protocol is a library any
+  chat service implements, and its MCP server drives any provider at a given address.
+- **bmo-voice is the speech engine; the briefings are bmo-briefing.** Speaking, transcribing and the voices
+  are of use to any harness. A briefing is spoken into one of BMO's rooms by one of BMO's agents.
+- **bmo-artifact is upstream as keeping, search and share links.** A research run and a spoken narration are
+  agent work, so they are downstream's, and they file what they make through its client.
+- **bmo-song, bmo-news and bmo-review are upstream as the work they compute**: a song made in a named voice, a
+  morning's material gathered and an edition filed, a review of a checkout. Choosing the agent, the room and
+  the morning, and sending the result, are downstream's.
+- **bmo-remote is downstream.** It relays a terminal and a desktop to a console screen; a harness already
+  has a shell, so offered as an MCP server it adds nothing.
+- **bmo-gate is downstream.** Its gates judge the turns of BMO's agents.
+
+### What an upstream is
+
+- **Its API knows nothing of BMO.** No route, field, parameter or tool names an agent, a worker, a room, the
+  owner, a persona, a companion, the receiver, an agent's session or run, a worker's job, the console, or
+  anything only BMO uses. The chat protocol's rooms, messages, people and account owner are the chat
+  domain's own nouns and stay in it.
+- **It groups and attributes by the caller's opaque strings,** the same names in every upstream: `scope`
+  for what a member is held under (BMO writes its own, such as a room or an agent, and the upstream never
+  reads them), `<role>Name` for who made or holds a member (`actorName`, `holderName`, `assigneeName`), and
+  `labels` for the caller's own metadata.
+- **It publishes its client and its harness plugin.** The plugin is an MCP server the unit's own binary
+  starts (`bmo-<unit> mcp`) and an `ahas-<unit>` skill that tells a harness when and how to use it. Each
+  tool is a thin call of one route, one library function or one of its commands, through the unit's own
+  client.
+- **A unit that keeps state is middleware,** in the way Redis is one: it stores members, serves them through
+  its API and publishes its own events, and never executes. It launches no run, opens no agent session,
+  sends nothing to a room and calls no downstream. What happens at a time is an event a client acts on
+  (`reminder.due`, `watch.fired`, `lease.expired`). Work is taken by a lease: `POST /leases` takes the next
+  member of a queue for a holder for a span, `PATCH` renews it, `DELETE` gives it back, and a lease that runs
+  out gives its member back. bmo-job, bmo-brain and bmo-graph are middleware.
+- **It calls only upstreams,** by their clients, and imports no downstream's crate or package.
+
+### What a downstream is
+
+- **It holds every BMO concept:** agents, workers, rooms, the owner, personas, agent sessions and runs, jobs as
+  runs of items, briefings and talks.
+- **It consumes an upstream only through that upstream's client,** or its MCP server for an agent, and keeps
+  no copy of what the upstream serves. What it wrote into an upstream under its own scopes it lets go of
+  itself, when the room or agent behind them goes.
+- **It calls upstreams and earlier downstreams,** in the order below, and no later one.
 
 ### Generic and specific
 
@@ -17,6 +80,9 @@ chat services that call it.
   only it uses.
 
 ### Rules
+
+These rules hold between every unit and the units it calls: between two downstreams, the one called stands
+as the upstream for them.
 
 - **An upstream stays generic.** Nothing specific goes into it.
 - **A specific need is reshaped or kept downstream.** Where a general form of it exists, that form goes into the
@@ -71,9 +137,12 @@ out.
   test run is a `test-run`, and a `run` is an agent's run wherever the word appears.
 - **What a service holds about another service's resource is its own resource,** found by the reference
   (`GET /judgements?roomId=`), or keyed by it where the service holds one such member for each
-  (`/session-loads/{sessionId}`). One such resource every holder of per-room data shares: each serves
-  `GET /room-holdings/{roomId}` for what it holds of a room and `DELETE /room-holdings/{roomId}` to let it go,
-  the second answering a preview with `dryRun=true`.
+  (`/session-loads/{sessionId}`).
+- **What a service holds under a key it does not own has one shape.** An upstream serves
+  `GET /scopes/{scope}` for what it holds under a caller's scope and `DELETE /scopes/{scope}` to let it go. A
+  downstream that holds data of BMO's rooms serves `GET /room-holdings/{roomId}` and
+  `DELETE /room-holdings/{roomId}` the same way, and lets go of the scopes it wrote into upstreams for that
+  room. Each `DELETE` answers a preview with `dryRun=true`.
 
 ### Paths
 
@@ -174,10 +243,11 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   reconnects.
 - **A service publishes only its own events.** No service takes another's events in to serve them again: a
   reader reads each service's stream. A process of the service's own posts an event with `POST /events`.
-- **An upstream that needs an answer from a downstream at a point of its work calls a hook.** The downstream
-  registers it in the upstream's `/hooks` collection (`point`, `url`), and serves it at `POST /hooks/{point}`;
-  the upstream's OpenAPI document states each point's body and answer under `webhooks`. The upstream names no
-  downstream: what it calls is what was registered.
+- **A service that needs an answer from its caller at a point of its work calls a hook.** The caller
+  registers it in the service's `/hooks` collection (`point`, `url`), or with the member the hook is for, and
+  serves it at `POST /hooks/{point}`; the service's OpenAPI document states each point's body and answer under
+  `webhooks`. The service names no caller: what it calls is what was registered. Only a caller registers a
+  hook in what it calls, so an upstream registers none in a downstream.
 - **A byte stream** is a member's content route. A WebSocket is used only where both sides speak in one
   connection, as a terminal does.
 
@@ -188,7 +258,9 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **A command reads and changes resources through the service's own client,** and with `--json` prints the
   member or the page exactly as the API answers it.
 - **A tool's input and output are JSON Schemas** in the service's OpenAPI document, under `x-tools`, written in
-  this wire format.
+  this wire format. An upstream's `x-tools` are its MCP server's tools, named `<unit>_<what>` in snake_case,
+  each naming the route, the library function or the command it calls; `x-harness` names its plugin, the
+  command that starts its MCP server and what a harness does first with it.
 
 ### The OpenAPI document
 
@@ -209,37 +281,52 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 
 - **A service supplies its own client.** It keeps one OpenAPI document in its repository, and from that one
   document it publishes a Rust crate and a TypeScript package.
+- **An upstream supplies its harness plugin beside its client:** the MCP server its own binary starts and its
+  `ahas-<unit>` skill, both in its repository, built on that client.
 - **A client carries the service's contract and nothing else.** No caller's policy goes into it.
 - **A caller uses the published client.** It writes no client of its own by hand.
 
-## The order upstreams are fixed in
+## The order units are fixed in
 
-An upstream's API is fixed before the layer below takes it, and each layer takes what the one above fixed in
-one step. The common format comes first, since fixing an API before the format would mean changing it again.
+A unit's API is fixed before the units that call it take it, and each stage takes what the stages before it
+fixed in one step. Upstreams come first, ordered among themselves by what they call; downstreams follow,
+ordered the same way. The common format comes first of all, since fixing an API before the format would mean
+changing it again.
 
 ```mermaid
 flowchart TD
-  S0["0: common format and client rules"]
-  S1["1: base libraries<br/>bmo-chat, bmo-text, bmo-ui"]
-  S2["2: base services<br/>bmo-node, bmo-arbiter,<br/>bmo-testbed, bmo-pocket"]
-  S3["3: core services<br/>bmo-agency, then<br/>bmo-job and bmo-brain"]
-  S4["4: middle services<br/>bmo-gate, bmo-voice, bmo-artifact,<br/>bmo-explorer, bmo-graph,<br/>bmo-stock-index"]
-  S5["5: bmo-receiver"]
-  S6["6: gathering points<br/>bmo-cli, bmo-web"]
-  S7["7: downstreams take<br/>the generated clients"]
-  S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+  S0["0: common format, API design<br/>and the split"]
+  S1["1: upstream libraries<br/>bmo-chat, bmo-text, bmo-ui"]
+  S2["2: upstreams calling no service<br/>job, brain, graph, node, testbed,<br/>pocket, drive, mail, cache-siren,<br/>cache-warmer, explorer, stock-index"]
+  S3["3: upstreams calling stage 2<br/>arbiter, artifact, review"]
+  S4["4: upstreams calling stage 3<br/>voice, song, news"]
+  S5["5: downstreams calling only upstreams<br/>agency, remote"]
+  S6["6: gate"]
+  S7["7: receiver"]
+  S8["8: telegram, kakaotalk, discord,<br/>ms-teams, briefing"]
+  S9["9: cli, web"]
+  S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
 ```
 
-- **Layer 1.** bmo-chat defines, as protocol, the routes a provider calls on the receiver, and is the first to
-  carry times in milliseconds.
-- **Layer 3.** bmo-agency comes before bmo-job and bmo-brain, which call it.
-- **Layer 4.** Its services do not overlap and are fixed side by side.
-- **Layer 5.** bmo-receiver is upstream of the chat services and downstream of the agency, brain, voice, gate
-  and chat, so it is fixed once those are.
-- **Layer 6.** bmo-cli and bmo-web gather every unit, so they come last among upstreams. bmo-web attaches every
-  bundle through one plugin contract rather than code of its own per bundle.
-- **Layer 7.** Each downstream replaces its hand-written clients with the generated ones, moves its copies of
-  base code into the base, and meets in itself the specific needs that were kept out of its upstreams.
+- **Stage 1.** The libraries call nothing. bmo-chat defines, as protocol, the routes a provider serves and the
+  routes a provider calls on the receiving side; bmo-ui states the console plugin contract every console
+  bundle conforms to.
+- **Stage 2.** None of these calls another upstream service, so they are fixed side by side. The cache-warmer
+  crate moves into bmo-cache-warmer here, since an upstream imports no downstream.
+- **Stage 3.** bmo-arbiter calls bmo-node, bmo-artifact calls bmo-explorer for page imports, and bmo-review
+  calls bmo-job and bmo-graph.
+- **Stage 4.** bmo-voice and bmo-song take card turns through bmo-arbiter, and bmo-song reaches its node
+  through bmo-node; bmo-news calls bmo-explorer, bmo-stock-index and bmo-artifact.
+- **Stage 5.** bmo-agency calls upstreams only: it runs a job by leasing an item from bmo-job, and runs digests
+  and research that write through bmo-brain and bmo-artifact. bmo-remote calls nothing.
+- **Stage 6.** bmo-gate registers at the agency's hook points.
+- **Stage 7.** bmo-receiver calls the chat protocol, the agency, the gate and the upstreams whose events it
+  brings into rooms.
+- **Stage 8.** The chat providers and bmo-briefing call the receiver.
+- **Stage 9.** bmo-cli and bmo-web gather every unit, so they come last. bmo-web attaches every bundle by
+  bmo-ui's plugin contract rather than code of its own per bundle.
+- **Once its stage is fixed,** each unit replaces its hand-written clients with the generated ones, moves its
+  copies of base code into the base, and meets in itself the specific needs kept out of what it calls.
 
 ## A service whose API differs
 
