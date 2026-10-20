@@ -325,8 +325,20 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   generates. The Rust crate and the TypeScript package a service publishes are generated from it. A library
   whose routes are served on two sides, as the chat protocol's are, commits one document for each side under
   `docs/openapi/`, since the two sides may serve paths of the same shape.
-- **The document's version is the service's,** in semver. A removed or renamed route or field, or a field that
-  becomes required, is a major version.
+- **The document's version is the service's,** numbered as 「Versions」 states.
+
+### Versions
+
+- **A unit has one version,** in semver, shared by every crate and package it publishes, and its health, its
+  OpenAPI document and its plugin all answer it.
+- **Before its first release a unit is `0.1.0` and counts revisions.** Its first version, `0.1.0`, is the
+  base and is no revision. Every later version bump is one revision, written `0.1.0-rev.<n>` with `n`
+  counting the bumps since the base from 1: the second version is `0.1.0-rev.1`, the sixth `0.1.0-rev.5`.
+  Major, minor and patch never move before the first release, whatever the change, a breaking one included.
+- **The first release drops the suffix,** and the unit is `0.1.0`. Semver orders every revision before it,
+  and the revisions by their number.
+- **From the first release on, the version moves by semver.** A removed or renamed route or field, or a field
+  that becomes required, is a major version.
 
 ## Service documents
 

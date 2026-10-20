@@ -16,8 +16,18 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 1.0.0 of the libraries and the plugin; a caller pins that version or a later one
-for every route and field below.
+This document states version 0.1.0-rev.5 of the libraries and the plugin; a caller pins that version or a
+later one for every route and field below. The version is numbered by the revision rule of `conventions.md`.
+Each older number the crates carry in their history stands for one revision:
+
+| Older number | Revision    |
+| ------------ | ----------- |
+| 0.1.0        | 0.1.0       |
+| 0.2.0        | 0.1.0-rev.1 |
+| 0.3.0        | 0.1.0-rev.2 |
+| 0.4.0        | 0.1.0-rev.3 |
+| 0.5.0        | 0.1.0-rev.4 |
+| 1.0.0        | 0.1.0-rev.5 |
 
 ## The OpenAPI documents
 
