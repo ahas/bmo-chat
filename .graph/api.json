@@ -1,0 +1,118 @@
+[
+  {
+    "id": "api/harness",
+    "title": "Harness plugin API",
+    "what": "The ahas-chat harness plugin: the bmo-chat command, the MCP server's tool entries and the skill telling a harness when and how to drive a provider.",
+    "files": [
+      "plugin/src/main.rs",
+      "plugin/src/server.rs",
+      "plugin/src/tools.rs",
+      "plugin/skills/ahas-chat/SKILL.md",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatServer",
+      "ChatTool",
+      "tools"
+    ],
+    "aliases": [],
+    "needs": [
+      "plugin/command",
+      "plugin/mcp-server",
+      "plugin/tools",
+      "plugin/openapi"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715848,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/provider",
+    "title": "Provider library API",
+    "what": "The surface bmo-chat offers a chat service: the piece types, the provider contract, the router for the provider routes and the link to the receiving side, as docs/contract.md and docs/protocol.md state them.",
+    "files": [
+      "provider/src/server.rs",
+      "provider/src/provider.rs",
+      "provider/src/link.rs",
+      "docs/contract.md",
+      "docs/protocol.md",
+      "docs/openapi/provider.json"
+    ],
+    "symbols": [
+      "provider_router",
+      "ChatProvider",
+      "ChatReceiver",
+      "ChatReceiverLink"
+    ],
+    "aliases": [],
+    "needs": [
+      "provider/routes",
+      "provider/contract",
+      "provider/receiver-link",
+      "contract/messages",
+      "contract/sends",
+      "contract/declaration",
+      "contract/dialects",
+      "contract/errors",
+      "contract/refusals",
+      "contract/avatars",
+      "contract/media-fetch",
+      "contract/numbering",
+      "contract/read-modes",
+      "contract/capabilities",
+      "contract/route-bodies",
+      "contract/receiver-bodies",
+      "contract/bytes"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715838,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/receiver",
+    "title": "Receiving-side library API",
+    "what": "The surface bmo-chat-client offers the receiving side and a harness: one client for every provider, the router for the receiving-side routes, and the wire types both directions share.",
+    "files": [
+      "client/src/provider_client.rs",
+      "client/src/inbound.rs",
+      "docs/contract.md",
+      "docs/protocol.md",
+      "docs/openapi/receiver.json"
+    ],
+    "symbols": [
+      "ChatProviderClient",
+      "ClientFailure",
+      "ChatReceiver",
+      "receiver_router"
+    ],
+    "aliases": [],
+    "needs": [
+      "client/provider-client",
+      "client/inbound-routes",
+      "client/retry",
+      "contract/messages",
+      "contract/sends",
+      "contract/declaration",
+      "contract/dialects",
+      "contract/errors",
+      "contract/refusals",
+      "contract/avatars",
+      "contract/media-fetch",
+      "contract/numbering",
+      "contract/read-modes",
+      "contract/capabilities",
+      "contract/route-bodies",
+      "contract/receiver-bodies",
+      "contract/bytes"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715843,
+    "boundary": {
+      "side": "exposes"
+    }
+  }
+]

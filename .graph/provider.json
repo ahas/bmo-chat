@@ -1,0 +1,87 @@
+[
+  {
+    "id": "provider/contract",
+    "title": "Provider contract",
+    "what": "The traits a chat service implements to be a provider and the receiving side as a provider calls it, with the defaults that read health, modes, declarations and refusals off the provider (provider/src/provider.rs).",
+    "files": [
+      "provider/src/provider.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatProvider",
+      "ChatReceiver",
+      "ChatFailure"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/avatars",
+      "contract/route-bodies",
+      "contract/capabilities",
+      "contract/declaration",
+      "contract/dialects",
+      "contract/media-fetch",
+      "contract/messages",
+      "contract/read-modes",
+      "contract/numbering",
+      "contract/receiver-bodies",
+      "contract/refusals",
+      "contract/sends"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715765
+  },
+  {
+    "id": "provider/receiver-link",
+    "title": "Link to the receiving side",
+    "what": "How a provider reaches the receiving side: a client for the receiving-side routes behind its token, offering a request again only while the connection is refused, within a patience window (provider/src/link.rs).",
+    "files": [
+      "provider/src/link.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatReceiverLink",
+      "LinkFailure",
+      "ChatPatience",
+      "ChatWait",
+      "RealClock"
+    ],
+    "aliases": [],
+    "needs": [
+      "provider/contract",
+      "contract/errors",
+      "contract/messages",
+      "contract/route-bodies",
+      "contract/receiver-bodies"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715781
+  },
+  {
+    "id": "provider/routes",
+    "title": "Provider routes",
+    "what": "The axum router that serves every provider route over any provider, behind a bearer token, answering not-ready for the gated routes and refusals in the error shape (provider/src/server.rs).",
+    "files": [
+      "provider/src/server.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "provider_router"
+    ],
+    "aliases": [],
+    "needs": [
+      "provider/contract",
+      "contract/avatars",
+      "contract/route-bodies",
+      "contract/capabilities",
+      "contract/declaration",
+      "contract/dialects",
+      "contract/errors",
+      "contract/media-fetch",
+      "contract/messages",
+      "contract/refusals",
+      "contract/sends"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715774
+  }
+]

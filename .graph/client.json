@@ -1,0 +1,68 @@
+[
+  {
+    "id": "client/inbound-routes",
+    "title": "Receiving-side routes",
+    "what": "The axum router that serves the routes a provider hands messages to, behind a bearer token, over the receiver a consuming service supplies (client/src/inbound.rs).",
+    "files": [
+      "client/src/inbound.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatReceiver",
+      "receiver_router"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/errors",
+      "contract/messages",
+      "contract/route-bodies",
+      "contract/receiver-bodies"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715798
+  },
+  {
+    "id": "client/provider-client",
+    "title": "Provider client",
+    "what": "One client for every provider: a method for each provider route, one failure type, and the same patience rule that offers a request again only while nothing listened (client/src/provider_client.rs).",
+    "files": [
+      "client/src/provider_client.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatProviderClient",
+      "ClientFailure"
+    ],
+    "aliases": [],
+    "needs": [
+      "client/retry",
+      "contract/avatars",
+      "contract/route-bodies",
+      "contract/declaration",
+      "contract/errors",
+      "contract/media-fetch",
+      "contract/messages",
+      "contract/sends"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715792
+  },
+  {
+    "id": "client/retry",
+    "title": "Patience window",
+    "what": "How long a request whose connection was refused keeps being offered and how often, counted by the waits asked for rather than by a clock so a test never waits on the real one (client/src/patience.rs).",
+    "files": [
+      "client/src/patience.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatPatience",
+      "ChatWait",
+      "RealClock"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715787
+  }
+]

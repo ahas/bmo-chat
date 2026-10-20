@@ -1,0 +1,308 @@
+[
+  {
+    "id": "contract/avatars",
+    "title": "Profile pictures",
+    "what": "The profile pictures a provider that declares avatars keeps of rooms and people: each picture's subject and taken time, the picture bytes, and the query that pages the list (provider/src/avatar.rs, client/src/avatar.rs).",
+    "files": [
+      "provider/src/avatar.rs",
+      "client/src/avatar.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatAvatar",
+      "ChatAvatarKind",
+      "ChatPicture",
+      "AvatarsQuery"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/route-bodies"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715736
+  },
+  {
+    "id": "contract/bytes",
+    "title": "Wire bytes",
+    "what": "How bytes cross a JSON body: base64 with the standard alphabet and padding, written and read by the serde helpers both libraries share (provider/src/bytes.rs, client/src/bytes.rs).",
+    "files": [
+      "provider/src/bytes.rs",
+      "client/src/bytes.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715689
+  },
+  {
+    "id": "contract/capabilities",
+    "title": "Send verbs and capabilities",
+    "what": "The twelve send verbs and the sixteen capabilities a provider declares, the full set taken from the type itself so no reader keeps a list of its own (provider/src/capability.rs, client/src/capability.rs).",
+    "files": [
+      "provider/src/capability.rs",
+      "client/src/capability.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatVerb",
+      "ChatCapability"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715668
+  },
+  {
+    "id": "contract/declaration",
+    "title": "Provider declaration",
+    "what": "What a provider declares of itself in one body: its key and label, modes, capabilities, dialect, what its rooms show, numbering and whether it takes a speaker (provider/src/declaration.rs, client/src/declaration.rs).",
+    "files": [
+      "provider/src/declaration.rs",
+      "client/src/declaration.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatDeclaration"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/capabilities",
+      "contract/dialects",
+      "contract/read-modes",
+      "contract/numbering"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715750
+  },
+  {
+    "id": "contract/dialects",
+    "title": "Dialects",
+    "what": "What markdown becomes in a provider's rooms: the dialect contract, its declaration and limits, its reading, splitting and folding of markdown, and the plain default that strips every mark (provider/src/dialect.rs, provider/src/plain.rs, client/src/dialect.rs).",
+    "files": [
+      "provider/src/dialect.rs",
+      "provider/src/plain.rs",
+      "client/src/dialect.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatDialect",
+      "PlainDialect",
+      "ChatMarkup",
+      "ChatDialectLimits",
+      "ChatDialectDeclaration"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715675
+  },
+  {
+    "id": "contract/errors",
+    "title": "Wire errors",
+    "what": "The error shape every failure crosses in, with the code a caller matches on, the HTTP status each code answers, and the retry delay for a service that is not ready (provider/src/error.rs, client/src/error.rs).",
+    "files": [
+      "provider/src/error.rs",
+      "client/src/error.rs",
+      "docs/protocol.md",
+      "docs/conventions.md"
+    ],
+    "symbols": [
+      "ErrorCode",
+      "WireError",
+      "RETRY_AFTER_SECONDS"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715712
+  },
+  {
+    "id": "contract/media-fetch",
+    "title": "Message file fetches",
+    "what": "The request that fetches a message's pictures and files from the platform again, what the fetch came to, and the query that carries the message's sending time (provider/src/media.rs, client/src/media.rs).",
+    "files": [
+      "provider/src/media.rs",
+      "client/src/media.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatMediaRequest",
+      "ChatMediaResult",
+      "FilesQuery"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/messages",
+      "contract/refusals"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715743
+  },
+  {
+    "id": "contract/messages",
+    "title": "Message hand-overs",
+    "what": "A message as a provider hands it to the receiving side: its origin, sender, room facts, context and the files it carries, plus the patch that follows a gathering (provider/src/message.rs, client/src/message.rs).",
+    "files": [
+      "provider/src/message.rs",
+      "client/src/message.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "HandedMessage",
+      "InboundChatContext",
+      "MessageFile",
+      "FileItem",
+      "GatheredPatch",
+      "MessageOrigin",
+      "RoomFacts",
+      "RoomKind",
+      "ChatFileKind"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/read-modes",
+      "contract/bytes"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715697
+  },
+  {
+    "id": "contract/numbering",
+    "title": "Numbering",
+    "what": "Whose numbers a provider's rooms, people and messages carry, the ranges it assigns them in, and the checks that refuse a bad numbering or two providers whose ranges overlap (provider/src/numbering.rs, client/src/numbering.rs).",
+    "files": [
+      "provider/src/numbering.rs",
+      "client/src/numbering.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatNumbering",
+      "ChatNumberSpace",
+      "ChatNumberRange",
+      "ChatNumberRanges"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715681
+  },
+  {
+    "id": "contract/read-modes",
+    "title": "Read modes",
+    "what": "One way a provider's rooms are read: whose account speaks, what it receives and where the mode stands, with whether an answer can be pinned to a message it delivered (provider/src/modes.rs, client/src/modes.rs).",
+    "files": [
+      "provider/src/modes.rs",
+      "client/src/modes.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatReadMode",
+      "ChatVoice",
+      "ChatReach",
+      "ChatModeStanding"
+    ],
+    "aliases": [],
+    "needs": [],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715661
+  },
+  {
+    "id": "contract/receiver-bodies",
+    "title": "Receiving-side bodies",
+    "what": "The bodies of the receiving-side routes: a room as the receiving side holds it, the queries a provider asks with, a message as held after a hand-over, and word of changed profile pictures (provider/src/receiver_bodies.rs, client/src/receiver_bodies.rs).",
+    "files": [
+      "provider/src/receiver_bodies.rs",
+      "client/src/receiver_bodies.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ReceiverRoom",
+      "RoomQuery",
+      "RoomsQuery",
+      "HeldMessage",
+      "AvatarChange"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/messages"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715757
+  },
+  {
+    "id": "contract/refusals",
+    "title": "Refusals and missed pictures",
+    "what": "The refusals a provider answers when it does not perform a send or a fetch, each with a fixed code and English sentence, and the album pictures that did not go with their reasons (provider/src/refusal.rs, client/src/missed.rs).",
+    "files": [
+      "provider/src/refusal.rs",
+      "client/src/missed.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatRefusal",
+      "MissedPicture",
+      "MissedPictureReason"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/capabilities",
+      "contract/errors"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715722
+  },
+  {
+    "id": "contract/route-bodies",
+    "title": "Route bodies",
+    "what": "The small bodies the routes carry: a provider's health and its knowledge of a room, the owner's room, the dialect's reading and check, and the page every list answers in (provider/src/bodies.rs, client/src/bodies.rs).",
+    "files": [
+      "provider/src/bodies.rs",
+      "client/src/bodies.rs",
+      "docs/protocol.md"
+    ],
+    "symbols": [
+      "ChatHealth",
+      "ProviderRoom",
+      "ProviderOwner",
+      "DialectRead",
+      "DialectReading",
+      "DialectCheck",
+      "DialectChecked",
+      "Page"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/dialects"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715706
+  },
+  {
+    "id": "contract/sends",
+    "title": "Sends and their results",
+    "what": "The twelve kinds of send, each with its own fields, the request around them, and what a send came to: the sent message and the album pictures that did not go (provider/src/send.rs, client/src/send.rs).",
+    "files": [
+      "provider/src/send.rs",
+      "client/src/send.rs",
+      "docs/contract.md"
+    ],
+    "symbols": [
+      "ChatSend",
+      "ChatSendRequest",
+      "ChatSent",
+      "ChatSendResult",
+      "AlbumItem"
+    ],
+    "aliases": [],
+    "needs": [
+      "contract/capabilities",
+      "contract/messages",
+      "contract/read-modes",
+      "contract/refusals"
+    ],
+    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "changed": 1792497715730
+  }
+]
