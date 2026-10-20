@@ -34,7 +34,8 @@ The units whose side needs a reason:
 - **bmo-voice is the speech engine; the briefings are bmo-briefing.** Speaking, transcribing and the voices
   are of use to any harness. A briefing is spoken into one of BMO's rooms by one of BMO's agents.
 - **bmo-artifact is upstream as keeping, search and share links.** A research run and a spoken narration are
-  agent work, so they are downstream's, and they file what they make through its client.
+  agent work, so they are downstream's: each is an agency session that files what it makes through
+  bmo-artifact's MCP server.
 - **bmo-song, bmo-news and bmo-review are upstream as the work they compute**: a song made in a named voice, a
   morning's material gathered and an edition filed, a review of a checkout. Choosing the agent, the room and
   the morning, and sending the result, are downstream's.
@@ -74,6 +75,11 @@ The units whose side needs a reason:
   no copy of what the upstream serves. What it wrote into an upstream under its own scopes it lets go of
   itself, when the room or agent behind them goes.
 - **It calls upstreams and earlier downstreams,** in the order below, and no later one.
+- **It exposes only its own nouns, never a forwarding route.** Every route and tool of a downstream serves a
+  resource that downstream holds. None only forwards to a unit its caller can reach directly, or only strings
+  together calls of such units: the caller, whether a harness, an agent's session or another downstream, calls
+  that unit itself through its client or its MCP server. A gateway to units its caller cannot reach on its own,
+  as the console relays a browser to the services behind it, does not forward in this sense.
 
 ### A harness, its work and what runs it
 
@@ -103,6 +109,12 @@ keeping the work and whatever runs it. For an item of bmo-job:
   runner, a command of bmo-cli kept running as a unit, holds the subscriptions of the queues that progress
   on their own and takes the same steps by each queue's policy. Both are downstream: no upstream route or
   field names either.
+- **A run with a fixed prompt is an ordinary session.** A digest, a research, a browse, a narration or the
+  morning news is an agency session started with `POST /sessions`, naming the run's prompt document and
+  carrying its bounds in the session's options. Whoever wants the run starts it, the runner on its schedule
+  among them, and the session calls the upstreams it needs through their MCP servers. The agency keeps no route
+  or tool for any such run. A limit on one belongs to the session's options, to the co-worker pool for how
+  many run at once, or to the upstream that owns the resource, as a search engine's cooldown is bmo-explorer's.
 
 ### Generic and specific
 
@@ -362,8 +374,9 @@ flowchart TD
 - **Stage 4.** bmo-voice and bmo-song take card turns through bmo-arbiter, and bmo-song reaches its node
   through bmo-node; bmo-news calls bmo-explorer, bmo-stock-index and bmo-artifact.
 - **Stage 5.** bmo-agency calls upstreams only, and never bmo-job: it assigns a worker to an item and runs it
-  there when the harness holding the item asks, taking the item's content and lease from that harness, and
-  runs digests and research that write through bmo-brain and bmo-artifact. bmo-remote calls nothing.
+  there when the harness holding the item asks, taking the item's content and lease from that harness. Its
+  runs with a fixed prompt are sessions that call upstreams through their MCP servers, so it calls none of
+  bmo-artifact, bmo-explorer, bmo-song, bmo-news or bmo-voice. bmo-remote calls nothing.
 - **Stage 6.** bmo-gate registers at the agency's hook points.
 - **Stage 7.** bmo-receiver calls the chat protocol, the agency, the gate and the upstreams whose events it
   brings into rooms.
