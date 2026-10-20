@@ -18,7 +18,7 @@
     "needs": [
       "contract/route-bodies"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715736
   },
   {
@@ -33,7 +33,7 @@
     "symbols": [],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715689
   },
   {
@@ -51,7 +51,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715668
   },
   {
@@ -73,7 +73,7 @@
       "contract/read-modes",
       "contract/numbering"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715750
   },
   {
@@ -95,7 +95,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715675
   },
   {
@@ -115,7 +115,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715712
   },
   {
@@ -137,7 +137,7 @@
       "contract/messages",
       "contract/refusals"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715743
   },
   {
@@ -165,7 +165,7 @@
       "contract/read-modes",
       "contract/bytes"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715697
   },
   {
@@ -185,7 +185,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715681
   },
   {
@@ -205,7 +205,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715661
   },
   {
@@ -228,7 +228,7 @@
     "needs": [
       "contract/messages"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715757
   },
   {
@@ -250,7 +250,7 @@
       "contract/capabilities",
       "contract/errors"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715722
   },
   {
@@ -276,7 +276,7 @@
     "needs": [
       "contract/dialects"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715706
   },
   {
@@ -302,7 +302,7 @@
       "contract/read-modes",
       "contract/refusals"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715730
   }
 ]

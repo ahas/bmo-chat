@@ -18,7 +18,7 @@
       "contract/route-bodies",
       "contract/receiver-bodies"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715798
   },
   {
@@ -44,7 +44,7 @@
       "contract/messages",
       "contract/sends"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715792
   },
   {
@@ -62,7 +62,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715787
   }
 ]

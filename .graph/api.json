@@ -22,7 +22,7 @@
       "plugin/tools",
       "plugin/openapi"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715848,
     "boundary": {
       "side": "exposes"
@@ -66,7 +66,7 @@
       "contract/receiver-bodies",
       "contract/bytes"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715838,
     "boundary": {
       "side": "exposes"
@@ -109,7 +109,7 @@
       "contract/receiver-bodies",
       "contract/bytes"
     ],
-    "base": "6514f664ff197ab7b4201aa3a67d082ed485f078",
+    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
     "changed": 1792497715843,
     "boundary": {
       "side": "exposes"

@@ -3,6 +3,7 @@ name = "bmo-chat-client"
 description = "The receiver side of the chat protocol: one client for every chat provider, and the inbound routes."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 async-trait.workspace = true
