@@ -1,21 +1,23 @@
-# The workspace: the two base libraries, and the repository's own package at the root, which publishes
-# nothing and holds the checks that span both crates in `tests/`.
+# The workspace: the two base libraries, the harness plugin, and the repository's own package at the root,
+# which publishes nothing and holds the checks that span the crates in `tests/`.
 [workspace]
-members = ["provider", "client"]
+members = ["provider", "client", "plugin"]
 resolver = "3"
 
 [workspace.package]
-version = "0.5.0"
+version = "1.0.0"
 edition = "2024"
 
 [workspace.dependencies]
 async-trait = "0.1.92"
 axum = { version = "0.8.4", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64 = "0.22.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
 headers = "0.4.1"
 jsonschema = { version = "0.58.6", default-features = false }
 pulldown-cmark = { version = "0.13.0", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["query"] }
+rmcp = { version = "3.5.0", default-features = false, features = ["server", "transport-io"] }
 schemars = "1.0.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.138"
@@ -26,7 +28,7 @@ toml = { version = "0.8.23", default-features = false, features = ["parse"] }
 
 [package]
 name = "chat-repository-checks"
-description = "Checks that span both chat base libraries; never published."
+description = "Checks that span the chat crates; never published."
 version.workspace = true
 edition.workspace = true
 publish = false
@@ -36,8 +38,10 @@ async-trait.workspace = true
 axum.workspace = true
 bmo-chat = { path = "provider" }
 bmo-chat-client = { path = "client" }
+bmo-chat-plugin = { path = "plugin" }
 reqwest.workspace = true
+rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 strum.workspace = true
-tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "sync"] }

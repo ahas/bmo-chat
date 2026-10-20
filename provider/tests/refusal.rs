@@ -88,22 +88,22 @@ fn no_picture_sent() {
 fn speaker_not_allowed() {
   let refusal = ChatRefusal::SpeakerNotAllowed {
     label: label(),
-    agent: "agent-2".into(),
+    speaker: "helper-2".into(),
   };
   assert_eq!(refusal.code(), ErrorCode::SpeakerNotAllowed);
-  assert_eq!(refusal.to_string(), "Platform cannot send in the name of agent agent-2.");
+  assert_eq!(refusal.to_string(), "Platform cannot send in the name of helper-2.");
 }
 
 #[test]
 fn speaker_unnumbered() {
   let refusal = ChatRefusal::SpeakerUnnumbered {
     label: label(),
-    agent: "agent-2".into(),
+    speaker: "helper-2".into(),
   };
   assert_eq!(refusal.code(), ErrorCode::SpeakerUnnumbered);
   assert_eq!(
     refusal.to_string(),
-    "Platform has no number for agent agent-2, so it cannot send in that agent's name."
+    "Platform has no number for helper-2, so it cannot send in that name."
   );
 }
 
@@ -151,11 +151,11 @@ fn every_refusal_crosses_as_its_code_and_sentence_and_keeps_its_label() {
     },
     ChatRefusal::SpeakerNotAllowed {
       label: label(),
-      agent: "agent-2".into(),
+      speaker: "helper-2".into(),
     },
     ChatRefusal::SpeakerUnnumbered {
       label: label(),
-      agent: "agent-3".into(),
+      speaker: "helper-3".into(),
     },
     ChatRefusal::NotReady { label: label() },
     ChatRefusal::Platform {

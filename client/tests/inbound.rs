@@ -1,6 +1,6 @@
-//! The server for the receiver routes, driven in process over a stand-in receiver: every hand-over and
-//! question route, its token, its body handed over decoded, its answer, and the error shape, as
-//! `docs/protocol.md` states them.
+//! The server for the receiving-side routes, driven in process over a stand-in receiving side: every route,
+//! its method, its token, what it hands the receiving side decoded, its answer and status, and the error
+//! shape, as `docs/protocol.md` states them.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,32 +11,37 @@ use axum::http::Request;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bmo_chat_client::{
-  AvatarsUpdated, ChatGathered, ChatHandover, ChatMessage, ChatReceiver, ChatVoice, ErrorCode,
-  GatheredOutcome, HistoryRoom, InboundChatContext, ListenedQuery, MessageFile, RoomFacts, RoomKind,
-  RoomsOfQuery, WireError, receiver_router,
+  AvatarChange, ChatReceiver, ChatVoice, ErrorCode, GatheredPatch, HandedMessage, HeldMessage,
+  InboundChatContext, MessageFile, MessageOrigin, RETRY_AFTER_SECONDS, ReceiverRoom, RoomFacts, RoomKind,
+  RoomQuery, RoomsQuery, WireError, receiver_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-const TOKEN: &str = "the-receiver-token";
+const TOKEN: &str = "the-receiving-token";
+const ROOM: i64 = -100;
 
-/// One hand-over as the stand-in was given it.
+/// One call as the stand-in was given it.
 #[derive(Debug, Clone, PartialEq)]
 enum Taken {
-  Message(ChatHandover),
-  Attachment(ChatHandover),
-  Edited(ChatHandover),
-  Gathered(ChatGathered),
-  History(ChatHandover),
-  AvatarsUpdated(AvatarsUpdated),
-  Listened(ListenedQuery),
-  RoomsOf(RoomsOfQuery),
+  HandOver(i64, i64, Box<HandedMessage>),
+  Gathered(i64, i64, GatheredPatch),
+  AvatarsChanged(AvatarChange),
+  Room(i64, RoomQuery),
+  Rooms(RoomsQuery),
 }
 
-/// The stand-in receiver. It keeps every hand-over it takes, and refuses each with the error it is told to.
+/// A hand-over as the stand-in keeps it.
+fn handed_over(room_id: i64, message_id: i64, message: HandedMessage) -> Taken {
+  Taken::HandOver(room_id, message_id, Box::new(message))
+}
+
+/// The stand-in receiving side. It keeps every call it takes, holds the messages handed over, and refuses each
+/// call with the error it is told to.
 #[derive(Default)]
 struct Desk {
   taken: Mutex<Vec<Taken>>,
+  held: Mutex<Vec<(i64, i64, HandedMessage)>>,
   refusing: Mutex<Option<WireError>>,
 }
 
@@ -56,47 +61,90 @@ impl Desk {
     self.taken.lock().unwrap().push(taken);
     Ok(())
   }
+
+  /// The rooms it holds, in ascending order of number: every room from -300 to -100, a hundred apart.
+  fn rooms() -> Vec<ReceiverRoom> {
+    [-300, -200, -100]
+      .map(|id| ReceiverRoom {
+        id,
+        listened: id == ROOM,
+        oldest_message_id: Some(5),
+        oldest_sent_at: Some(1_760_000_000_000),
+      })
+      .to_vec()
+  }
 }
 
 #[async_trait]
 impl ChatReceiver for Desk {
-  async fn message(&self, handover: ChatHandover) -> Result<(), WireError> {
-    self.take(Taken::Message(handover))
+  /// A message held already is left as it is, unless the hand-over is an edit.
+  async fn hand_over(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    message: HandedMessage,
+  ) -> Result<HeldMessage, WireError> {
+    self.take(handed_over(room_id, message_id, message.clone()))?;
+    let mut held = self.held.lock().unwrap();
+    let place = held.iter().position(|(room, id, _)| (*room, *id) == (room_id, message_id));
+    Ok(match place {
+      None => {
+        held.push((room_id, message_id, message.clone()));
+        HeldMessage {
+          created: true,
+          message,
+        }
+      }
+      Some(place) if message.origin == MessageOrigin::Edit => {
+        held[place].2 = message.clone();
+        HeldMessage {
+          created: false,
+          message,
+        }
+      }
+      Some(place) => HeldMessage {
+        created: false,
+        message: held[place].2.clone(),
+      },
+    })
   }
-  async fn attachment(&self, handover: ChatHandover) -> Result<(), WireError> {
-    self.take(Taken::Attachment(handover))
+  async fn gathered(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    patch: GatheredPatch,
+  ) -> Result<HandedMessage, WireError> {
+    self.take(Taken::Gathered(room_id, message_id, patch.clone()))?;
+    let mut held = self.held.lock().unwrap();
+    let Some((_, _, message)) = held.iter_mut().find(|(room, id, _)| (*room, *id) == (room_id, message_id))
+    else {
+      return Err(WireError::new(ErrorCode::NotFound, "No such message is held."));
+    };
+    if !message.gathering {
+      return Err(WireError::new(ErrorCode::Conflict, "The message promised no files."));
+    }
+    message.files = patch.files;
+    message.gather_failure = patch.gather_failure;
+    message.gathering = false;
+    Ok(message.clone())
   }
-  async fn edited(&self, handover: ChatHandover) -> Result<(), WireError> {
-    self.take(Taken::Edited(handover))
+  async fn avatars_changed(&self, change: AvatarChange) -> Result<(), WireError> {
+    self.take(Taken::AvatarsChanged(change))
   }
-  async fn gathered(&self, gathered: ChatGathered) -> Result<(), WireError> {
-    self.take(Taken::Gathered(gathered))
+  async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError> {
+    self.take(Taken::Room(room_id, query))?;
+    Ok(Desk::rooms().into_iter().find(|room| room.id == room_id))
   }
-  /// Kept the first time a message comes, and already held every time after.
-  async fn history(&self, handover: ChatHandover) -> Result<bool, WireError> {
-    let held = self
-      .taken()
-      .iter()
-      .any(|taken| matches!(taken, Taken::History(held) if *held == handover));
-    self.take(Taken::History(handover))?;
-    Ok(!held)
-  }
-  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), WireError> {
-    self.take(Taken::AvatarsUpdated(updated))
-  }
-  /// Only room -100 is listened to.
-  async fn listened(&self, query: ListenedQuery) -> Result<bool, WireError> {
-    let listened = query.chat_id == -100;
-    self.take(Taken::Listened(query))?;
-    Ok(listened)
-  }
-  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, WireError> {
-    self.take(Taken::RoomsOf(query))?;
-    Ok(vec![HistoryRoom {
-      chat_id: -100,
-      oldest_message_id: Some(5),
-      oldest_sent_at: Some(1_760_000_000_000),
-    }])
+  async fn rooms(&self, query: RoomsQuery) -> Result<Vec<ReceiverRoom>, WireError> {
+    self.take(Taken::Rooms(query.clone()))?;
+    let mut rooms: Vec<ReceiverRoom> = Desk::rooms()
+      .into_iter()
+      .filter(|room| query.after.is_none_or(|after| room.id > after))
+      .collect();
+    if let Some(limit) = query.limit {
+      rooms.truncate(limit as usize);
+    }
+    Ok(rooms)
   }
 }
 
@@ -104,33 +152,47 @@ fn router(desk: &Arc<Desk>) -> Router {
   receiver_router(desk.clone(), TOKEN)
 }
 
-/// One request with the given authorization header and raw body, answered with its status and JSON body.
+/// An answer: its status, its `Retry-After` where it gave one, and its JSON body.
+struct Answer {
+  status: u16,
+  retry_after: Option<String>,
+  body: Value,
+}
+
+/// One request with the given authorization header and raw body.
 async fn call_raw(
   router: &Router,
   authorization: Option<&str>,
   method: &str,
   path: &str,
   body: Vec<u8>,
-) -> (u16, Value) {
+) -> Answer {
   let mut request = Request::builder().method(method).uri(path).header("content-type", "application/json");
   if let Some(authorization) = authorization {
     request = request.header("authorization", authorization);
   }
   let answer = router.clone().oneshot(request.body(Body::from(body)).unwrap()).await.unwrap();
   let status = answer.status().as_u16();
+  let retry_after = answer.headers().get("retry-after").map(|value| value.to_str().unwrap().to_owned());
   let bytes = to_bytes(answer.into_body(), usize::MAX).await.unwrap();
-  (status, serde_json::from_slice(&bytes).expect("every answer is JSON"))
+  Answer {
+    status,
+    retry_after,
+    body: serde_json::from_slice(&bytes).expect("every answer is JSON"),
+  }
 }
 
-async fn post(router: &Router, path: &str, body: &Value) -> (u16, Value) {
+/// One request with the token, answered with its status and its JSON body.
+async fn call(router: &Router, method: &str, path: &str, body: Option<&Value>) -> (u16, Value) {
   let bearer = format!("Bearer {TOKEN}");
-  call_raw(router, Some(&bearer), "POST", path, serde_json::to_vec(body).unwrap()).await
+  let body = body.map(|body| serde_json::to_vec(body).unwrap()).unwrap_or_default();
+  let Answer { status, body, .. } = call_raw(router, Some(&bearer), method, path, body).await;
+  (status, body)
 }
 
-fn message(text: &str) -> ChatMessage {
-  ChatMessage {
-    chat_id: -100,
-    message_id: 5,
+fn message(origin: MessageOrigin, text: &str) -> HandedMessage {
+  HandedMessage {
+    origin,
     sender_id: Some(42),
     sender_name: "A Person".into(),
     sent_at: 1_760_000_000_000,
@@ -139,226 +201,262 @@ fn message(text: &str) -> ChatMessage {
     via: "stand-in".into(),
     album: None,
     mode: ChatVoice::BotAccount,
+    context: InboundChatContext::default(),
+    room: RoomFacts::default(),
+    files: vec![],
+    gathering: false,
+    gather_failure: None,
   }
 }
 
-fn message_wire(text: &str) -> Value {
+fn message_wire(origin: &str, text: &str) -> Value {
   json!({
-    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
+    "origin": origin, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
     "text": text, "replyToMessageId": null, "via": "stand-in", "album": null, "mode": "bot-account",
+    "context": {}, "room": {}, "files": [], "gathering": false,
   })
 }
 
-#[tokio::test]
-async fn every_hand_over_is_handed_to_the_receiver_decoded_and_answered_with_an_empty_object() {
-  let desk = Arc::new(Desk::default());
-  let router = router(&desk);
-
-  let bare = json!({ "message": message_wire("said") });
-  let carried = json!({
-    "message": message_wire("carried"),
-    "context": { "carriesFile": true, "gathering": true, "tag": "echo-1" },
-    "room": { "kind": "owner", "identity": 7, "privateTo": null },
-  });
-  let with_file = json!({
-    "message": message_wire("carried along"),
-    "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
-  });
-  let kept = json!({
-    "chatId": -100, "messageId": 5, "via": "stand-in", "outcome": "kept",
-    "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
-  });
-  let not_kept = json!({
-    "chatId": -100, "messageId": 5, "via": "stand-in", "outcome": "not-kept",
-    "reason": "The file was too large to keep.",
-  });
-  for (path, body) in [
-    ("/message", &bare),
-    ("/attachment", &carried),
-    ("/attachment", &with_file),
-    ("/edited", &bare),
-    ("/gathered", &kept),
-    ("/gathered", &not_kept),
-  ] {
-    assert_eq!(post(&router, path, body).await, (200, json!({})), "{path}");
-  }
-
-  let file = MessageFile {
+fn file() -> MessageFile {
+  MessageFile {
     id: "file-1".into(),
     name: "a.png".into(),
     mime: "image/png".into(),
     bytes: vec![137, 80],
     kind: None,
-  };
-  let gathered = |outcome| ChatGathered {
-    chat_id: -100,
-    message_id: 5,
-    via: "stand-in".into(),
-    outcome,
-  };
+  }
+}
+
+const MESSAGE: &str = "/rooms/-100/messages/5";
+
+#[tokio::test]
+async fn a_hand_over_is_answered_with_the_message_held_created_where_it_was_not_held_before() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  let said = message_wire("live", "said");
+  assert_eq!(call(&router, "PUT", MESSAGE, Some(&said)).await, (201, said.clone()));
+  assert_eq!(
+    call(&router, "PUT", MESSAGE, Some(&message_wire("history", "said long ago"))).await,
+    (200, said.clone()),
+    "a past message already held is left as it is"
+  );
+  let changed = message_wire("edit", "said again");
+  assert_eq!(call(&router, "PUT", MESSAGE, Some(&changed)).await, (200, changed));
+  let carried = json!({
+    "origin": "live", "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
+    "text": "carried", "replyToMessageId": null, "via": "stand-in", "album": null, "mode": "bot-account",
+    "context": { "carriesFile": true, "tag": "echo-1" },
+    "room": { "kind": "owner", "identity": 7 },
+    "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
+    "gathering": false,
+  });
+  assert_eq!(call(&router, "PUT", "/rooms/-100/messages/6", Some(&carried)).await, (201, carried));
+
   assert_eq!(
     desk.taken(),
     [
-      Taken::Message(ChatHandover {
-        message: message("said"),
-        context: None,
-        room: None,
-        files: vec![],
-      }),
-      Taken::Attachment(ChatHandover {
-        message: message("carried"),
-        context: Some(InboundChatContext {
-          carries_file: true,
-          gathering: true,
-          tag: Some("echo-1".into()),
-          ..InboundChatContext::default()
-        }),
-        room: Some(RoomFacts {
-          kind: Some(RoomKind::Owner),
-          identity: Some(7),
-          private_to: None,
-        }),
-        files: vec![],
-      }),
-      Taken::Attachment(ChatHandover {
-        message: message("carried along"),
-        context: None,
-        room: None,
-        files: vec![file.clone()],
-      }),
-      Taken::Edited(ChatHandover {
-        message: message("said"),
-        context: None,
-        room: None,
-        files: vec![],
-      }),
-      Taken::Gathered(gathered(GatheredOutcome::Kept { files: vec![file] })),
-      Taken::Gathered(gathered(GatheredOutcome::NotKept {
-        reason: "The file was too large to keep.".into(),
-      })),
+      handed_over(ROOM, 5, message(MessageOrigin::Live, "said")),
+      handed_over(ROOM, 5, message(MessageOrigin::History, "said long ago")),
+      handed_over(ROOM, 5, message(MessageOrigin::Edit, "said again")),
+      handed_over(
+        ROOM,
+        6,
+        HandedMessage {
+          context: InboundChatContext {
+            carries_file: true,
+            tag: Some("echo-1".into()),
+            ..InboundChatContext::default()
+          },
+          room: RoomFacts {
+            kind: Some(RoomKind::Owner),
+            identity: Some(7),
+            private_to: None,
+          },
+          files: vec![file()],
+          ..message(MessageOrigin::Live, "carried")
+        }
+      ),
     ]
   );
 }
 
 #[tokio::test]
-async fn every_question_and_the_history_hand_over_are_answered_from_the_receiver() {
+async fn the_gathered_files_patch_the_message_held() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
-  let past = json!({ "message": message_wire("said long ago") });
-  assert_eq!(post(&router, "/history", &past).await, (200, json!({ "kept": true })));
-  assert_eq!(post(&router, "/history", &past).await, (200, json!({ "kept": false })));
-  let updated = json!({ "via": "stand-in", "rooms": [-100], "people": [42, 43] });
-  assert_eq!(post(&router, "/avatars/updated", &updated).await, (200, json!({})));
-  let listened = |chat_id: i64| json!({ "chatId": chat_id, "via": "stand-in" });
+  let mut gathering = message_wire("live", "carried");
+  gathering["gathering"] = json!(true);
+  assert_eq!(call(&router, "PUT", MESSAGE, Some(&gathering)).await.0, 201);
+  let kept =
+    json!({ "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }] });
+  let mut patched = message_wire("live", "carried");
+  patched["files"] = kept["files"].clone();
+  assert_eq!(call(&router, "PATCH", MESSAGE, Some(&kept)).await, (200, patched));
   assert_eq!(
-    post(&router, "/rooms/listened", &listened(-100)).await,
-    (200, json!({ "listened": true }))
+    call(&router, "PATCH", MESSAGE, Some(&kept)).await,
+    (409, json!({ "code": "conflict", "error": "The message promised no files." })),
+    "the receiving side's own refusal crosses at its code's status"
   );
   assert_eq!(
-    post(&router, "/rooms/listened", &listened(7)).await,
-    (200, json!({ "listened": false }))
+    call(&router, "PATCH", "/rooms/-100/messages/9", Some(&kept)).await,
+    (404, json!({ "code": "not-found", "error": "No such message is held." }))
   );
-  assert_eq!(
-    post(&router, "/rooms/of", &json!({ "via": "stand-in", "after": -200, "limit": 10 })).await,
-    (
-      200,
-      json!({ "rooms": [{ "chatId": -100, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 }] })
-    )
-  );
+  assert_eq!(desk.taken()[1], Taken::Gathered(ROOM, 5, GatheredPatch::kept(vec![file()])));
+}
 
-  let handover = ChatHandover {
-    message: message("said long ago"),
-    context: None,
-    room: None,
-    files: vec![],
-  };
-  let query = |chat_id| ListenedQuery {
-    chat_id,
-    via: "stand-in".into(),
-  };
+#[tokio::test]
+async fn word_of_pictures_is_answered_created_with_itself() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  let change = json!({ "via": "stand-in", "roomIds": [-100], "personIds": [42, 43] });
+  assert_eq!(call(&router, "POST", "/avatar-changes", Some(&change)).await, (201, change));
   assert_eq!(
     desk.taken(),
-    [
-      Taken::History(handover.clone()),
-      Taken::History(handover),
-      Taken::AvatarsUpdated(AvatarsUpdated {
-        via: "stand-in".into(),
-        rooms: vec![-100],
-        people: vec![42, 43],
-      }),
-      Taken::Listened(query(-100)),
-      Taken::Listened(query(7)),
-      Taken::RoomsOf(RoomsOfQuery {
-        via: "stand-in".into(),
-        after: Some(-200),
-        limit: Some(10),
-      }),
-    ]
+    [Taken::AvatarsChanged(AvatarChange {
+      via: "stand-in".into(),
+      room_ids: vec![-100],
+      person_ids: vec![42, 43],
+    })]
   );
+}
+
+#[tokio::test]
+async fn a_room_is_answered_as_held_and_one_not_held_is_not_found() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  assert_eq!(
+    call(&router, "GET", "/rooms/-100?via=stand-in", None).await,
+    (
+      200,
+      json!({ "id": -100, "listened": true, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 })
+    )
+  );
+  assert_eq!(
+    call(&router, "GET", "/rooms/7?via=stand-in", None).await,
+    (404, json!({ "code": "not-found", "error": "Nothing is held of room 7." }))
+  );
+  let asking = RoomQuery {
+    via: "stand-in".into(),
+  };
+  assert_eq!(desk.taken(), [Taken::Room(ROOM, asking.clone()), Taken::Room(7, asking)]);
+}
+
+#[tokio::test]
+async fn the_rooms_are_paged_by_asking_the_receiving_side_for_one_more_than_the_limit() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  let ids = |answer: &Value| -> Vec<i64> {
+    answer["items"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|room| room["id"].as_i64().unwrap())
+      .collect()
+  };
+  let (status, page) = call(&router, "GET", "/rooms?via=stand-in&limit=2", None).await;
+  assert_eq!((status, ids(&page), page["more"].clone()), (200, vec![-300, -200], json!(true)));
+  let (status, page) = call(&router, "GET", "/rooms?via=stand-in&after=-200&limit=2", None).await;
+  assert_eq!((status, ids(&page), page["more"].clone()), (200, vec![-100], json!(false)));
+  let (status, page) = call(&router, "GET", "/rooms?via=stand-in", None).await;
+  assert_eq!((status, ids(&page), page["more"].clone()), (200, vec![-300, -200, -100], json!(false)));
+  let asked = |after, limit| {
+    Taken::Rooms(RoomsQuery {
+      via: "stand-in".into(),
+      after,
+      limit,
+    })
+  };
+  assert_eq!(desk.taken(), [asked(None, Some(3)), asked(Some(-200), Some(3)), asked(None, None)]);
 }
 
 #[tokio::test]
 async fn a_missing_or_wrong_token_is_answered_unauthorized_and_nothing_is_handed_over() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
-  let body = serde_json::to_vec(&json!({ "message": message_wire("said") })).unwrap();
+  let body = serde_json::to_vec(&message_wire("live", "said")).unwrap();
   for authorization in [None, Some("Bearer another-token"), Some(TOKEN)] {
-    for path in ["/message", "/nowhere"] {
-      let (status, answer) = call_raw(&router, authorization, "POST", path, body.clone()).await;
-      assert_eq!(status, 401, "{authorization:?} {path}");
-      assert_eq!(answer["code"], "unauthorized");
-      assert_eq!(answer["error"], "The bearer token is missing or wrong.");
+    for (method, path) in [("PUT", MESSAGE), ("GET", "/rooms?via=stand-in"), ("POST", "/nowhere")] {
+      let answer = call_raw(&router, authorization, method, path, body.clone()).await;
+      assert_eq!(answer.status, 401, "{authorization:?} {method} {path}");
+      assert_eq!(
+        answer.body,
+        json!({ "code": "unauthorized", "error": "The bearer token is missing or wrong." })
+      );
     }
   }
   assert_eq!(desk.taken(), []);
 }
 
 #[tokio::test]
-async fn a_body_not_of_the_route_shape_is_a_bad_request_naming_what_is_missing() {
+async fn a_body_or_query_not_of_the_route_shape_is_a_bad_request_naming_what_is_missing() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
-  let (status, answer) = post(&router, "/gathered", &json!({ "chatId": -100, "messageId": 5 })).await;
-  assert_eq!(status, 400);
-  assert_eq!(answer["code"], "bad-request");
+  let (status, answer) = call(&router, "POST", "/avatar-changes", Some(&json!({ "roomIds": [] }))).await;
+  assert_eq!((status, answer["code"].clone()), (400, json!("bad-request")));
   let error = answer["error"].as_str().unwrap();
   assert!(error.starts_with("The body is not the shape this route takes: "), "{error}");
   assert!(error.contains("via"), "{error}");
-
   let bearer = format!("Bearer {TOKEN}");
-  let (status, answer) = call_raw(&router, Some(&bearer), "POST", "/message", b"not json".to_vec()).await;
-  assert_eq!((status, answer["code"].clone()), (400, json!("bad-request")));
+  let answer = call_raw(&router, Some(&bearer), "PUT", MESSAGE, b"not json".to_vec()).await;
+  assert_eq!((answer.status, answer.body["code"].clone()), (400, json!("bad-request")));
+  let (status, answer) = call(&router, "GET", "/rooms", None).await;
+  assert_eq!(
+    (status, answer["code"].clone()),
+    (400, json!("bad-request")),
+    "the rooms are asked by `via`"
+  );
+  let error = answer["error"].as_str().unwrap();
+  assert!(error.starts_with("The query is not the shape this route takes: "), "{error}");
   assert_eq!(desk.taken(), []);
 }
 
 #[tokio::test]
-async fn an_unknown_path_or_method_is_no_route() {
+async fn an_unknown_path_or_method_or_a_key_that_is_not_a_number_is_no_route() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
-  let bearer = format!("Bearer {TOKEN}");
-  for (method, path) in [("POST", "/archived"), ("POST", "/filed"), ("GET", "/message")] {
-    let (status, answer) = call_raw(&router, Some(&bearer), method, path, vec![]).await;
-    assert_eq!(status, 404, "{method} {path}");
+  for (method, path) in [
+    ("POST", "/message"),
+    ("POST", "/rooms"),
+    ("GET", "/rooms/-100/messages/5"),
+    ("GET", "/rooms/seven?via=stand-in"),
+    ("PUT", "/rooms/-100/messages/five"),
+  ] {
+    let (status, answer) = call(&router, method, path, None).await;
+    let path = path.split('?').next().unwrap();
     assert_eq!(
-      answer,
-      json!({ "code": "no-route", "error": format!("There is no route at {method} {path}.") })
+      (status, answer),
+      (
+        404,
+        json!({ "code": "no-route", "error": format!("There is no route at {method} {path}.") })
+      ),
+      "{method} {path}"
     );
   }
+  assert_eq!(desk.taken(), []);
 }
 
 #[tokio::test]
-async fn a_hand_over_the_receiver_could_not_take_is_answered_with_its_error() {
+async fn a_call_the_receiving_side_could_not_take_is_answered_with_its_error() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
-  let body = json!({ "message": message_wire("said") });
-  for error in [
-    WireError::new(ErrorCode::Failed, "The archive is closed."),
-    WireError::new(ErrorCode::NotReady, "The receiver is still starting."),
-  ] {
-    desk.refuses(error.clone());
-    let (status, answer) = post(&router, "/message", &body).await;
-    assert_eq!(status, error.code.status());
-    assert_eq!(answer, serde_json::to_value(&error).unwrap());
-  }
+  let body = serde_json::to_vec(&message_wire("live", "said")).unwrap();
+  let bearer = format!("Bearer {TOKEN}");
+  desk.refuses(WireError::new(ErrorCode::Failed, "The archive is closed."));
+  let answer = call_raw(&router, Some(&bearer), "PUT", MESSAGE, body.clone()).await;
+  assert_eq!(
+    (answer.status, answer.body, answer.retry_after),
+    (500, json!({ "code": "failed", "error": "The archive is closed." }), None)
+  );
+  desk.refuses(WireError::new(ErrorCode::NotReady, "The receiving side is still starting."));
+  let answer = call_raw(&router, Some(&bearer), "PUT", MESSAGE, body).await;
+  assert_eq!(
+    (answer.status, answer.body, answer.retry_after),
+    (
+      503,
+      json!({ "code": "not-ready", "error": "The receiving side is still starting." }),
+      Some(RETRY_AFTER_SECONDS.to_string())
+    )
+  );
   assert_eq!(desk.taken(), []);
 }
 
@@ -367,22 +465,23 @@ async fn a_large_file_is_taken_whole() {
   let desk = Arc::new(Desk::default());
   let router = router(&desk);
   let bytes = vec![7u8; 5 * 1024 * 1024];
-  let body = json!({
-    "message": message_wire("a large file"),
-    "files": [{ "id": "file-1", "name": "large.bin", "mime": "application/octet-stream", "bytes": STANDARD.encode(&bytes) }],
-  });
-  assert_eq!(post(&router, "/attachment", &body).await, (200, json!({})));
+  let mut body = message_wire("live", "a large file");
+  body["files"] = json!([{
+    "id": "file-1", "name": "large.bin", "mime": "application/octet-stream", "bytes": STANDARD.encode(&bytes),
+  }]);
+  assert_eq!(call(&router, "PUT", MESSAGE, Some(&body)).await.0, 201);
   match &desk.taken()[..] {
-    [Taken::Attachment(handover)] => assert_eq!(handover.files[0].bytes, bytes),
-    taken => panic!("one attachment is taken, not {taken:?}"),
+    [Taken::HandOver(_, _, message)] => assert_eq!(message.files[0].bytes, bytes),
+    taken => panic!("one hand-over is taken, not {taken:?}"),
   }
 }
 
 #[tokio::test]
 async fn the_routes_can_be_mounted_under_a_prefix() {
   let desk = Arc::new(Desk::default());
-  let router = Router::new().nest("/receiver", router(&desk));
-  let (status, _) = post(&router, "/receiver/message", &json!({ "message": message_wire("said") })).await;
-  assert_eq!(status, 200);
+  let router = Router::new().nest("/receiving", router(&desk));
+  let said = message_wire("live", "said");
+  let (status, _) = call(&router, "PUT", &format!("/receiving{MESSAGE}"), Some(&said)).await;
+  assert_eq!(status, 201);
   assert_eq!(desk.taken().len(), 1);
 }

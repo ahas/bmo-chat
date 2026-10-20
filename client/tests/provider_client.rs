@@ -21,7 +21,8 @@ use bmo_chat_client::{
   ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding, ChatNumberRanges,
   ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient, ChatReach, ChatReadMode,
   ChatSend, ChatSendRequest, ChatSent, ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading,
-  ErrorCode, MessageFile, MissedPicture, MissedPictureReason, RoomKind, WireError,
+  ErrorCode, MessageFile, MissedPicture, MissedPictureReason, Page, ProviderOwner, ProviderRoom, RoomKind,
+  WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -30,7 +31,8 @@ use tokio::task::JoinHandle;
 
 const TOKEN: &str = "the-provider-token";
 
-/// What the stand-in was asked: the method, the path, the authorization header and the body, if any.
+/// What the stand-in was asked: the method, the path with its query, the authorization header and the body,
+/// if any.
 type Asked = Vec<(String, String, Option<String>, Option<Value>)>;
 
 /// A stand-in provider: it answers each path it is given an answer for, behind the token, and keeps every
@@ -67,6 +69,7 @@ impl Stand {
     ) -> Response {
       let authorization = headers.get("authorization").map(|value| value.to_str().unwrap().to_owned());
       let path = uri.path().to_owned();
+      let asked_at = uri.path_and_query().map(|at| at.as_str().to_owned()).unwrap_or_default();
       let body = (!body.is_empty()).then(|| serde_json::from_slice(&body).expect("the client posts JSON"));
       if body.is_some() {
         assert_eq!(headers.get("content-type").unwrap(), "application/json");
@@ -75,7 +78,7 @@ impl Stand {
         .asked
         .lock()
         .unwrap()
-        .push((method.to_string(), path.clone(), authorization.clone(), body));
+        .push((method.to_string(), asked_at, authorization.clone(), body));
       if authorization != Some(format!("Bearer {TOKEN}")) {
         let wrong = WireError::new(ErrorCode::Unauthorized, "The token is missing or wrong.");
         return (StatusCode::UNAUTHORIZED, Json(wrong)).into_response();
@@ -221,7 +224,6 @@ fn text(words: &str) -> ChatSendRequest {
     -100,
     ChatSend::Text {
       text: words.into(),
-      reply_to: None,
       silent: false,
       fold: false,
     },
@@ -232,40 +234,37 @@ fn text(words: &str) -> ChatSendRequest {
 async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_answer_decodes() {
   let (declared, declaration_wire) = declaration();
   let ok = StatusCode::OK;
+  let file = json!({ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" });
   let stand = Stand::answering([
     ("/provider/declaration", ok, declaration_wire),
-    ("/provider/health", ok, json!({ "ready": true, "reason": null })),
-    ("/provider/send", ok, json!({ "messageId": 77 })),
+    ("/provider/health", ok, json!({ "ready": true, "reason": null, "version": "1.0.0" })),
+    ("/provider/sends", StatusCode::CREATED, json!({ "messageId": 77, "missed": [] })),
     (
-      "/provider/media",
+      "/provider/rooms/-100",
       ok,
-      json!({ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }),
+      json!({ "id": -100, "owns": true, "identity": 7, "kind": "owner", "privateTo": null, "title": "A Room" }),
     ),
+    ("/provider/owner", ok, json!({ "roomId": -100 })),
+    ("/provider/rooms/-100/messages/5/files", ok, json!({ "items": [file], "more": false })),
     (
-      "/provider/dialect/read",
+      "/provider/dialect/readings",
       ok,
       json!({ "markup": "hello", "plain": "hello", "formatted": false, "parts": ["hello"], "fold": null }),
     ),
-    ("/provider/dialect/check", ok, json!({ "fault": null, "visible": "shut" })),
-    ("/provider/room/owns", ok, json!({ "owns": true })),
-    ("/provider/room/identity", ok, json!({ "identity": 7 })),
-    ("/provider/room/is-owner", ok, json!({ "kind": "owner" })),
-    ("/provider/room/private-of", ok, json!({ "person": null })),
-    ("/provider/room/title", ok, json!({ "title": "A Room" })),
-    ("/provider/owner-room", ok, json!({ "chatId": -100 })),
+    ("/provider/dialect/checks", ok, json!({ "fault": null, "visible": "shut" })),
   ]);
   let listening = Listening::start(stand.router()).await;
   let waiter = Arc::new(Recording::default());
   let client =
     ChatProviderClient::new(listening.base(), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
   let media = ChatMediaRequest {
-    chat_id: -100,
+    room_id: -100,
     message_id: 5,
     sent_at: Some(1_760_000_000_000),
   };
 
   assert_eq!(client.declaration().await.unwrap(), declared);
-  assert_eq!(client.health().await.unwrap(), ChatHealth::ready());
+  assert_eq!(client.health().await.unwrap(), ChatHealth::ready("1.0.0"));
   assert_eq!(
     client.send(&text("hello")).await.unwrap(),
     ChatSent {
@@ -274,17 +273,37 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
     }
   );
   assert_eq!(
-    client.media(&media).await.unwrap(),
-    MessageFile {
-      id: "file-1".into(),
-      name: "a.png".into(),
-      mime: "image/png".into(),
-      bytes: vec![137, 80],
-      kind: None,
+    client.room(-100).await.unwrap(),
+    ProviderRoom {
+      id: -100,
+      owns: true,
+      identity: Some(7),
+      kind: RoomKind::Owner,
+      private_to: None,
+      title: Some("A Room".into()),
     }
   );
   assert_eq!(
-    client.dialect_read("hello").await.unwrap(),
+    client.owner().await.unwrap(),
+    ProviderOwner {
+      room_id: Some(-100)
+    }
+  );
+  assert_eq!(
+    client.message_files(&media).await.unwrap(),
+    Page {
+      items: vec![MessageFile {
+        id: "file-1".into(),
+        name: "a.png".into(),
+        mime: "image/png".into(),
+        bytes: vec![137, 80],
+        kind: None,
+      }],
+      more: false,
+    }
+  );
+  assert_eq!(
+    client.dialect_reading("hello").await.unwrap(),
     DialectReading {
       markup: ChatMarkup {
         markup: "hello".into(),
@@ -302,34 +321,23 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
       visible: "shut".into(),
     }
   );
-  assert!(client.room_owns(-100).await.unwrap());
-  assert_eq!(client.room_identity(-100).await.unwrap(), Some(7));
-  assert_eq!(client.room_kind(-100).await.unwrap(), RoomKind::Owner);
-  assert_eq!(client.room_private_of(-100).await.unwrap(), None);
-  assert_eq!(client.room_title(-100).await.unwrap(), Some("A Room".into()));
-  assert_eq!(client.owner_room().await.unwrap(), Some(-100));
   drop(client);
   listening.close().await;
 
   let bearer = Some(format!("Bearer {TOKEN}"));
-  let room = Some(json!({ "chatId": -100 }));
   let expected: Asked = [
     ("GET", "declaration", None),
     ("GET", "health", None),
-    ("POST", "send", Some(json!({ "verb": "text", "chatId": -100, "text": "hello" }))),
     (
       "POST",
-      "media",
-      Some(json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000_000_i64 })),
+      "sends",
+      Some(json!({ "kind": "text", "roomId": -100, "fields": { "text": "hello" } })),
     ),
-    ("POST", "dialect/read", Some(json!({ "text": "hello" }))),
-    ("POST", "dialect/check", Some(json!({ "markup": "shut" }))),
-    ("POST", "room/owns", room.clone()),
-    ("POST", "room/identity", room.clone()),
-    ("POST", "room/is-owner", room.clone()),
-    ("POST", "room/private-of", room.clone()),
-    ("POST", "room/title", room.clone()),
-    ("GET", "owner-room", None),
+    ("GET", "rooms/-100", None),
+    ("GET", "owner", None),
+    ("GET", "rooms/-100/messages/5/files?sentAt=1760000000000", None),
+    ("POST", "dialect/readings", Some(json!({ "text": "hello" }))),
+    ("POST", "dialect/checks", Some(json!({ "markup": "shut" }))),
   ]
   .into_iter()
   .map(|(method, route, body)| (method.to_owned(), format!("/provider/{route}"), bearer.clone(), body))
@@ -344,9 +352,9 @@ async fn refusals_come_back_in_the_error_shape_with_their_code_and_status() {
     WireError::new(ErrorCode::UnsupportedCapability, "Platform cannot fetch a picture or a file later.");
   let gone = WireError::new(ErrorCode::Gone, "Platform: Message 5 is no longer there.");
   let stand = Stand::answering([
-    ("/provider/send", StatusCode::GONE, serde_json::to_value(&gone).unwrap()),
+    ("/provider/sends", StatusCode::GONE, serde_json::to_value(&gone).unwrap()),
     (
-      "/provider/media",
+      "/provider/rooms/-100/messages/5/files",
       StatusCode::UNPROCESSABLE_ENTITY,
       serde_json::to_value(&unsupported).unwrap(),
     ),
@@ -356,8 +364,8 @@ async fn refusals_come_back_in_the_error_shape_with_their_code_and_status() {
 
   let sent = client.send(&text("hello")).await.unwrap_err();
   let fetched = client
-    .media(&ChatMediaRequest {
-      chat_id: -100,
+    .message_files(&ChatMediaRequest {
+      room_id: -100,
       message_id: 5,
       sent_at: None,
     })
@@ -378,12 +386,11 @@ async fn refusals_come_back_in_the_error_shape_with_their_code_and_status() {
 
 #[tokio::test]
 async fn missed_pictures_decode_typed_and_an_unavailable_file_comes_back_unavailable() {
-  let ok = StatusCode::OK;
   let unavailable = WireError::new(ErrorCode::Unavailable, "The platform no longer has it.");
   let stand = Stand::answering([
     (
-      "/provider/send",
-      ok,
+      "/provider/sends",
+      StatusCode::CREATED,
       json!({
         "messageId": null,
         "missed": [{
@@ -392,14 +399,18 @@ async fn missed_pictures_decode_typed_and_an_unavailable_file_comes_back_unavail
         }],
       }),
     ),
-    ("/provider/media", StatusCode::NOT_FOUND, serde_json::to_value(&unavailable).unwrap()),
+    (
+      "/provider/rooms/-100/messages/5/files",
+      StatusCode::NOT_FOUND,
+      serde_json::to_value(&unavailable).unwrap(),
+    ),
   ]);
   let listening = Listening::start(stand.router()).await;
   let client = ChatProviderClient::new(listening.base(), TOKEN);
   let sent = client.send(&text("an album went")).await.unwrap();
   let fetched = client
-    .media(&ChatMediaRequest {
-      chat_id: -100,
+    .message_files(&ChatMediaRequest {
+      room_id: -100,
       message_id: 5,
       sent_at: None,
     })
@@ -425,16 +436,16 @@ async fn missed_pictures_decode_typed_and_an_unavailable_file_comes_back_unavail
 async fn the_error_shape_is_decoded_and_never_offered_again() {
   let not_ready = WireError::new(ErrorCode::NotReady, "The platform connection is not open yet.");
   let stand = Stand::answering([(
-    "/provider/room/owns",
-    StatusCode::CONFLICT,
+    "/provider/owner",
+    StatusCode::SERVICE_UNAVAILABLE,
     serde_json::to_value(&not_ready).unwrap(),
   )]);
   let listening = Listening::start(stand.router()).await;
   let waiter = Arc::new(Recording::default());
   let client =
     ChatProviderClient::new(listening.base(), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
-  let failure = client.room_owns(-100).await.unwrap_err();
-  let url = format!("http://{}/provider/room/owns", listening.address);
+  let failure = client.owner().await.unwrap_err();
+  let url = format!("http://{}/provider/owner", listening.address);
   drop(client);
   listening.close().await;
 
@@ -442,13 +453,13 @@ async fn the_error_shape_is_decoded_and_never_offered_again() {
     failure,
     ClientFailure::Answered {
       url: url.clone(),
-      status: 409,
+      status: 503,
       answer: Some(not_ready),
     }
   );
   assert_eq!(
     failure.to_string(),
-    format!("{url} answered 409: The platform connection is not open yet.")
+    format!("{url} answered 503: The platform connection is not open yet.")
   );
   assert_eq!(stand.asked().len(), 1);
   assert_eq!(waiter.waits(), []);
@@ -456,8 +467,11 @@ async fn the_error_shape_is_decoded_and_never_offered_again() {
 
 #[tokio::test]
 async fn a_wrong_token_is_answered_unauthorized() {
-  let stand =
-    Stand::answering([("/provider/health", StatusCode::OK, json!({ "ready": true, "reason": null }))]);
+  let stand = Stand::answering([(
+    "/provider/health",
+    StatusCode::OK,
+    json!({ "ready": true, "reason": null, "version": "1.0.0" }),
+  )]);
   let listening = Listening::start(stand.router()).await;
   let client = ChatProviderClient::new(listening.base(), "another-token");
   let failure = client.health().await.unwrap_err();
@@ -480,7 +494,7 @@ async fn an_answer_without_the_error_shape_is_kept_as_it_came() {
   let stand = Stand::default();
   let listening = Listening::start(stand.router()).await;
   let client = ChatProviderClient::new(listening.base(), TOKEN);
-  let failure = client.room_title(-100).await.unwrap_err();
+  let failure = client.room(-100).await.unwrap_err();
   drop(client);
   listening.close().await;
   assert!(
@@ -515,20 +529,19 @@ async fn a_success_in_another_shape_is_undecodable() {
 
 #[tokio::test]
 async fn each_client_reaches_only_its_own_provider() {
-  let first = Stand::answering([("/provider/room/title", StatusCode::OK, json!({ "title": "First" }))]);
-  let second = Stand::answering([("/provider/room/title", StatusCode::OK, json!({ "title": "Second" }))]);
+  let owner = |room_id: i64| json!({ "roomId": room_id });
+  let first = Stand::answering([("/provider/owner", StatusCode::OK, owner(-1))]);
+  let second = Stand::answering([("/provider/owner", StatusCode::OK, owner(-2))]);
   let first_listening = Listening::start(first.router()).await;
   let second_listening = Listening::start(second.router()).await;
   let to_first = ChatProviderClient::new(first_listening.base(), TOKEN);
   let to_second = ChatProviderClient::new(second_listening.base(), TOKEN);
-  let titles = (to_first.room_title(-1).await.unwrap(), to_second.room_title(-2).await.unwrap());
+  let owners = (to_first.owner().await.unwrap(), to_second.owner().await.unwrap());
   drop((to_first, to_second));
   first_listening.close().await;
   second_listening.close().await;
 
-  assert_eq!(titles, (Some("First".into()), Some("Second".into())));
-  assert_eq!(first.asked()[0].3, Some(json!({ "chatId": -1 })));
-  assert_eq!(second.asked()[0].3, Some(json!({ "chatId": -2 })));
+  assert_eq!(owners, (ProviderOwner { room_id: Some(-1) }, ProviderOwner { room_id: Some(-2) }));
   assert_eq!((first.asked().len(), second.asked().len()), (1, 1));
 }
 
@@ -546,7 +559,7 @@ async fn a_refused_connection_is_offered_again_until_the_window_is_spent() {
     let waits: Vec<Duration> = waits.into_iter().map(Duration::from_secs).collect();
     match failure {
       ClientFailure::Unreachable { url, waited, why } => {
-        assert_eq!(url, format!("http://{address}/send"));
+        assert_eq!(url, format!("http://{address}/sends"));
         assert_eq!(waited, waits.iter().sum::<Duration>());
         assert!(why.to_lowercase().contains("refused"), "{why}");
       }
@@ -580,7 +593,11 @@ async fn a_provider_that_comes_back_within_the_window_is_sent_the_request_once()
   let address = closed_address().await;
   let restarting = Arc::new(Restarting {
     address,
-    stand: Stand::answering([("/provider/send", StatusCode::OK, json!({ "messageId": 9 }))]),
+    stand: Stand::answering([(
+      "/provider/sends",
+      StatusCode::CREATED,
+      json!({ "messageId": 9, "missed": [] }),
+    )]),
     waits: AtomicUsize::new(0),
     started: Mutex::new(None),
   });
@@ -601,7 +618,7 @@ async fn a_provider_that_comes_back_within_the_window_is_sent_the_request_once()
   assert_eq!(restarting.waits.load(Ordering::SeqCst), 2);
   let asked = restarting.stand.asked();
   assert_eq!(asked.len(), 1);
-  assert_eq!(asked[0].1, "/provider/send");
+  assert_eq!(asked[0].1, "/provider/sends");
   assert_eq!(asked[0].3, Some(serde_json::to_value(text("hello")).unwrap()));
 }
 
@@ -641,17 +658,25 @@ fn the_default_patience_is_two_minutes_every_two_seconds() {
   assert_eq!(patience.every, Duration::from_secs(2));
 }
 
-/// A provider's avatar routes: a list of one picture whatever the query, the picture of room -100,
-/// `nothing-held` for person 7, and no route at all for anything else.
+/// A provider's avatar routes: a page of one picture whatever the query, the picture of room -100,
+/// `not-found` for person 7, and no route at all for anything else.
 fn avatar_routes() -> Router {
   async fn list() -> Json<Value> {
-    Json(json!({ "avatars": [{ "kind": "person", "id": 7, "takenAt": 1_760_000_000_000_i64 }] }))
+    Json(json!({
+      "items": [{ "kind": "person", "id": 7, "takenAt": 1_760_000_000_000_i64 }],
+      "more": true,
+    }))
   }
-  async fn picture(Path((kind, id)): Path<(String, String)>) -> Response {
-    match (kind.as_str(), id.as_str()) {
-      ("room", "-100") => ([("content-type", "image/png")], vec![137_u8, 80]).into_response(),
-      ("person", "7") => {
-        let error = WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for person 7.");
+  async fn room(Path(id): Path<String>) -> Response {
+    match id.as_str() {
+      "-100" => ([("content-type", "image/png")], vec![137_u8, 80]).into_response(),
+      _ => (StatusCode::NOT_FOUND, "nothing here").into_response(),
+    }
+  }
+  async fn person(Path(id): Path<String>) -> Response {
+    match id.as_str() {
+      "7" => {
+        let error = WireError::new(ErrorCode::NotFound, "No profile picture is kept for person 7.");
         (StatusCode::NOT_FOUND, Json(error)).into_response()
       }
       _ => (StatusCode::NOT_FOUND, "nothing here").into_response(),
@@ -659,21 +684,15 @@ fn avatar_routes() -> Router {
   }
   Router::new()
     .route("/provider/avatars", get(list))
-    .route("/provider/avatars/{kind}/{id}", get(picture))
+    .route("/provider/rooms/{id}/avatar", get(room))
+    .route("/provider/people/{id}/avatar", get(person))
 }
 
 #[tokio::test]
-async fn a_kept_picture_comes_as_its_bytes_and_nothing_held_as_none() {
+async fn a_kept_picture_comes_as_its_bytes_and_not_found_as_none() {
   let listening = Listening::start(avatar_routes()).await;
   let client = ChatProviderClient::new(listening.base(), TOKEN);
-  let listed = client
-    .avatars(&AvatarsQuery {
-      after: Some(1_759_000_000_000),
-      limit: Some(20),
-    })
-    .await
-    .unwrap();
-  let everything = client.avatars(&AvatarsQuery::default()).await.unwrap();
+  let listed = client.avatars(&AvatarsQuery::default()).await.unwrap();
   let kept = client.avatar(ChatAvatarKind::Room, -100).await.unwrap();
   let none = client.avatar(ChatAvatarKind::Person, 7).await.unwrap();
   let wrong = client.avatar(ChatAvatarKind::Person, 8).await.unwrap_err();
@@ -685,7 +704,13 @@ async fn a_kept_picture_comes_as_its_bytes_and_nothing_held_as_none() {
     id: 7,
     taken_at: 1_760_000_000_000,
   };
-  assert_eq!((listed, everything), (vec![avatar], vec![avatar]));
+  assert_eq!(
+    listed,
+    Page {
+      items: vec![avatar],
+      more: true
+    }
+  );
   assert_eq!(
     kept,
     Some(ChatPicture {
@@ -717,7 +742,7 @@ async fn the_list_query_carries_only_what_was_given() {
       let kept = kept.clone();
       async move {
         kept.lock().unwrap().push(query);
-        Json(json!({ "avatars": [] }))
+        Json(json!({ "items": [], "more": false }))
       }
     }),
   );

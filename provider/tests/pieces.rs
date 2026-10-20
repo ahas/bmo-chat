@@ -4,12 +4,12 @@
 use std::collections::BTreeSet;
 
 use bmo_chat::{
-  AvatarList, AvatarsUpdated, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
-  ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatGathered, ChatHandover, ChatMarkup,
-  ChatMediaRequest, ChatMessage, ChatModeStanding, ChatNumberRange, ChatNumberRanges, ChatNumberSpace,
-  ChatNumbering, ChatReach, ChatReadMode, ChatVerb, ChatVoice, ErrorCode, GatheredOutcome, HistoryKept,
-  HistoryRoom, InboundChatContext, Listened, ListenedQuery, MessageFile, RoomFacts, RoomKind, RoomsOf,
-  RoomsOfQuery, WireError,
+  AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
+  ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatHealth, ChatMarkup, ChatModeStanding,
+  ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode, ChatVerb,
+  ChatVoice, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, InboundChatContext, MessageFile,
+  MessageOrigin, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
+  RoomsQuery, WireError,
 };
 use serde_json::{Value, json};
 
@@ -21,10 +21,9 @@ where
   assert_eq!(&serde_json::from_value::<T>(wire).expect("the wire body decodes"), value);
 }
 
-fn message() -> ChatMessage {
-  ChatMessage {
-    chat_id: -100,
-    message_id: 5,
+fn message() -> HandedMessage {
+  HandedMessage {
+    origin: MessageOrigin::Live,
     sender_id: Some(42),
     sender_name: "A Person".into(),
     sent_at: 1_760_000_000_000,
@@ -33,14 +32,30 @@ fn message() -> ChatMessage {
     via: "platform".into(),
     album: None,
     mode: ChatVoice::BotAccount,
+    context: InboundChatContext::default(),
+    room: RoomFacts::default(),
+    files: vec![],
+    gathering: false,
+    gather_failure: None,
   }
 }
 
 fn message_wire() -> Value {
   json!({
-    "chatId": -100, "messageId": 5, "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
+    "origin": "live", "senderId": 42, "senderName": "A Person", "sentAt": 1_760_000_000_000_i64,
     "text": "hello", "replyToMessageId": null, "via": "platform", "album": null, "mode": "bot-account",
+    "context": {}, "room": {}, "files": [], "gathering": false,
   })
+}
+
+fn file(kind: Option<ChatFileKind>) -> MessageFile {
+  MessageFile {
+    id: "file-1".into(),
+    name: "a.png".into(),
+    mime: "image/png".into(),
+    bytes: vec![137, 80],
+    kind,
+  }
 }
 
 #[test]
@@ -53,8 +68,8 @@ fn every_enum_member_by_its_wire_name() {
   }
   use ChatVoice::*;
   assert_eq!(
-    names(&[BotAccount, HumanReader, HumanAvatar, HumanAsAgent, Direct]),
-    ["bot-account", "human-reader", "human-avatar", "human-as-agent", "direct"]
+    names(&[BotAccount, HumanReader, HumanAvatar, OwnAccount, Direct]),
+    ["bot-account", "human-reader", "human-avatar", "own-account", "direct"]
   );
   assert_eq!(
     names(&[ChatReach::AllMessages, ChatReach::MentionsOnly]),
@@ -69,6 +84,10 @@ fn every_enum_member_by_its_wire_name() {
     ["native", "assigned", "none"]
   );
   assert_eq!(names(&[RoomKind::Owner, RoomKind::Group]), ["owner", "group"]);
+  assert_eq!(
+    names(&[MessageOrigin::Live, MessageOrigin::Edit, MessageOrigin::History]),
+    ["live", "edit", "history"]
+  );
   assert_eq!(names(&[ChatAvatarKind::Room, ChatAvatarKind::Person]), ["room", "person"]);
   use ChatFileKind as F;
   assert_eq!(
@@ -123,19 +142,21 @@ fn every_enum_member_by_its_wire_name() {
 }
 
 #[test]
-fn message_with_every_field_null_that_may_be() {
+fn a_bare_message_with_every_field_null_that_may_be() {
   crosses(&message(), message_wire());
 }
 
 #[test]
-fn message_in_an_album_answering_another() {
-  let message = ChatMessage {
+fn a_message_read_back_in_an_album_answering_another() {
+  let message = HandedMessage {
+    origin: MessageOrigin::History,
     reply_to_message_id: Some(4),
     album: Some(3),
     mode: ChatVoice::HumanReader,
     ..message()
   };
   let mut wire = message_wire();
+  wire["origin"] = json!("history");
   wire["replyToMessageId"] = json!(4);
   wire["album"] = json!(3);
   wire["mode"] = json!("human-reader");
@@ -143,55 +164,54 @@ fn message_in_an_album_answering_another() {
 }
 
 #[test]
-fn bare_handover() {
-  let handover = ChatHandover {
-    message: message(),
-    context: None,
-    room: None,
-    files: vec![],
-  };
-  crosses(&handover, json!({ "message": message_wire() }));
-}
-
-#[test]
-fn handover_with_context_room_and_files() {
-  let handover = ChatHandover {
-    message: message(),
-    context: Some(InboundChatContext {
+fn a_message_with_context_room_and_files() {
+  let message = HandedMessage {
+    origin: MessageOrigin::Edit,
+    context: InboundChatContext {
       room_title: Some("A Room".into()),
       sender_username: Some("person".into()),
       reply_to_sender_id: Some(43),
       spoken_text: Some("the caption".into()),
       metadata: Some(json!({ "anything": [1, 2] })),
       carries_file: true,
-      gathering: true,
       tag: Some("tag-1".into()),
-    }),
-    room: Some(RoomFacts {
+    },
+    room: RoomFacts {
       kind: Some(RoomKind::Owner),
       identity: Some(99),
       private_to: Some(42),
-    }),
-    files: vec![MessageFile {
-      id: "file-1".into(),
-      name: "a.txt".into(),
-      mime: "text/plain".into(),
-      bytes: b"hi".to_vec(),
-      kind: None,
-    }],
+    },
+    files: vec![file(Some(ChatFileKind::Photo))],
+    ..message()
   };
-  crosses(
-    &handover,
-    json!({
-      "message": message_wire(),
-      "context": {
-        "roomTitle": "A Room", "senderUsername": "person", "replyToSenderId": 43, "spokenText": "the caption",
-        "metadata": { "anything": [1, 2] }, "carriesFile": true, "gathering": true, "tag": "tag-1",
-      },
-      "room": { "kind": "owner", "identity": 99, "privateTo": 42 },
-      "files": [{ "id": "file-1", "name": "a.txt", "mime": "text/plain", "bytes": "aGk=" }],
-    }),
-  );
+  let mut wire = message_wire();
+  wire["origin"] = json!("edit");
+  wire["context"] = json!({
+    "roomTitle": "A Room", "senderUsername": "person", "replyToSenderId": 43, "spokenText": "the caption",
+    "metadata": { "anything": [1, 2] }, "carriesFile": true, "tag": "tag-1",
+  });
+  wire["room"] = json!({ "kind": "owner", "identity": 99, "privateTo": 42 });
+  wire["files"] =
+    json!([{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=", "kind": "photo" }]);
+  crosses(&message, wire);
+}
+
+#[test]
+fn a_message_gathering_its_files_and_one_whose_gathering_failed() {
+  let gathering = HandedMessage {
+    gathering: true,
+    ..message()
+  };
+  let mut wire = message_wire();
+  wire["gathering"] = json!(true);
+  crosses(&gathering, wire);
+  let failed = HandedMessage {
+    gather_failure: Some("The file was too large to keep.".into()),
+    ..message()
+  };
+  let mut wire = message_wire();
+  wire["gatherFailure"] = json!("The file was too large to keep.");
+  crosses(&failed, wire);
 }
 
 #[test]
@@ -207,46 +227,14 @@ fn empty_context_and_room_facts() {
 }
 
 #[test]
-fn gathered_kept() {
-  let gathered = ChatGathered {
-    chat_id: -100,
-    message_id: 5,
-    via: "platform".into(),
-    outcome: GatheredOutcome::Kept {
-      files: vec![MessageFile {
-        id: "file-1".into(),
-        name: "a.png".into(),
-        mime: "image/png".into(),
-        bytes: vec![137, 80],
-        kind: Some(ChatFileKind::Photo),
-      }],
-    },
-  };
+fn gathered_files_kept_and_not_kept() {
   crosses(
-    &gathered,
-    json!({
-      "chatId": -100, "messageId": 5, "via": "platform", "outcome": "kept",
-      "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=", "kind": "photo" }],
-    }),
+    &GatheredPatch::kept(vec![file(None)]),
+    json!({ "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }] }),
   );
-}
-
-#[test]
-fn gathered_not_kept() {
-  let gathered = ChatGathered {
-    chat_id: -100,
-    message_id: 5,
-    via: "platform".into(),
-    outcome: GatheredOutcome::NotKept {
-      reason: "The file was too large to keep.".into(),
-    },
-  };
   crosses(
-    &gathered,
-    json!({
-      "chatId": -100, "messageId": 5, "via": "platform", "outcome": "not-kept",
-      "reason": "The file was too large to keep.",
-    }),
+    &GatheredPatch::not_kept("The file was too large to keep."),
+    json!({ "files": [], "gatherFailure": "The file was too large to keep." }),
   );
 }
 
@@ -331,22 +319,38 @@ fn declaration() {
 }
 
 #[test]
-fn media_request() {
+fn health_room_and_owner() {
   crosses(
-    &ChatMediaRequest {
-      chat_id: -100,
-      message_id: 5,
-      sent_at: None,
-    },
-    json!({ "chatId": -100, "messageId": 5 }),
+    &ChatHealth::ready("1.2.3"),
+    json!({ "ready": true, "reason": null, "version": "1.2.3" }),
   );
   crosses(
-    &ChatMediaRequest {
-      chat_id: -100,
-      message_id: 5,
+    &ChatHealth::not_ready("1.2.3", "No token is configured."),
+    json!({ "ready": false, "reason": "No token is configured.", "version": "1.2.3" }),
+  );
+  crosses(
+    &ProviderRoom {
+      id: -100,
+      owns: true,
+      identity: Some(7),
+      kind: RoomKind::Group,
+      private_to: None,
+      title: Some("A Room".into()),
+    },
+    json!({ "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room" }),
+  );
+  crosses(&ProviderOwner { room_id: Some(42) }, json!({ "roomId": 42 }));
+  crosses(&ProviderOwner { room_id: None }, json!({ "roomId": null }));
+}
+
+#[test]
+fn the_files_query() {
+  crosses(&FilesQuery { sent_at: None }, json!({}));
+  crosses(
+    &FilesQuery {
       sent_at: Some(1_760_000_000_000),
     },
-    json!({ "chatId": -100, "messageId": 5, "sentAt": 1_760_000_000_000_i64 }),
+    json!({ "sentAt": 1_760_000_000_000_i64 }),
   );
 }
 
@@ -365,17 +369,21 @@ fn error_shape_and_statuses() {
   let codes = [
     (ErrorCode::BadRequest, "bad-request", 400),
     (ErrorCode::Unauthorized, "unauthorized", 401),
+    (ErrorCode::Forbidden, "forbidden", 403),
     (ErrorCode::NoRoute, "no-route", 404),
-    (ErrorCode::NothingHeld, "nothing-held", 404),
-    (ErrorCode::NotReady, "not-ready", 409),
+    (ErrorCode::NotFound, "not-found", 404),
+    (ErrorCode::Conflict, "conflict", 409),
+    (ErrorCode::Gone, "gone", 410),
+    (ErrorCode::TooLarge, "too-large", 413),
     (ErrorCode::Failed, "failed", 500),
+    (ErrorCode::UpstreamFailed, "upstream-failed", 502),
+    (ErrorCode::NotReady, "not-ready", 503),
     (ErrorCode::Unavailable, "unavailable", 404),
     (ErrorCode::UnsupportedCapability, "unsupported-capability", 422),
     (ErrorCode::NoPictureSent, "no-picture-sent", 422),
     (ErrorCode::SpeakerNotAllowed, "speaker-not-allowed", 403),
     (ErrorCode::SpeakerUnnumbered, "speaker-unnumbered", 422),
     (ErrorCode::Platform, "platform", 422),
-    (ErrorCode::Gone, "gone", 410),
   ];
   assert_eq!(codes.len(), <ErrorCode as strum::VariantArray>::VARIANTS.len(), "every code is listed");
   for (code, name, status) in codes {
@@ -388,9 +396,9 @@ fn error_shape_and_statuses() {
 }
 
 #[test]
-fn the_list_of_kept_profile_pictures() {
-  let list = AvatarList {
-    avatars: vec![
+fn a_page_of_kept_profile_pictures_and_its_query() {
+  let page = Page {
+    items: vec![
       ChatAvatar {
         kind: ChatAvatarKind::Room,
         id: -100,
@@ -402,28 +410,38 @@ fn the_list_of_kept_profile_pictures() {
         taken_at: 1_760_000_000_500,
       },
     ],
+    more: true,
   };
   crosses(
-    &list,
-    json!({ "avatars": [
-      { "kind": "room", "id": -100, "takenAt": 1_760_000_000_000_i64 },
-      { "kind": "person", "id": 42, "takenAt": 1_760_000_000_500_i64 },
-    ] }),
+    &page,
+    json!({
+      "items": [
+        { "kind": "room", "id": -100, "takenAt": 1_760_000_000_000_i64 },
+        { "kind": "person", "id": 42, "takenAt": 1_760_000_000_500_i64 },
+      ],
+      "more": true,
+    }),
+  );
+  crosses(&AvatarsQuery::default(), json!({}));
+  crosses(
+    &AvatarsQuery {
+      after: Some(1_000),
+      limit: Some(2),
+    },
+    json!({ "after": 1_000, "limit": 2 }),
   );
 }
 
 #[test]
-fn the_receiver_questions_and_their_answers() {
+fn the_receiving_side_rooms_queries_and_word_of_pictures() {
   crosses(
-    &ListenedQuery {
-      chat_id: -100,
+    &RoomQuery {
       via: "platform".into(),
     },
-    json!({ "chatId": -100, "via": "platform" }),
+    json!({ "via": "platform" }),
   );
-  crosses(&Listened { listened: false }, json!({ "listened": false }));
   crosses(
-    &RoomsOfQuery {
+    &RoomsQuery {
       via: "platform".into(),
       after: None,
       limit: None,
@@ -431,7 +449,7 @@ fn the_receiver_questions_and_their_answers() {
     json!({ "via": "platform" }),
   );
   crosses(
-    &RoomsOfQuery {
+    &RoomsQuery {
       via: "platform".into(),
       after: Some(-100),
       limit: Some(50),
@@ -439,33 +457,38 @@ fn the_receiver_questions_and_their_answers() {
     json!({ "via": "platform", "after": -100, "limit": 50 }),
   );
   crosses(
-    &RoomsOf {
-      rooms: vec![
-        HistoryRoom {
-          chat_id: -100,
+    &Page {
+      items: vec![
+        ReceiverRoom {
+          id: -100,
+          listened: true,
           oldest_message_id: Some(5),
           oldest_sent_at: Some(1_760_000_000_000),
         },
-        HistoryRoom {
-          chat_id: 7,
+        ReceiverRoom {
+          id: 7,
+          listened: false,
           oldest_message_id: None,
           oldest_sent_at: None,
         },
       ],
+      more: false,
     },
-    json!({ "rooms": [
-      { "chatId": -100, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 },
-      { "chatId": 7, "oldestMessageId": null, "oldestSentAt": null },
-    ] }),
+    json!({
+      "items": [
+        { "id": -100, "listened": true, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 },
+        { "id": 7, "listened": false, "oldestMessageId": null, "oldestSentAt": null },
+      ],
+      "more": false,
+    }),
   );
-  crosses(&HistoryKept { kept: true }, json!({ "kept": true }));
   crosses(
-    &AvatarsUpdated {
+    &AvatarChange {
       via: "platform".into(),
-      rooms: vec![-100],
-      people: vec![],
+      room_ids: vec![-100],
+      person_ids: vec![],
     },
-    json!({ "via": "platform", "rooms": [-100], "people": [] }),
+    json!({ "via": "platform", "roomIds": [-100], "personIds": [] }),
   );
 }
 

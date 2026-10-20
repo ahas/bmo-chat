@@ -1,5 +1,5 @@
-//! The provider contract: what a chat service implements to be a provider, and the receiver as a provider
-//! calls it.
+//! The provider contract: what a chat service implements to be a provider, and the receiving side as a
+//! provider calls it.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -7,50 +7,52 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::avatar::{ChatAvatar, ChatAvatarKind, ChatPicture};
-use crate::bodies::ChatHealth;
+use crate::bodies::{ChatHealth, Page, ProviderRoom};
 use crate::capability::ChatCapability;
 use crate::declaration::ChatDeclaration;
 use crate::dialect::ChatDialect;
 use crate::media::{ChatMediaRequest, ChatMediaResult};
-use crate::message::{ChatGathered, ChatHandover, RoomKind};
+use crate::message::{GatheredPatch, HandedMessage};
 use crate::modes::{ChatModeStanding, ChatReadMode, ChatVoice};
 use crate::numbering::ChatNumbering;
-use crate::receiver_bodies::{AvatarsUpdated, HistoryRoom, ListenedQuery, RoomsOfQuery};
+use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
 use crate::refusal::ChatRefusal;
 use crate::send::{ChatSendRequest, ChatSendResult};
 
 /// A call that could not be answered at all. Its words are the English sentence the error shape carries.
 pub type ChatFailure = Box<dyn std::error::Error + Send + Sync>;
 
-/// The receiver's side as a provider calls it. A provider asks nothing else of the receiver, and hands
-/// nothing over as already archived.
+/// The receiving side as a provider calls it. A provider asks nothing else of it, and hands nothing over as
+/// already kept.
 #[async_trait]
 pub trait ChatReceiver: Send + Sync {
-  /// A message a room said.
-  async fn message(&self, handover: ChatHandover) -> Result<(), ChatFailure>;
+  /// A message of a room handed over, whatever its origin: the message as the receiving side now holds it,
+  /// and whether it held it before.
+  async fn hand_over(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    message: HandedMessage,
+  ) -> Result<HeldMessage, ChatFailure>;
 
-  /// A message carrying a file, with the file or the promise of it.
-  async fn attachment(&self, handover: ChatHandover) -> Result<(), ChatFailure>;
-
-  /// A message already handed over, changed: the receiver keeps its words and its sender as handed over.
-  async fn edited(&self, handover: ChatHandover) -> Result<(), ChatFailure>;
-
-  /// The file a message's `gathering` promised, or why it was not kept.
-  async fn gathered(&self, gathered: ChatGathered) -> Result<(), ChatFailure>;
-
-  /// A past message read back from a room, archived where the receiver lacks it and waking nobody. True
-  /// where the receiver archived it, false where it already held it.
-  async fn history(&self, handover: ChatHandover) -> Result<bool, ChatFailure>;
+  /// The files a message's gathering promised, or why they were not kept: the message as the receiving side
+  /// now holds it.
+  async fn gathered(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    patch: GatheredPatch,
+  ) -> Result<HandedMessage, ChatFailure>;
 
   /// Word that the kept profile pictures of these rooms and people changed.
-  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), ChatFailure>;
+  async fn avatars_changed(&self, change: AvatarChange) -> Result<(), ChatFailure>;
 
-  /// Whether the receiver listens to the room.
-  async fn listened(&self, query: ListenedQuery) -> Result<bool, ChatFailure>;
+  /// The room as the receiving side holds it, or null where it holds nothing of it, which reads as a room
+  /// not listened to.
+  async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, ChatFailure>;
 
-  /// The provider's rooms whose past it may read back, each with the oldest message the receiver holds of
-  /// it, in ascending order of room number.
-  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, ChatFailure>;
+  /// A page of the provider's rooms whose past it may read back, in ascending order of room number.
+  async fn rooms(&self, query: RoomsQuery) -> Result<Page<ReceiverRoom>, ChatFailure>;
 }
 
 /// A chat service's one platform, as the base serves it. Every difference between providers is what the
@@ -63,11 +65,14 @@ pub trait ChatProvider: Send + Sync {
   /// What the platform is called where a person reads it.
   fn label(&self) -> &str;
 
+  /// The provider service's own version, in semver, as its health answers it.
+  fn version(&self) -> &str;
+
   /// Null when the provider can run, else the reason it cannot.
   fn configured(&self) -> Option<String>;
 
-  /// Opens the platform connection for each active mode and for no other. The receiver link is all the
-  /// provider is given; it reads its own configuration from its own environment.
+  /// Opens the platform connection for each active mode and for no other. The link to the receiving side is
+  /// all the provider is given; it reads its own configuration from its own environment.
   async fn start(&self, receiver: Arc<dyn ChatReceiver>) -> Result<(), ChatFailure>;
 
   async fn stop(&self);
@@ -76,8 +81,8 @@ pub trait ChatProvider: Send + Sync {
   /// ready exactly when it is configured.
   fn health(&self) -> ChatHealth {
     match self.configured() {
-      None => ChatHealth::ready(),
-      Some(reason) => ChatHealth::not_ready(reason),
+      None => ChatHealth::ready(self.version()),
+      Some(reason) => ChatHealth::not_ready(self.version(), reason),
     }
   }
 
@@ -96,35 +101,23 @@ pub trait ChatProvider: Send + Sync {
 
   fn numbering(&self) -> ChatNumbering;
 
-  /// Whether a send may name an agent speaker other than the one the room is answered by.
+  /// Whether a send may name a speaker other than the one the room is answered by.
   fn speakers(&self) -> bool {
     false
   }
 
-  /// Whether the room is one of this provider's.
-  async fn owns_room(&self, chat_id: i64) -> Result<bool, ChatFailure>;
-
-  /// The sender number the agent's own words carry in the room, or null.
-  async fn identity_of(&self, chat_id: i64) -> Result<Option<i64>, ChatFailure>;
-
-  /// `owner` when the room is the owner's private chat on this platform, else `group`.
-  async fn is_owner_room(&self, chat_id: i64) -> Result<RoomKind, ChatFailure>;
-
-  /// The sender number of the one person in a one-to-one with the agent, or null.
-  async fn private_room_of(&self, chat_id: i64) -> Result<Option<i64>, ChatFailure>;
+  /// What the provider knows of the room, or null where it knows nothing of it.
+  async fn room(&self, room_id: i64) -> Result<Option<ProviderRoom>, ChatFailure>;
 
   /// The room to speak into to reach the owner unprompted, or null.
   async fn owner_room(&self) -> Result<Option<i64>, ChatFailure>;
-
-  /// What the platform calls the room, or null where it cannot or will not say.
-  async fn room_title(&self, chat_id: i64) -> Result<Option<String>, ChatFailure>;
 
   /// One send. A send the provider does not perform is answered as refused; a failure while performing it
   /// is the error.
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure>;
 
-  /// The picture or the file a message carried, fetched from the platform again. A provider that supplies
-  /// no fetch of its own refuses with `unsupported-capability`.
+  /// The pictures and files a message carried, fetched from the platform again. A provider that supplies no
+  /// fetch of its own refuses with `unsupported-capability`.
   async fn fetch_media(&self, _request: ChatMediaRequest) -> Result<ChatMediaResult, ChatFailure> {
     Ok(ChatMediaResult::Refused(self.unsupported(ChatCapability::FetchMedia)))
   }

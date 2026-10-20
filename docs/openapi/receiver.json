@@ -1,0 +1,1097 @@
+{
+  "components": {
+    "responses": {
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`bad-request`: the body is not JSON, or the body or the query is not the shape the route takes; the sentence names what is wrong."
+      },
+      "Conflict": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`conflict`: the member's state does not allow the change, or the key is taken."
+      },
+      "Failed": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`failed`: the service failed while answering; the sentence is the failure."
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`forbidden`: the token is right, but the caller may not do this."
+      },
+      "Gone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`gone`: the member stood once and never will again; as a refusal, the message is one the platform no longer has, or will never let change again, so the caller lets go of it instead of asking again."
+      },
+      "NoPictureSent": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`no-picture-sent`: refused: none of the pictures of the send went; the sentence names each with why."
+      },
+      "NoRoute": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`no-route`: no route answers this method and path, a path key that is not a number among them."
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`not-found`: the route is right, but nothing stands at the key the path names."
+      },
+      "NotReady": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`not-ready`: the service is up but cannot answer yet, such as a provider whose platform connection is not open yet; `Retry-After` says when to ask again.",
+        "headers": {
+          "Retry-After": {
+            "description": "When to ask again, in seconds.",
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Platform": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`platform`: refused by the platform; the sentence is the provider's own English reason."
+      },
+      "SpeakerNotAllowed": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`speaker-not-allowed`: refused: the provider speaks as the room's own account alone, so it takes no other speaker."
+      },
+      "SpeakerUnnumbered": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`speaker-unnumbered`: refused: the provider has no number in the room for the speaker the send names."
+      },
+      "TooLarge": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`too-large`: the body or a file is over the route's ceiling."
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`unauthorized`: the bearer token is missing or wrong."
+      },
+      "Unavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`unavailable`: the platform would not give the files asked for; the sentence says why."
+      },
+      "UnsupportedCapability": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`unsupported-capability`: refused: the provider does not declare the capability the call needs."
+      },
+      "UpstreamFailed": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WireError"
+            }
+          }
+        },
+        "description": "`upstream-failed`: a service this one called failed; the sentence names it."
+      }
+    },
+    "schemas": {
+      "AvatarChange": {
+        "description": "The body of `POST /avatar-changes`: the rooms and people whose kept profile picture changed.",
+        "properties": {
+          "personIds": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "roomIds": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "via": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "via",
+          "roomIds",
+          "personIds"
+        ],
+        "type": "object"
+      },
+      "ChatFileKind": {
+        "description": "What a file a message carried is, as the platform showed it.",
+        "oneOf": [
+          {
+            "enum": [
+              "photo",
+              "video",
+              "sticker"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "round-video",
+            "description": "A short video the platform shows in a circle.",
+            "type": "string"
+          },
+          {
+            "const": "animation",
+            "description": "A short looping video without sound, or an animated image.",
+            "type": "string"
+          },
+          {
+            "const": "audio",
+            "description": "A sound file.",
+            "type": "string"
+          },
+          {
+            "const": "voice-note",
+            "description": "A recording made in the room to be heard as speech.",
+            "type": "string"
+          },
+          {
+            "const": "document",
+            "description": "Any other file.",
+            "type": "string"
+          }
+        ]
+      },
+      "ChatVoice": {
+        "description": "Whose account speaks on a provider. One axis of a read mode; `ChatReach` is the other.",
+        "oneOf": [
+          {
+            "const": "bot-account",
+            "description": "The platform's official bot interface.",
+            "type": "string"
+          },
+          {
+            "const": "human-reader",
+            "description": "A person's account, read only; a send in the owner's own words goes out in it.",
+            "type": "string"
+          },
+          {
+            "const": "human-avatar",
+            "description": "A person's account, answered in behind a prefix the caller supplies.",
+            "type": "string"
+          },
+          {
+            "const": "own-account",
+            "description": "An ordinary account of the provider's own, held by no person.",
+            "type": "string"
+          },
+          {
+            "const": "direct",
+            "description": "No platform: the owner typing into the machine.",
+            "type": "string"
+          }
+        ]
+      },
+      "ErrorCode": {
+        "description": "Why a request was not answered with success: it could not be answered at all, or it was refused. Every\ncode of the common wire format is here, beside the protocol's own.",
+        "oneOf": [
+          {
+            "const": "bad-request",
+            "description": "The body or the query is not the shape the route takes.",
+            "type": "string"
+          },
+          {
+            "const": "unauthorized",
+            "description": "The token is missing or wrong.",
+            "type": "string"
+          },
+          {
+            "const": "forbidden",
+            "description": "The token is right but the caller may not do this.",
+            "type": "string"
+          },
+          {
+            "const": "no-route",
+            "description": "No route answers this method and path.",
+            "type": "string"
+          },
+          {
+            "const": "not-found",
+            "description": "The route is right, but nothing stands at the key the path names.",
+            "type": "string"
+          },
+          {
+            "const": "conflict",
+            "description": "The member's state does not allow the change, or the key is taken.",
+            "type": "string"
+          },
+          {
+            "const": "gone",
+            "description": "The member stood once and never will again, so the caller lets go of it. As a refusal: the message is\none the platform no longer has, or will never let change again.",
+            "type": "string"
+          },
+          {
+            "const": "too-large",
+            "description": "The body or a file is over the route's ceiling.",
+            "type": "string"
+          },
+          {
+            "const": "failed",
+            "description": "The service failed while answering.",
+            "type": "string"
+          },
+          {
+            "const": "upstream-failed",
+            "description": "A service this one called failed.",
+            "type": "string"
+          },
+          {
+            "const": "not-ready",
+            "description": "The service is up but cannot answer yet.",
+            "type": "string"
+          },
+          {
+            "const": "unavailable",
+            "description": "The platform would not give the files asked for.",
+            "type": "string"
+          },
+          {
+            "const": "unsupported-capability",
+            "description": "Refused: the provider does not declare the capability the call needs.",
+            "type": "string"
+          },
+          {
+            "const": "no-picture-sent",
+            "description": "Refused: none of the pictures of the send went.",
+            "type": "string"
+          },
+          {
+            "const": "speaker-not-allowed",
+            "description": "Refused: the provider speaks as the room's own account alone, so it takes no other speaker.",
+            "type": "string"
+          },
+          {
+            "const": "speaker-unnumbered",
+            "description": "Refused: the provider has no number in the room for the speaker the send names.",
+            "type": "string"
+          },
+          {
+            "const": "platform",
+            "description": "Refused by the platform, for the provider's own English reason.",
+            "type": "string"
+          }
+        ]
+      },
+      "GatheredPatch": {
+        "description": "The files a message's gathering promised, or why they could not be kept: a merge patch of the message.",
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/MessageFile"
+            },
+            "type": "array"
+          },
+          "gatherFailure": {
+            "description": "An English sentence saying why the files could not be kept.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "type": "object"
+      },
+      "HandedMessage": {
+        "description": "A message as a provider hands it over, under the room and the number the route's path names. Nothing\nplatform-shaped crosses, and no file path.",
+        "properties": {
+          "album": {
+            "description": "The number of the first message of the send of several this one came in.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "context": {
+            "$ref": "#/components/schemas/InboundChatContext",
+            "default": {}
+          },
+          "files": {
+            "default": [],
+            "description": "The files the message carries, where they are already gathered.",
+            "items": {
+              "$ref": "#/components/schemas/MessageFile"
+            },
+            "type": "array"
+          },
+          "gatherFailure": {
+            "description": "Why the files gathering promised could not be kept.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gathering": {
+            "default": false,
+            "description": "The provider is still gathering the message's files and sends them later in a `GatheredPatch`.",
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ChatVoice",
+            "description": "The mode that delivered it."
+          },
+          "origin": {
+            "$ref": "#/components/schemas/MessageOrigin"
+          },
+          "replyToMessageId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "room": {
+            "$ref": "#/components/schemas/RoomFacts",
+            "default": {}
+          },
+          "senderId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "senderName": {
+            "description": "The name the platform shows for who said it.",
+            "type": "string"
+          },
+          "sentAt": {
+            "description": "When, in epoch milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "text": {
+            "description": "Its words, or a placeholder the provider wrote for what was sent.",
+            "type": "string"
+          },
+          "via": {
+            "description": "The key of the provider that took it in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "senderId",
+          "senderName",
+          "sentAt",
+          "text",
+          "replyToMessageId",
+          "via",
+          "album",
+          "mode",
+          "context",
+          "room",
+          "files",
+          "gathering"
+        ],
+        "type": "object"
+      },
+      "InboundChatContext": {
+        "description": "What the platform said about a message beyond the message itself.",
+        "properties": {
+          "carriesFile": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "The platform's own payload, opaque; nothing outside the provider reads into it."
+          },
+          "replyToSenderId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "roomTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "senderUsername": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spokenText": {
+            "description": "The words the person actually typed, where `text` carries a placeholder.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag": {
+            "description": "The opaque tag of the send this message is the platform's echo of.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "MessageFile": {
+        "description": "A file a message carried, as a provider hands it over or fetches it again.",
+        "properties": {
+          "bytes": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "id": {
+            "description": "The provider's identifier of the file among its message's files: the same each time the same file\ncrosses, and never shared by two files of one message.",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatFileKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the file is, as far as the platform tells; left out where the provider cannot tell."
+          },
+          "mime": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mime",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "MessageOrigin": {
+        "description": "Where a handed-over message comes from.",
+        "oneOf": [
+          {
+            "const": "live",
+            "description": "A message a room said.",
+            "type": "string"
+          },
+          {
+            "const": "edit",
+            "description": "A message already handed over, changed: its words, its sender, or both.",
+            "type": "string"
+          },
+          {
+            "const": "history",
+            "description": "A past message read back from a room, kept where the receiving side lacks it and waking nobody.",
+            "type": "string"
+          }
+        ]
+      },
+      "ReceiverRoom": {
+        "description": "One room as the receiving side holds it.",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "listened": {
+            "description": "Whether the receiving side listens to the room.",
+            "type": "boolean"
+          },
+          "oldestMessageId": {
+            "description": "Null where the receiving side holds no message of the room.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "oldestSentAt": {
+            "description": "In epoch milliseconds; null where the receiving side holds no message of the room.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "listened",
+          "oldestMessageId",
+          "oldestSentAt"
+        ],
+        "type": "object"
+      },
+      "ReceiverRoomPage": {
+        "description": "One page of a list: its items, and whether anything stands past the last of them.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiverRoom"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
+      "RoomFacts": {
+        "description": "What the provider already knows of the room a hand-over came from.",
+        "properties": {
+          "identity": {
+            "description": "The sender number the account's own words carry in the room.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoomKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "privateTo": {
+            "description": "The sender number of the one person in a one-to-one with the account.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "RoomKind": {
+        "description": "Which kind of room one chat is.",
+        "oneOf": [
+          {
+            "const": "owner",
+            "description": "The owner's private chat on this platform.",
+            "type": "string"
+          },
+          {
+            "const": "group",
+            "description": "Any other room.",
+            "type": "string"
+          }
+        ]
+      },
+      "WireError": {
+        "description": "The error shape: a code to match on and an English sentence saying what went wrong.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "description": "The token of the service called, from the caller's own configuration.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The routes the receiving side serves and a provider calls, as the chat protocol defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the files a gathering message promised, the rooms a provider may read back and whether one is listened to, and word that kept pictures changed. Paths are relative to the base address the provider is configured with, and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of epoch milliseconds. Every failure is answered in the error shape with its status.",
+    "title": "bmo-chat receiving-side routes",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/avatar-changes": {
+      "post": {
+        "operationId": "createAvatarChanges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarChange"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "Word that the kept profile pictures of these rooms and people changed.",
+        "tags": [
+          "avatar-changes"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/rooms": {
+      "get": {
+        "operationId": "listRooms",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "via",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiverRoomPage"
+                }
+              }
+            },
+            "description": "Answered."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "A page of the rooms of one provider whose past it may read back, each with the oldest message held, in ascending order of room number and only those after `after`.",
+        "tags": [
+          "rooms"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/rooms/{roomId}": {
+      "get": {
+        "operationId": "getRoom",
+        "parameters": [
+          {
+            "description": "The room's number.",
+            "in": "path",
+            "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "via",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiverRoom"
+                }
+              }
+            },
+            "description": "Answered."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "One room as the receiving side holds it: whether it is listened to, and the oldest message held; `not-found` where nothing is held of it.",
+        "tags": [
+          "rooms"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-found",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "patch": {
+        "operationId": "changeRoomsMessage",
+        "parameters": [
+          {
+            "description": "The room's number.",
+            "in": "path",
+            "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The message's number in its room.",
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatheredPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandedMessage"
+                }
+              }
+            },
+            "description": "Answered."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "The files a gathering message promised, or why they could not be kept, as a merge patch; `not-found` where the message is not held, and `conflict` where it promised no files.",
+        "tags": [
+          "rooms"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-found",
+          "conflict",
+          "not-ready",
+          "failed"
+        ]
+      },
+      "put": {
+        "operationId": "putRoomsMessage",
+        "parameters": [
+          {
+            "description": "The room's number.",
+            "in": "path",
+            "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The message's number in its room.",
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandedMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandedMessage"
+                }
+              }
+            },
+            "description": "Answered."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandedMessage"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "A message handed over: said live, changed, or read back from the past; answered with the message as held, 201 where the receiving side did not hold it before and 200 where it did.",
+        "tags": [
+          "rooms"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "the receiving side",
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "rooms"
+    },
+    {
+      "name": "avatar-changes"
+    }
+  ],
+  "x-calls": [],
+  "x-harness": {
+    "entry": "The receiving side's routes a provider is tested against; the same plugin as the provider routes.",
+    "mcp": "bmo-chat mcp --provider <url>",
+    "plugin": "ahas-chat"
+  },
+  "x-layer": "upstream",
+  "x-stage": 1,
+  "x-tools": []
+}

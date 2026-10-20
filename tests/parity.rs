@@ -1,7 +1,7 @@
 //! The two base libraries agree on the wire. Every piece both crates define crosses from one crate's
 //! encoder into the other's decoder, both ways. Over the loopback, the real provider router serves a
-//! stand-in provider to the real provider client, and the real receiver link posts into the real receiver
-//! router. No test waits on the real clock, and every listener a test starts is taken down before it ends.
+//! stand-in provider to the real provider client, and the real link calls the real receiving-side router. No
+//! test waits on the real clock, and every listener a test starts is taken down before it ends.
 
 use std::collections::BTreeSet;
 use std::fmt::Debug;
@@ -20,6 +20,12 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 const TOKEN: &str = "the-shared-token";
+
+/// The room and number each handed-over message fixture is handed over under, in the fixtures' order.
+const KEYS: [(i64, i64); 5] = [(-100, 1), (7, 2), (-100, 3), (7, 4), (-100, 5)];
+
+/// The place among the handed-over message fixtures of the one still gathering its files.
+const GATHERING: usize = 3;
 
 /// The fixtures, written once and built in each crate's own types. A struct literal names every field its
 /// type has, so a field one crate has and the other lacks fails to compile here.
@@ -47,18 +53,22 @@ macro_rules! fixtures {
         }
       }
 
-      fn message(chat_id: i64, message_id: i64) -> ChatMessage {
-        ChatMessage {
-          chat_id,
-          message_id,
+      fn handed(origin: MessageOrigin, text: &str) -> HandedMessage {
+        HandedMessage {
+          origin,
           sender_id: None,
           sender_name: "A person".into(),
           sent_at: 1_760_000_000_000,
-          text: "Hello".into(),
+          text: text.into(),
           reply_to_message_id: None,
           via: "stand-in".into(),
           album: None,
           mode: ChatVoice::BotAccount,
+          context: InboundChatContext::default(),
+          room: RoomFacts::default(),
+          files: vec![],
+          gathering: false,
+          gather_failure: None,
         }
       }
 
@@ -66,70 +76,65 @@ macro_rules! fixtures {
         "Stand-in".into()
       }
 
-      /// Every send verb, each with every field it takes set and, where it has any, with none of its
-      /// optional fields.
+      /// Every kind of send, each with every field it takes set and, where it has any, with none of its
+      /// optional fields; every voice speaks one of them.
       pub fn sends() -> Vec<ChatSendRequest> {
         vec![
           ChatSendRequest {
-            chat_id: -100,
+            room_id: -100,
             send: ChatSend::Text {
               text: "Hello **there**".into(),
-              reply_to: Some(41),
               silent: true,
               fold: true,
             },
-            voice: Some(ChatVoice::HumanAvatar),
-            speaker: Some(ChatSpeaker {
-              agent: "helper".into(),
-            }),
+            mode: Some(ChatVoice::HumanAvatar),
+            speaker: Some("helper".into()),
             tag: Some("send-1".into()),
-            prefix: Some("[agent] ".into()),
+            prefix: Some("[helper] ".into()),
+            reply_to_message_id: Some(41),
           },
           ChatSendRequest::new(
             7,
             ChatSend::Text {
               text: "Just words".into(),
-              reply_to: None,
               silent: false,
               fold: false,
             },
           ),
           ChatSendRequest {
-            chat_id: -100,
-            send: ChatSend::Photo {
-              image_url: "https://example.com/picture.jpg".into(),
-              caption: Some("A picture".into()),
-              reply_to: Some(42),
-            },
-            voice: Some(ChatVoice::BotAccount),
-            speaker: None,
-            tag: None,
-            prefix: None,
+            mode: Some(ChatVoice::BotAccount),
+            reply_to_message_id: Some(42),
+            ..ChatSendRequest::new(
+              -100,
+              ChatSend::Photo {
+                image_url: "https://example.com/picture.jpg".into(),
+                caption: Some("A picture".into()),
+              },
+            )
           },
           ChatSendRequest::new(
             7,
             ChatSend::Photo {
               image_url: "/data/picture.png".into(),
               caption: None,
-              reply_to: None,
             },
           ),
           ChatSendRequest {
-            chat_id: -100,
-            send: ChatSend::Album {
-              items: vec![
-                AlbumItem::Address {
-                  address: "https://example.com/one.jpg".into(),
-                },
-                AlbumItem::File(file("two.png", "image/png", &[0x89, b'P', b'N', b'G', 0, 255])),
-              ],
-              caption: Some("Two pictures".into()),
-              reply_to: Some(43),
-            },
-            voice: Some(ChatVoice::HumanReader),
-            speaker: None,
+            mode: Some(ChatVoice::HumanReader),
             tag: Some("album-1".into()),
-            prefix: None,
+            reply_to_message_id: Some(43),
+            ..ChatSendRequest::new(
+              -100,
+              ChatSend::Album {
+                items: vec![
+                  AlbumItem::Address {
+                    address: "https://example.com/one.jpg".into(),
+                  },
+                  AlbumItem::File(file("two.png", "image/png", &[0x89, b'P', b'N', b'G', 0, 255])),
+                ],
+                caption: Some("Two pictures".into()),
+              },
+            )
           },
           ChatSendRequest::new(
             7,
@@ -138,38 +143,37 @@ macro_rules! fixtures {
                 address: "/data/one.jpg".into(),
               }],
               caption: None,
-              reply_to: None,
             },
           ),
-          ChatSendRequest::new(
-            7,
-            ChatSend::Document {
-              bytes: b"%PDF-1.7 a document".to_vec(),
-              file_name: "notes.pdf".into(),
-              reply_to: Some(44),
-            },
-          ),
+          ChatSendRequest {
+            reply_to_message_id: Some(44),
+            ..ChatSendRequest::new(
+              7,
+              ChatSend::Document {
+                bytes: b"%PDF-1.7 a document".to_vec(),
+                file_name: "notes.pdf".into(),
+              },
+            )
+          },
           ChatSendRequest::new(
             7,
             ChatSend::Audio {
               audio: vec![0xff, 0xfb, 0x90, 0x00],
               file_name: "song.mp3".into(),
-              reply_to: None,
             },
           ),
           ChatSendRequest {
-            chat_id: 7,
-            send: ChatSend::Voice {
-              audio: vec![b'O', b'g', b'g', b'S', 0],
-              said: "Good morning".into(),
-              caption: Some("A greeting".into()),
-              transcript: Some("Good morning!".into()),
-              reply_to: Some(45),
-            },
-            voice: Some(ChatVoice::HumanAsAgent),
-            speaker: None,
-            tag: None,
-            prefix: None,
+            mode: Some(ChatVoice::OwnAccount),
+            reply_to_message_id: Some(45),
+            ..ChatSendRequest::new(
+              7,
+              ChatSend::Voice {
+                audio: vec![b'O', b'g', b'g', b'S', 0],
+                said: "Good morning".into(),
+                caption: Some("A greeting".into()),
+                transcript: Some("Good morning!".into()),
+              },
+            )
           },
           ChatSendRequest::new(
             7,
@@ -178,7 +182,6 @@ macro_rules! fixtures {
               said: "Bye".into(),
               caption: None,
               transcript: None,
-              reply_to: None,
             },
           ),
           ChatSendRequest::new(
@@ -218,12 +221,8 @@ macro_rules! fixtures {
             },
           ),
           ChatSendRequest {
-            chat_id: 0,
-            send: ChatSend::Typing { on: true },
-            voice: Some(ChatVoice::Direct),
-            speaker: None,
-            tag: None,
-            prefix: None,
+            mode: Some(ChatVoice::Direct),
+            ..ChatSendRequest::new(0, ChatSend::Typing { on: true })
           },
           ChatSendRequest::new(
             7,
@@ -273,23 +272,44 @@ macro_rules! fixtures {
         ]
       }
 
+      /// The messages whose files are fetched again, by the path and query of the route.
       pub fn media_requests() -> Vec<ChatMediaRequest> {
         vec![
           ChatMediaRequest {
-            chat_id: -100,
+            room_id: -100,
             message_id: 60,
             sent_at: Some(1_760_000_100_000),
           },
           ChatMediaRequest {
-            chat_id: 7,
+            room_id: 7,
             message_id: 61,
             sent_at: None,
           },
         ]
       }
 
-      pub fn fetched() -> MessageFile {
-        message_file("photo-5", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0])
+      pub fn files_queries() -> Vec<FilesQuery> {
+        media_requests().into_iter().map(|request| FilesQuery { sent_at: request.sent_at }).collect()
+      }
+
+      pub fn fetched() -> Vec<MessageFile> {
+        vec![
+          message_file("photo-5", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff, 0xe0]),
+          message_file("photo-6", "picture.png", "image/png", &[0x89, b'P']),
+        ]
+      }
+
+      pub fn file_pages() -> Vec<Page<MessageFile>> {
+        vec![
+          Page {
+            items: fetched(),
+            more: false,
+          },
+          Page {
+            items: kinded_files(),
+            more: false,
+          },
+        ]
       }
 
       /// A provider that can do everything, in every mode, and one that is not configured and declares
@@ -323,7 +343,7 @@ macro_rules! fixtures {
                 can_reply_to: true,
               },
               ChatReadMode {
-                voice: ChatVoice::HumanAsAgent,
+                voice: ChatVoice::OwnAccount,
                 reach: ChatReach::AllMessages,
                 standing: ChatModeStanding::Unsupported,
                 reason: Some("The platform's terms forbid it.".into()),
@@ -390,55 +410,36 @@ macro_rules! fixtures {
           ChatHealth {
             ready: true,
             reason: None,
+            version: "1.0.0".into(),
           },
-          ChatHealth::not_ready("The platform connection is not open yet."),
+          ChatHealth::not_ready("1.0.0", "The platform connection is not open yet."),
         ]
       }
 
-      /// The rooms asked about, and below, each room route's answer for each of them in the same order.
-      pub fn room_queries() -> Vec<RoomQuery> {
-        vec![RoomQuery { chat_id: -100 }, RoomQuery { chat_id: 7 }]
-      }
-
-      pub fn room_owns() -> Vec<RoomOwns> {
-        vec![RoomOwns { owns: true }, RoomOwns { owns: false }]
-      }
-
-      pub fn room_identities() -> Vec<RoomIdentity> {
+      /// The rooms the stand-in provider knows, one of each kind.
+      pub fn provider_rooms() -> Vec<ProviderRoom> {
         vec![
-          RoomIdentity {
+          ProviderRoom {
+            id: -100,
+            owns: true,
             identity: Some(7001),
-          },
-          RoomIdentity { identity: None },
-        ]
-      }
-
-      pub fn room_kinds() -> Vec<RoomKindAnswer> {
-        vec![
-          RoomKindAnswer {
             kind: RoomKind::Group,
-          },
-          RoomKindAnswer {
-            kind: RoomKind::Owner,
-          },
-        ]
-      }
-
-      pub fn room_persons() -> Vec<RoomPerson> {
-        vec![RoomPerson { person: None }, RoomPerson { person: Some(42) }]
-      }
-
-      pub fn room_titles() -> Vec<RoomTitle> {
-        vec![
-          RoomTitle {
+            private_to: None,
             title: Some("The garden".into()),
           },
-          RoomTitle { title: None },
+          ProviderRoom {
+            id: 7,
+            owns: false,
+            identity: None,
+            kind: RoomKind::Owner,
+            private_to: Some(42),
+            title: None,
+          },
         ]
       }
 
-      pub fn owner_rooms() -> Vec<OwnerRoom> {
-        vec![OwnerRoom { chat_id: Some(7) }, OwnerRoom { chat_id: None }]
+      pub fn provider_owners() -> Vec<ProviderOwner> {
+        vec![ProviderOwner { room_id: Some(7) }, ProviderOwner { room_id: None }]
       }
 
       /// The texts read, and below, the reading of each in the same order.
@@ -501,89 +502,66 @@ macro_rules! fixtures {
         ]
       }
 
-      /// The body of the `message`, `attachment` and `edited` hand-overs: bare, with every field set, and
-      /// carrying its files.
-      pub fn handovers() -> Vec<ChatHandover> {
+      /// The messages handed over, one of each origin, one with every field set, one carrying its files, one
+      /// still gathering them and one whose gathering failed; each goes under its place in `KEYS`.
+      pub fn handed_messages() -> Vec<HandedMessage> {
         vec![
-          ChatHandover {
-            message: message(-100, 1),
-            context: None,
-            room: None,
-            files: vec![],
-          },
-          ChatHandover {
-            message: ChatMessage {
-              chat_id: 7,
-              message_id: 2,
-              sender_id: Some(42),
-              sender_name: "Another person".into(),
-              sent_at: 1_760_000_200_000,
-              text: "[picture]".into(),
-              reply_to_message_id: Some(1),
-              via: "stand-in".into(),
-              album: Some(2),
-              mode: ChatVoice::HumanReader,
-            },
-            context: Some(InboundChatContext {
+          handed(MessageOrigin::Live, "Hello"),
+          HandedMessage {
+            sender_id: Some(42),
+            sender_name: "Another person".into(),
+            sent_at: 1_760_000_200_000,
+            reply_to_message_id: Some(1),
+            album: Some(2),
+            mode: ChatVoice::HumanReader,
+            context: InboundChatContext {
               room_title: Some("The garden".into()),
               sender_username: Some("another".into()),
               reply_to_sender_id: Some(7001),
               spoken_text: Some("Look at this".into()),
               metadata: Some(json!({ "platform": { "kind": "photo", "sizes": [320, 1280] } })),
               carries_file: true,
-              gathering: true,
               tag: Some("send-1".into()),
-            }),
-            room: Some(RoomFacts {
+            },
+            room: RoomFacts {
               kind: Some(RoomKind::Owner),
               identity: Some(7001),
               private_to: Some(42),
-            }),
-            files: vec![],
+            },
+            ..handed(MessageOrigin::Edit, "[picture]")
           },
-          ChatHandover {
-            message: message(-100, 3),
-            context: Some(InboundChatContext {
+          HandedMessage {
+            context: InboundChatContext {
               carries_file: true,
               ..InboundChatContext::default()
-            }),
-            room: Some(RoomFacts {
+            },
+            room: RoomFacts {
               kind: Some(RoomKind::Group),
               identity: None,
               private_to: None,
-            }),
+            },
             files: vec![
               message_file("0", "notes.txt", "text/plain", b"some notes"),
               message_file("1", "tiny.png", "image/png", &[0x89, b'P', b'N', b'G']),
             ],
+            ..handed(MessageOrigin::History, "Said long ago")
+          },
+          HandedMessage {
+            gathering: true,
+            ..handed(MessageOrigin::Live, "[file]")
+          },
+          HandedMessage {
+            gather_failure: Some("The file is larger than the platform hands out.".into()),
+            ..handed(MessageOrigin::Live, "[file]")
           },
         ]
       }
 
-      pub fn gathered() -> Vec<ChatGathered> {
+      pub fn gathered_patches() -> Vec<GatheredPatch> {
         vec![
-          ChatGathered {
-            chat_id: 7,
-            message_id: 2,
-            via: "stand-in".into(),
-            outcome: GatheredOutcome::Kept {
-              files: vec![message_file("photo-2", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff])],
-            },
-          },
-          ChatGathered {
-            chat_id: 7,
-            message_id: 3,
-            via: "stand-in".into(),
-            outcome: GatheredOutcome::Kept { files: kinded_files() },
-          },
-          ChatGathered {
-            chat_id: 7,
-            message_id: 2,
-            via: "stand-in".into(),
-            outcome: GatheredOutcome::NotKept {
-              reason: "The file is larger than the platform hands out.".into(),
-            },
-          },
+          GatheredPatch::kept(vec![message_file("photo-2", "picture.jpg", "image/jpeg", &[0xff, 0xd8, 0xff])]),
+          GatheredPatch::kept(kinded_files()),
+          GatheredPatch::not_kept("The file is larger than the platform hands out."),
         ]
       }
 
@@ -600,7 +578,7 @@ macro_rules! fixtures {
           .collect()
       }
 
-      /// The pictures the stand-in provider keeps, in the order the list answers them.
+      /// The pictures the stand-in provider keeps, in the order a page answers them.
       pub fn avatars() -> Vec<ChatAvatar> {
         vec![
           ChatAvatar {
@@ -616,10 +594,7 @@ macro_rules! fixtures {
         ]
       }
 
-      pub fn avatar_lists() -> Vec<AvatarList> {
-        vec![AvatarList { avatars: avatars() }, AvatarList { avatars: vec![] }]
-      }
-
+      /// The queries for pictures, and below, the page answering each in the same order.
       pub fn avatar_queries() -> Vec<AvatarsQuery> {
         vec![
           AvatarsQuery::default(),
@@ -627,74 +602,98 @@ macro_rules! fixtures {
             after: Some(1_760_000_000_000),
             limit: Some(1),
           },
-        ]
-      }
-
-      pub fn avatars_updated() -> Vec<AvatarsUpdated> {
-        vec![AvatarsUpdated {
-          via: "stand-in".into(),
-          rooms: vec![-100],
-          people: vec![42, 43],
-        }]
-      }
-
-      /// The rooms asked about, and below, whether each is listened to, in the same order.
-      pub fn listened_queries() -> Vec<ListenedQuery> {
-        vec![
-          ListenedQuery {
-            chat_id: -100,
-            via: "stand-in".into(),
-          },
-          ListenedQuery {
-            chat_id: 7,
-            via: "stand-in".into(),
-          },
-        ]
-      }
-
-      pub fn listened() -> Vec<Listened> {
-        vec![Listened { listened: true }, Listened { listened: false }]
-      }
-
-      /// The queries for rooms to read back, and below, the answer to each, in the same order.
-      pub fn rooms_of_queries() -> Vec<RoomsOfQuery> {
-        vec![
-          RoomsOfQuery {
-            via: "stand-in".into(),
+          AvatarsQuery {
             after: None,
-            limit: None,
-          },
-          RoomsOfQuery {
-            via: "stand-in".into(),
-            after: Some(-100),
             limit: Some(1),
           },
         ]
       }
 
-      pub fn rooms_of() -> Vec<RoomsOf> {
+      pub fn avatar_pages() -> Vec<Page<ChatAvatar>> {
         vec![
-          RoomsOf {
-            rooms: vec![
-              HistoryRoom {
-                chat_id: -100,
-                oldest_message_id: Some(1),
-                oldest_sent_at: Some(1_760_000_000_000),
-              },
-              HistoryRoom {
-                chat_id: 7,
-                oldest_message_id: None,
-                oldest_sent_at: None,
-              },
-            ],
+          Page {
+            items: avatars(),
+            more: false,
           },
-          RoomsOf { rooms: vec![] },
+          Page {
+            items: avatars().split_off(1),
+            more: false,
+          },
+          Page {
+            items: avatars()[..1].to_vec(),
+            more: true,
+          },
         ]
       }
 
-      /// The answers to the history hand-overs, in the order of the hand-over fixtures.
-      pub fn history_kept() -> Vec<HistoryKept> {
-        vec![HistoryKept { kept: true }, HistoryKept { kept: false }, HistoryKept { kept: true }]
+      pub fn avatar_changes() -> Vec<AvatarChange> {
+        vec![AvatarChange {
+          via: "stand-in".into(),
+          room_ids: vec![-100],
+          person_ids: vec![42, 43],
+        }]
+      }
+
+      pub fn room_queries() -> Vec<RoomQuery> {
+        vec![RoomQuery {
+          via: "stand-in".into(),
+        }]
+      }
+
+      /// The rooms the stand-in receiving side holds, in ascending order of number.
+      pub fn receiver_rooms() -> Vec<ReceiverRoom> {
+        vec![
+          ReceiverRoom {
+            id: -100,
+            listened: true,
+            oldest_message_id: Some(1),
+            oldest_sent_at: Some(1_760_000_000_000),
+          },
+          ReceiverRoom {
+            id: 7,
+            listened: false,
+            oldest_message_id: None,
+            oldest_sent_at: None,
+          },
+        ]
+      }
+
+      /// The queries for rooms to read back, and below, the page answering each in the same order.
+      pub fn rooms_queries() -> Vec<RoomsQuery> {
+        vec![
+          RoomsQuery {
+            via: "stand-in".into(),
+            after: None,
+            limit: None,
+          },
+          RoomsQuery {
+            via: "stand-in".into(),
+            after: Some(-100),
+            limit: Some(1),
+          },
+          RoomsQuery {
+            via: "stand-in".into(),
+            after: None,
+            limit: Some(1),
+          },
+        ]
+      }
+
+      pub fn room_pages() -> Vec<Page<ReceiverRoom>> {
+        vec![
+          Page {
+            items: receiver_rooms(),
+            more: false,
+          },
+          Page {
+            items: receiver_rooms().split_off(1),
+            more: false,
+          },
+          Page {
+            items: receiver_rooms()[..1].to_vec(),
+            more: true,
+          },
+        ]
       }
 
       /// The error shape with every code, the refusals' among them.
@@ -702,20 +701,24 @@ macro_rules! fixtures {
         vec![
           WireError::new(ErrorCode::BadRequest, "The body is not the shape this route takes."),
           WireError::new(ErrorCode::Unauthorized, "The bearer token is missing or wrong."),
+          WireError::new(ErrorCode::Forbidden, "This token may not do that."),
           WireError::new(ErrorCode::NoRoute, "There is no route at GET /nowhere."),
-          WireError::new(ErrorCode::NothingHeld, "No profile picture is kept for room 7."),
-          WireError::new(ErrorCode::NotReady, "The receiver is still starting."),
+          WireError::new(ErrorCode::NotFound, "No profile picture is kept for room 7."),
+          WireError::new(ErrorCode::Conflict, "The message promised no files."),
+          WireError::new(ErrorCode::Gone, "Stand-in: That message can no longer be edited."),
+          WireError::new(ErrorCode::TooLarge, "The body is over the route's ceiling."),
           WireError::new(ErrorCode::Failed, "The archive could not be written."),
+          WireError::new(ErrorCode::UpstreamFailed, "The store behind the receiving side failed."),
+          WireError::new(ErrorCode::NotReady, "The receiving side is still starting."),
           WireError::new(ErrorCode::Unavailable, "The platform no longer keeps that file."),
           WireError::new(ErrorCode::UnsupportedCapability, "Stand-in cannot send a sticker."),
           WireError::new(ErrorCode::NoPictureSent, "Stand-in: no picture was sent."),
-          WireError::new(ErrorCode::SpeakerNotAllowed, "Stand-in cannot send in the name of agent helper."),
+          WireError::new(ErrorCode::SpeakerNotAllowed, "Stand-in cannot send in the name of helper."),
           WireError::new(
             ErrorCode::SpeakerUnnumbered,
-            "Stand-in has no number for agent helper, so it cannot send in that agent's name.",
+            "Stand-in has no number for helper, so it cannot send in that name.",
           ),
           WireError::new(ErrorCode::Platform, "Stand-in: That message cannot be pinned."),
-          WireError::new(ErrorCode::Gone, "Stand-in: That message can no longer be edited."),
         ]
       }
     }
@@ -758,7 +761,8 @@ where
 fn every_send_and_what_it_came_to_crosses_both_ways() {
   crosses("send", on_provider::sends(), on_client::sends());
   crosses("sent", on_provider::sents(), on_client::sents());
-  crosses("media request", on_provider::media_requests(), on_client::media_requests());
+  crosses("files query", on_provider::files_queries(), on_client::files_queries());
+  crosses("files page", on_provider::file_pages(), on_client::file_pages());
 }
 
 #[test]
@@ -772,41 +776,36 @@ fn both_crates_answer_every_code_with_the_same_status() {
       serde_json::from_value(serde_json::to_value(code).unwrap()).unwrap();
     assert_eq!(code.status(), read.status(), "{code:?}");
   }
+  assert_eq!(bmo_chat::RETRY_AFTER_SECONDS, bmo_chat_client::RETRY_AFTER_SECONDS);
 }
 
 #[test]
-fn every_declaration_and_health_crosses_both_ways() {
+fn every_declaration_health_and_picture_page_crosses_both_ways() {
   crosses("declaration", on_provider::declarations(), on_client::declarations());
   crosses("health", on_provider::healths(), on_client::healths());
-  crosses("avatar list", on_provider::avatar_lists(), on_client::avatar_lists());
+  crosses("avatar page", on_provider::avatar_pages(), on_client::avatar_pages());
   crosses("avatar query", on_provider::avatar_queries(), on_client::avatar_queries());
 }
 
 #[test]
-fn every_room_and_dialect_query_and_its_answer_crosses_both_ways() {
-  crosses("room query", on_provider::room_queries(), on_client::room_queries());
-  crosses("room/owns", on_provider::room_owns(), on_client::room_owns());
-  crosses("room/identity", on_provider::room_identities(), on_client::room_identities());
-  crosses("room/is-owner", on_provider::room_kinds(), on_client::room_kinds());
-  crosses("room/private-of", on_provider::room_persons(), on_client::room_persons());
-  crosses("room/title", on_provider::room_titles(), on_client::room_titles());
-  crosses("owner-room", on_provider::owner_rooms(), on_client::owner_rooms());
-  crosses("dialect/read", on_provider::dialect_reads(), on_client::dialect_reads());
+fn every_room_owner_and_dialect_body_crosses_both_ways() {
+  crosses("provider room", on_provider::provider_rooms(), on_client::provider_rooms());
+  crosses("owner", on_provider::provider_owners(), on_client::provider_owners());
+  crosses("dialect reading asked", on_provider::dialect_reads(), on_client::dialect_reads());
   crosses("dialect reading", on_provider::dialect_readings(), on_client::dialect_readings());
-  crosses("dialect/check", on_provider::dialect_checks(), on_client::dialect_checks());
+  crosses("dialect check asked", on_provider::dialect_checks(), on_client::dialect_checks());
   crosses("dialect check", on_provider::dialect_checkeds(), on_client::dialect_checkeds());
 }
 
 #[test]
-fn every_inbound_body_and_the_error_shape_cross_both_ways() {
-  crosses("hand-over", on_provider::handovers(), on_client::handovers());
-  crosses("gathered", on_provider::gathered(), on_client::gathered());
-  crosses("history kept", on_provider::history_kept(), on_client::history_kept());
-  crosses("avatars/updated", on_provider::avatars_updated(), on_client::avatars_updated());
-  crosses("rooms/listened", on_provider::listened_queries(), on_client::listened_queries());
-  crosses("listened", on_provider::listened(), on_client::listened());
-  crosses("rooms/of", on_provider::rooms_of_queries(), on_client::rooms_of_queries());
-  crosses("rooms of", on_provider::rooms_of(), on_client::rooms_of());
+fn every_receiving_side_body_and_the_error_shape_cross_both_ways() {
+  crosses("handed message", on_provider::handed_messages(), on_client::handed_messages());
+  crosses("gathered patch", on_provider::gathered_patches(), on_client::gathered_patches());
+  crosses("avatar change", on_provider::avatar_changes(), on_client::avatar_changes());
+  crosses("room query", on_provider::room_queries(), on_client::room_queries());
+  crosses("receiving-side room", on_provider::receiver_rooms(), on_client::receiver_rooms());
+  crosses("rooms query", on_provider::rooms_queries(), on_client::rooms_queries());
+  crosses("rooms page", on_provider::room_pages(), on_client::room_pages());
   crosses("error", on_provider::wire_errors(), on_client::wire_errors());
 }
 
@@ -814,11 +813,11 @@ fn every_inbound_body_and_the_error_shape_cross_both_ways() {
 fn the_fixtures_hold_every_member_of_every_set() {
   use bmo_chat::{
     ChatAvatarKind, ChatCapability, ChatFileKind, ChatModeStanding, ChatNumberSpace, ChatReach, ChatVerb,
-    ChatVoice, ErrorCode, GatheredOutcome, RoomKind,
+    ChatVoice, ErrorCode, MessageOrigin, RoomKind,
   };
 
-  let verbs: BTreeSet<ChatVerb> = on_provider::sends().iter().map(|request| request.send.verb()).collect();
-  assert_eq!(verbs, ChatVerb::ALL.iter().copied().collect());
+  let kinds: BTreeSet<ChatVerb> = on_provider::sends().iter().map(|request| request.send.kind()).collect();
+  assert_eq!(kinds, ChatVerb::ALL.iter().copied().collect());
 
   let missed: Vec<_> = on_provider::sents().into_iter().flat_map(|sent| sent.missed).collect();
   let reasons: BTreeSet<_> = missed.iter().map(|picture| picture.reason.code()).collect();
@@ -845,12 +844,12 @@ fn the_fixtures_hold_every_member_of_every_set() {
     ChatVoice::BotAccount,
     ChatVoice::HumanReader,
     ChatVoice::HumanAvatar,
-    ChatVoice::HumanAsAgent,
+    ChatVoice::OwnAccount,
     ChatVoice::Direct,
   ] {
     assert!(modes.iter().any(|mode| mode.voice == voice), "a mode speaks with {voice:?}");
     assert!(
-      on_provider::sends().iter().any(|request| request.voice == Some(voice)),
+      on_provider::sends().iter().any(|request| request.mode == Some(voice)),
       "a send speaks as {voice:?}"
     );
   }
@@ -871,14 +870,18 @@ fn the_fixtures_hold_every_member_of_every_set() {
   }
   assert_eq!(declarations[0].can, ChatCapability::ALL.iter().copied().collect());
 
+  let handed = on_provider::handed_messages();
+  assert_eq!(handed.len(), KEYS.len(), "every handed-over message has its key");
+  assert!(handed[GATHERING].gathering, "the message at GATHERING is still gathering its files");
   for kind in [RoomKind::Owner, RoomKind::Group] {
-    assert!(on_provider::room_kinds().iter().any(|answer| answer.kind == kind));
-    assert!(
-      on_provider::handovers()
-        .iter()
-        .any(|handover| handover.room.and_then(|room| room.kind) == Some(kind))
-    );
+    assert!(on_provider::provider_rooms().iter().any(|room| room.kind == kind));
+    assert!(handed.iter().any(|message| message.room.kind == Some(kind)));
   }
+  for origin in [MessageOrigin::Live, MessageOrigin::Edit, MessageOrigin::History] {
+    assert!(handed.iter().any(|message| message.origin == origin), "a message comes {origin:?}");
+  }
+  assert!(handed.iter().any(|message| !message.files.is_empty()));
+  assert!(handed.iter().any(|message| message.gather_failure.is_some()));
   let kinds: Vec<Option<ChatFileKind>> = on_provider::kinded_files().iter().map(|file| file.kind).collect();
   let every_kind = [
     ChatFileKind::Photo,
@@ -895,9 +898,16 @@ fn the_fixtures_hold_every_member_of_every_set() {
     assert!(on_provider::avatars().iter().any(|avatar| avatar.kind == kind));
   }
   assert!(on_provider::sends().iter().any(|request| request.prefix.is_some()));
-  let gathered = on_provider::gathered();
-  assert!(gathered.iter().any(|body| matches!(body.outcome, GatheredOutcome::Kept { .. })));
-  assert!(gathered.iter().any(|body| matches!(body.outcome, GatheredOutcome::NotKept { .. })));
+  assert!(on_provider::sends().iter().any(|request| request.speaker.is_some()));
+  let patches = on_provider::gathered_patches();
+  assert!(patches.iter().any(|patch| !patch.files.is_empty() && patch.gather_failure.is_none()));
+  assert!(patches.iter().any(|patch| patch.files.is_empty() && patch.gather_failure.is_some()));
+  for pages in [
+    on_provider::avatar_pages().iter().map(|page| page.more).collect::<BTreeSet<_>>(),
+    on_provider::room_pages().iter().map(|page| page.more).collect(),
+  ] {
+    assert_eq!(pages, BTreeSet::from([false, true]), "a page with more and one without");
+  }
   let codes: Vec<ErrorCode> = on_provider::wire_errors().iter().map(|error| error.code).collect();
   assert_eq!(codes, <ErrorCode as strum::VariantArray>::VARIANTS);
 }
@@ -918,11 +928,11 @@ fn refusals() -> Vec<bmo_chat::ChatRefusal> {
     },
     ChatRefusal::SpeakerNotAllowed {
       label: label(),
-      agent: "helper".into(),
+      speaker: "helper".into(),
     },
     ChatRefusal::SpeakerUnnumbered {
       label: label(),
-      agent: "helper".into(),
+      speaker: "helper".into(),
     },
     ChatRefusal::NotReady { label: label() },
     ChatRefusal::Platform {
@@ -943,7 +953,7 @@ fn send_outcomes() -> Vec<bmo_chat::ChatSendResult> {
   sent.chain(refusals().into_iter().map(ChatSendResult::Refused)).collect()
 }
 
-/// What the stand-in provider's fetches come to, in turn: the file, the file withheld, and two refusals.
+/// What the stand-in provider's fetches come to, in turn: the files, the files withheld, and two refusals.
 fn media_outcomes() -> Vec<bmo_chat::ChatMediaResult> {
   use bmo_chat::ChatMediaResult;
   let mut refusals = refusals();
@@ -973,6 +983,14 @@ fn answered_with(failure: bmo_chat_client::ClientFailure) -> (u16, bmo_chat_clie
       ..
     } => (status, answer),
     other => panic!("the router answered in the error shape, so the client says so: {other:?}"),
+  }
+}
+
+/// The link's failure as the status and the error shape it was answered with.
+fn link_answered_with(failure: bmo_chat::ChatFailure) -> (u16, Option<bmo_chat::WireError>) {
+  match failure.downcast_ref::<bmo_chat::LinkFailure>() {
+    Some(bmo_chat::LinkFailure::Answered { status, answer, .. }) => (*status, answer.clone()),
+    other => panic!("the receiving side answered, so the link says so: {other:?}"),
   }
 }
 
@@ -1112,8 +1130,8 @@ impl bmo_chat::ChatDialect for StandDialect {
 }
 
 /// A stand-in provider that declares itself as the first declaration fixture. It answers each send and
-/// fetch with the next result fixture, each room route with the fixture of the room asked about, and keeps
-/// everything it was asked.
+/// fetch with the next result fixture, a room with the room fixture of its number, and keeps everything it
+/// was asked.
 struct Stand {
   declared: bmo_chat::ChatDeclaration,
   dialect: StandDialect,
@@ -1121,8 +1139,8 @@ struct Stand {
   failing: AtomicBool,
   sends: Mutex<Vec<bmo_chat::ChatSendRequest>>,
   fetches: Mutex<Vec<bmo_chat::ChatMediaRequest>>,
-  rooms: Mutex<Vec<(&'static str, i64)>>,
-  owner_rooms: AtomicUsize,
+  rooms: Mutex<Vec<i64>>,
+  owners: AtomicUsize,
 }
 
 impl Stand {
@@ -1138,17 +1156,8 @@ impl Stand {
       sends: Mutex::default(),
       fetches: Mutex::default(),
       rooms: Mutex::default(),
-      owner_rooms: AtomicUsize::new(0),
+      owners: AtomicUsize::new(0),
     }
-  }
-
-  /// Keeps the room route asked, and gives the index of the room among the room fixtures.
-  fn room(&self, route: &'static str, chat_id: i64) -> usize {
-    self.rooms.lock().unwrap().push((route, chat_id));
-    on_provider::room_queries()
-      .iter()
-      .position(|query| query.chat_id == chat_id)
-      .unwrap_or_else(|| panic!("the provider was asked about a room no fixture has: {chat_id}"))
   }
 }
 
@@ -1160,6 +1169,10 @@ impl bmo_chat::ChatProvider for Stand {
 
   fn label(&self) -> &str {
     &self.declared.label
+  }
+
+  fn version(&self) -> &str {
+    "1.0.0"
   }
 
   fn configured(&self) -> Option<String> {
@@ -1196,29 +1209,14 @@ impl bmo_chat::ChatProvider for Stand {
     self.declared.speakers
   }
 
-  async fn owns_room(&self, chat_id: i64) -> Result<bool, bmo_chat::ChatFailure> {
-    Ok(on_provider::room_owns()[self.room("owns", chat_id)].owns)
-  }
-
-  async fn identity_of(&self, chat_id: i64) -> Result<Option<i64>, bmo_chat::ChatFailure> {
-    Ok(on_provider::room_identities()[self.room("identity", chat_id)].identity)
-  }
-
-  async fn is_owner_room(&self, chat_id: i64) -> Result<bmo_chat::RoomKind, bmo_chat::ChatFailure> {
-    Ok(on_provider::room_kinds()[self.room("is-owner", chat_id)].kind)
-  }
-
-  async fn private_room_of(&self, chat_id: i64) -> Result<Option<i64>, bmo_chat::ChatFailure> {
-    Ok(on_provider::room_persons()[self.room("private-of", chat_id)].person)
+  async fn room(&self, room_id: i64) -> Result<Option<bmo_chat::ProviderRoom>, bmo_chat::ChatFailure> {
+    self.rooms.lock().unwrap().push(room_id);
+    Ok(on_provider::provider_rooms().into_iter().find(|room| room.id == room_id))
   }
 
   async fn owner_room(&self) -> Result<Option<i64>, bmo_chat::ChatFailure> {
-    let rooms = on_provider::owner_rooms();
-    Ok(rooms[self.owner_rooms.fetch_add(1, Ordering::SeqCst) % rooms.len()].chat_id)
-  }
-
-  async fn room_title(&self, chat_id: i64) -> Result<Option<String>, bmo_chat::ChatFailure> {
-    Ok(on_provider::room_titles().swap_remove(self.room("title", chat_id)).title)
+    let owners = on_provider::provider_owners();
+    Ok(owners[self.owners.fetch_add(1, Ordering::SeqCst) % owners.len()].room_id)
   }
 
   async fn send(
@@ -1298,10 +1296,10 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
   let outcomes = media_outcomes();
   let fetched = requests.len().max(outcomes.len());
   for index in 0..fetched {
-    let result = client.media(&requests[index % requests.len()]).await;
+    let result = client.message_files(&requests[index % requests.len()]).await;
     let refused = match &outcomes[index % outcomes.len()] {
       bmo_chat::ChatMediaResult::Fetched(_) => {
-        assert_eq!(result.unwrap(), on_client::fetched(), "media {index}");
+        assert_eq!(result.unwrap(), on_client::file_pages().swap_remove(0), "files {index}");
         continue;
       }
       bmo_chat::ChatMediaResult::Unavailable { reason } => {
@@ -1309,37 +1307,32 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
       }
       bmo_chat::ChatMediaResult::Refused(refusal) => refusal.clone().into(),
     };
-    assert_eq!(answered_with(result.unwrap_err()), as_the_client_reads(refused), "media {index}");
+    assert_eq!(answered_with(result.unwrap_err()), as_the_client_reads(refused), "files {index}");
   }
   let provider_requests = on_provider::media_requests();
   let heard: Vec<_> =
     (0..fetched).map(|index| provider_requests[index % provider_requests.len()]).collect();
   assert_eq!(*stand.fetches.lock().unwrap(), heard);
 
-  let mut asked = Vec::new();
-  for (index, query) in on_client::room_queries().into_iter().enumerate() {
-    let chat_id = query.chat_id;
-    assert_eq!(client.room_owns(chat_id).await.unwrap(), on_client::room_owns()[index].owns);
-    assert_eq!(
-      client.room_identity(chat_id).await.unwrap(),
-      on_client::room_identities()[index].identity
-    );
-    assert_eq!(client.room_kind(chat_id).await.unwrap(), on_client::room_kinds()[index].kind);
-    assert_eq!(client.room_private_of(chat_id).await.unwrap(), on_client::room_persons()[index].person);
-    assert_eq!(
-      client.room_title(chat_id).await.unwrap(),
-      on_client::room_titles().swap_remove(index).title
-    );
-    let chat_id = on_provider::room_queries()[index].chat_id;
-    asked.extend(["owns", "identity", "is-owner", "private-of", "title"].map(|route| (route, chat_id)));
+  for room in on_client::provider_rooms() {
+    assert_eq!(client.room(room.id).await.unwrap(), room);
   }
+  let unknown = answered_with(client.room(13).await.unwrap_err());
+  assert_eq!(
+    unknown,
+    (
+      404,
+      bmo_chat_client::WireError::new(bmo_chat_client::ErrorCode::NotFound, "Nothing is known of room 13.")
+    )
+  );
+  let asked: Vec<i64> = on_provider::provider_rooms().iter().map(|room| room.id).chain([13]).collect();
   assert_eq!(*stand.rooms.lock().unwrap(), asked);
-  for answer in on_client::owner_rooms() {
-    assert_eq!(client.owner_room().await.unwrap(), answer.chat_id);
+  for owner in on_client::provider_owners() {
+    assert_eq!(client.owner().await.unwrap(), owner);
   }
 
   for (read, reading) in on_client::dialect_reads().into_iter().zip(on_client::dialect_readings()) {
-    assert_eq!(client.dialect_read(read.text).await.unwrap(), reading);
+    assert_eq!(client.dialect_reading(read.text).await.unwrap(), reading);
   }
   for (check, checked) in on_client::dialect_checks().into_iter().zip(on_client::dialect_checkeds()) {
     assert_eq!(client.dialect_check(check.markup).await.unwrap(), checked);
@@ -1351,7 +1344,7 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
 
 #[tokio::test]
 async fn the_real_routers_errors_reach_the_real_client_in_the_error_shape() {
-  use bmo_chat_client::{ChatHealth, ClientFailure, ErrorCode, WireError};
+  use bmo_chat_client::{ClientFailure, ErrorCode, WireError};
 
   let (stand, listening) = serve_stand().await;
   let client = client_to(listening.base("provider"), TOKEN);
@@ -1372,14 +1365,14 @@ async fn the_real_routers_errors_reach_the_real_client_in_the_error_shape() {
   *stand.configured.lock().unwrap() = Some("The platform connection is not open yet.".into());
   assert_eq!(client.health().await.unwrap(), on_client::healths().swap_remove(1));
   let (status, answer) = answered(client.send(&send).await.unwrap_err());
-  assert_eq!(status, 409);
+  assert_eq!(status, 503);
   let not_ready = "Stand-in is not ready yet: The platform connection is not open yet.";
   assert_eq!(answer, Some(WireError::new(ErrorCode::NotReady, not_ready)));
-  let (status, _) = answered(client.room_owns(7).await.unwrap_err());
-  assert_eq!(status, 409);
+  let (status, _) = answered(client.room(7).await.unwrap_err());
+  assert_eq!(status, 503);
 
   *stand.configured.lock().unwrap() = None;
-  assert_eq!(client.health().await.unwrap(), ChatHealth::ready());
+  assert_eq!(client.health().await.unwrap(), on_client::healths().swap_remove(0));
   stand.failing.store(true, Ordering::SeqCst);
   let (status, answer) = answered(client.send(&send).await.unwrap_err());
   assert_eq!(status, 500);
@@ -1408,11 +1401,8 @@ async fn the_avatar_routes_are_served_by_the_real_router_and_read_by_the_real_cl
 
   let (_stand, listening) = serve_stand().await;
   let client = client_to(listening.base("provider"), TOKEN);
-  for (query, list) in on_client::avatar_queries()
-    .iter()
-    .zip([on_client::avatars(), on_client::avatars().split_off(1)])
-  {
-    assert_eq!(client.avatars(query).await.unwrap(), list, "{query:?}");
+  for (query, page) in on_client::avatar_queries().iter().zip(on_client::avatar_pages()) {
+    assert_eq!(client.avatars(query).await.unwrap(), page, "{query:?}");
   }
   assert_eq!(
     client.avatar(ChatAvatarKind::Room, -100).await.unwrap(),
@@ -1426,7 +1416,7 @@ async fn the_avatar_routes_are_served_by_the_real_router_and_read_by_the_real_cl
   let http = reqwest::Client::builder().no_proxy().build().expect("a plain client builds");
   let base = listening.base("provider");
   let answer = http
-    .get(format!("{base}avatar/person/9"))
+    .get(format!("{base}people/someone/avatar"))
     .bearer_auth(TOKEN)
     .send()
     .await
@@ -1434,7 +1424,10 @@ async fn the_avatar_routes_are_served_by_the_real_router_and_read_by_the_real_cl
   assert_eq!(answer.status().as_u16(), 404);
   let body = answer.bytes().await.expect("the answer has a body");
   let read: WireError = serde_json::from_slice(&body).expect("the body is the error shape");
-  assert_eq!(read, WireError::new(ErrorCode::NoRoute, "There is no route at GET /avatar/person/9."));
+  assert_eq!(
+    read,
+    WireError::new(ErrorCode::NoRoute, "There is no route at GET /people/someone/avatar.")
+  );
   let stranger = client_to(listening.base("provider"), "a-wrong-token");
   let failure = stranger.avatar(ChatAvatarKind::Room, -100).await.unwrap_err();
   assert!(matches!(failure, ClientFailure::Answered { status: 401, .. }), "{failure:?}");
@@ -1443,23 +1436,22 @@ async fn the_avatar_routes_are_served_by_the_real_router_and_read_by_the_real_cl
   listening.close().await;
 }
 
-/// What the stand-in receiver took, by the route it came in on.
+/// What the stand-in receiving side took, by the call it came in on.
 #[derive(Debug, Clone, PartialEq)]
 enum Took {
-  Message(bmo_chat_client::ChatHandover),
-  Attachment(bmo_chat_client::ChatHandover),
-  Edited(bmo_chat_client::ChatHandover),
-  Gathered(bmo_chat_client::ChatGathered),
-  History(bmo_chat_client::ChatHandover),
-  AvatarsUpdated(bmo_chat_client::AvatarsUpdated),
-  Listened(bmo_chat_client::ListenedQuery),
-  RoomsOf(bmo_chat_client::RoomsOfQuery),
+  HandOver(i64, i64, Box<bmo_chat_client::HandedMessage>),
+  Gathered(i64, i64, bmo_chat_client::GatheredPatch),
+  AvatarsChanged(bmo_chat_client::AvatarChange),
+  Room(i64, bmo_chat_client::RoomQuery),
+  Rooms(bmo_chat_client::RoomsQuery),
 }
 
-/// A stand-in receiver that keeps every hand-over, or answers each with the error it is set to give.
+/// A stand-in receiving side that keeps every call and the messages it is handed, or answers each call with
+/// the error it is set to give.
 #[derive(Default)]
 struct Taker {
   took: Mutex<Vec<Took>>,
+  held: Mutex<Vec<((i64, i64), bmo_chat_client::HandedMessage)>>,
   refusing: Mutex<Option<bmo_chat_client::WireError>>,
 }
 
@@ -1475,122 +1467,166 @@ impl Taker {
 
 #[async_trait]
 impl bmo_chat_client::ChatReceiver for Taker {
-  async fn message(
+  /// A message held already is answered as held, and nothing else changes.
+  async fn hand_over(
     &self,
-    handover: bmo_chat_client::ChatHandover,
-  ) -> Result<(), bmo_chat_client::WireError> {
-    self.take(Took::Message(handover))
-  }
-
-  async fn attachment(
-    &self,
-    handover: bmo_chat_client::ChatHandover,
-  ) -> Result<(), bmo_chat_client::WireError> {
-    self.take(Took::Attachment(handover))
-  }
-
-  async fn edited(
-    &self,
-    handover: bmo_chat_client::ChatHandover,
-  ) -> Result<(), bmo_chat_client::WireError> {
-    self.take(Took::Edited(handover))
+    room_id: i64,
+    message_id: i64,
+    message: bmo_chat_client::HandedMessage,
+  ) -> Result<bmo_chat_client::HeldMessage, bmo_chat_client::WireError> {
+    self.take(Took::HandOver(room_id, message_id, Box::new(message.clone())))?;
+    let mut held = self.held.lock().unwrap();
+    if let Some((_, kept)) = held.iter().find(|(key, _)| *key == (room_id, message_id)) {
+      return Ok(bmo_chat_client::HeldMessage {
+        created: false,
+        message: kept.clone(),
+      });
+    }
+    held.push(((room_id, message_id), message.clone()));
+    Ok(bmo_chat_client::HeldMessage {
+      created: true,
+      message,
+    })
   }
 
   async fn gathered(
     &self,
-    gathered: bmo_chat_client::ChatGathered,
+    room_id: i64,
+    message_id: i64,
+    patch: bmo_chat_client::GatheredPatch,
+  ) -> Result<bmo_chat_client::HandedMessage, bmo_chat_client::WireError> {
+    self.take(Took::Gathered(room_id, message_id, patch.clone()))?;
+    let held = self.held.lock().unwrap();
+    let (_, kept) = held.iter().find(|(key, _)| *key == (room_id, message_id)).ok_or_else(|| {
+      bmo_chat_client::WireError::new(bmo_chat_client::ErrorCode::NotFound, "No such message is held.")
+    })?;
+    Ok(bmo_chat_client::HandedMessage {
+      files: patch.files,
+      gather_failure: patch.gather_failure,
+      gathering: false,
+      ..kept.clone()
+    })
+  }
+
+  async fn avatars_changed(
+    &self,
+    change: bmo_chat_client::AvatarChange,
   ) -> Result<(), bmo_chat_client::WireError> {
-    self.take(Took::Gathered(gathered))
+    self.take(Took::AvatarsChanged(change))
   }
 
-  /// Answers each history hand-over with the answer fixture of its place among the hand-over fixtures.
-  async fn history(
+  async fn room(
     &self,
-    handover: bmo_chat_client::ChatHandover,
-  ) -> Result<bool, bmo_chat_client::WireError> {
-    let at = on_client::handovers()
-      .iter()
-      .position(|fixture| *fixture == handover)
-      .expect("the history hand-over is a fixture");
-    self.take(Took::History(handover))?;
-    Ok(on_client::history_kept()[at].kept)
+    room_id: i64,
+    query: bmo_chat_client::RoomQuery,
+  ) -> Result<Option<bmo_chat_client::ReceiverRoom>, bmo_chat_client::WireError> {
+    self.take(Took::Room(room_id, query))?;
+    Ok(on_client::receiver_rooms().into_iter().find(|room| room.id == room_id))
   }
 
-  async fn avatars_updated(
+  async fn rooms(
     &self,
-    updated: bmo_chat_client::AvatarsUpdated,
-  ) -> Result<(), bmo_chat_client::WireError> {
-    self.take(Took::AvatarsUpdated(updated))
-  }
-
-  async fn listened(
-    &self,
-    query: bmo_chat_client::ListenedQuery,
-  ) -> Result<bool, bmo_chat_client::WireError> {
-    let at = on_client::listened_queries()
-      .iter()
-      .position(|fixture| *fixture == query)
-      .expect("the room asked about is a fixture");
-    self.take(Took::Listened(query))?;
-    Ok(on_client::listened()[at].listened)
-  }
-
-  async fn rooms_of(
-    &self,
-    query: bmo_chat_client::RoomsOfQuery,
-  ) -> Result<Vec<bmo_chat_client::HistoryRoom>, bmo_chat_client::WireError> {
-    let at = on_client::rooms_of_queries()
-      .iter()
-      .position(|fixture| *fixture == query)
-      .expect("the query is a fixture");
-    self.take(Took::RoomsOf(query))?;
-    Ok(on_client::rooms_of().swap_remove(at).rooms)
+    query: bmo_chat_client::RoomsQuery,
+  ) -> Result<Vec<bmo_chat_client::ReceiverRoom>, bmo_chat_client::WireError> {
+    self.take(Took::Rooms(query.clone()))?;
+    let mut rooms: Vec<_> = on_client::receiver_rooms()
+      .into_iter()
+      .filter(|room| query.after.is_none_or(|after| room.id > after))
+      .collect();
+    if let Some(limit) = query.limit {
+      rooms.truncate(limit as usize);
+    }
+    Ok(rooms)
   }
 }
 
 #[tokio::test]
-async fn every_inbound_route_is_posted_by_the_real_link_into_the_real_receiver_router() {
+async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_router() {
   use bmo_chat::ChatReceiver;
 
   let taker = Arc::new(Taker::default());
-  let router = Router::new().nest("/receiver", bmo_chat_client::receiver_router(taker.clone(), TOKEN));
+  let router = Router::new().nest("/receiving", bmo_chat_client::receiver_router(taker.clone(), TOKEN));
   let listening = Listening::start(router).await;
-  let link = link_to(listening.base("receiver"), TOKEN);
+  let link = link_to(listening.base("receiving"), TOKEN);
 
-  for handover in on_provider::handovers() {
-    link.message(handover.clone()).await.unwrap();
-    link.attachment(handover.clone()).await.unwrap();
-    link.edited(handover).await.unwrap();
+  for ((room_id, message_id), message) in KEYS.into_iter().zip(on_provider::handed_messages()) {
+    let held = link.hand_over(room_id, message_id, message.clone()).await.unwrap();
+    assert_eq!(
+      held,
+      bmo_chat::HeldMessage {
+        created: true,
+        message
+      }
+    );
   }
-  for gathered in on_provider::gathered() {
-    link.gathered(gathered).await.unwrap();
+  let first = on_provider::handed_messages().swap_remove(0);
+  let (room_id, message_id) = KEYS[0];
+  let again = bmo_chat::HandedMessage {
+    origin: bmo_chat::MessageOrigin::History,
+    ..first.clone()
+  };
+  assert_eq!(
+    link.hand_over(room_id, message_id, again.clone()).await.unwrap(),
+    bmo_chat::HeldMessage {
+      created: false,
+      message: first
+    },
+    "a message held before is answered 200 with the message as held"
+  );
+  let (room_id, message_id) = KEYS[GATHERING];
+  for patch in on_provider::gathered_patches() {
+    let gathered = link.gathered(room_id, message_id, patch.clone()).await.unwrap();
+    let expected = bmo_chat::HandedMessage {
+      files: patch.files,
+      gather_failure: patch.gather_failure,
+      gathering: false,
+      ..on_provider::handed_messages().swap_remove(GATHERING)
+    };
+    assert_eq!(gathered, expected);
   }
-  for (handover, kept) in on_provider::handovers().into_iter().zip(on_provider::history_kept()) {
-    assert_eq!(link.history(handover).await.unwrap(), kept.kept);
+  for change in on_provider::avatar_changes() {
+    link.avatars_changed(change).await.unwrap();
   }
-  for updated in on_provider::avatars_updated() {
-    link.avatars_updated(updated).await.unwrap();
+  let asking = on_provider::room_queries().swap_remove(0);
+  for room in on_provider::receiver_rooms() {
+    assert_eq!(link.room(room.id, asking.clone()).await.unwrap(), Some(room));
   }
-  for (query, answer) in on_provider::listened_queries().into_iter().zip(on_provider::listened()) {
-    assert_eq!(link.listened(query).await.unwrap(), answer.listened);
+  assert_eq!(link.room(13, asking.clone()).await.unwrap(), None, "a room not held reads as none");
+  for (query, page) in on_provider::rooms_queries().into_iter().zip(on_provider::room_pages()) {
+    assert_eq!(link.rooms(query).await.unwrap(), page);
   }
-  for (query, answer) in on_provider::rooms_of_queries().into_iter().zip(on_provider::rooms_of()) {
-    assert_eq!(link.rooms_of(query).await.unwrap(), answer.rooms);
-  }
-  let mut expected = Vec::new();
-  for handover in on_client::handovers() {
-    expected.extend([
-      Took::Message(handover.clone()),
-      Took::Attachment(handover.clone()),
-      Took::Edited(handover),
-    ]);
-  }
-  expected.extend(on_client::gathered().into_iter().map(Took::Gathered));
-  expected.extend(on_client::handovers().into_iter().map(Took::History));
-  expected.extend(on_client::avatars_updated().into_iter().map(Took::AvatarsUpdated));
-  expected.extend(on_client::listened_queries().into_iter().map(Took::Listened));
-  expected.extend(on_client::rooms_of_queries().into_iter().map(Took::RoomsOf));
-  assert_eq!(*taker.took.lock().unwrap(), expected);
+
+  let mut expected: Vec<Took> = KEYS
+    .into_iter()
+    .zip(on_client::handed_messages())
+    .map(|((room_id, message_id), message)| Took::HandOver(room_id, message_id, Box::new(message)))
+    .collect();
+  let again = bmo_chat_client::HandedMessage {
+    origin: bmo_chat_client::MessageOrigin::History,
+    ..on_client::handed_messages().swap_remove(0)
+  };
+  expected.push(Took::HandOver(KEYS[0].0, KEYS[0].1, Box::new(again)));
+  let (room_id, message_id) = KEYS[GATHERING];
+  expected.extend(
+    on_client::gathered_patches()
+      .into_iter()
+      .map(|patch| Took::Gathered(room_id, message_id, patch)),
+  );
+  expected.extend(on_client::avatar_changes().into_iter().map(Took::AvatarsChanged));
+  let asked = on_client::room_queries().swap_remove(0);
+  expected.extend(on_client::receiver_rooms().iter().map(|room| Took::Room(room.id, asked.clone())));
+  expected.push(Took::Room(13, asked));
+  expected.extend(on_client::rooms_queries().into_iter().map(|query| {
+    Took::Rooms(bmo_chat_client::RoomsQuery {
+      limit: query.limit.map(|limit| limit + 1),
+      ..query
+    })
+  }));
+  assert_eq!(
+    *taker.took.lock().unwrap(),
+    expected,
+    "the router asks for one room more than the limit"
+  );
 
   let given = on_client::wire_errors();
   for (index, error) in on_provider::wire_errors().into_iter().enumerate() {
@@ -1598,26 +1634,22 @@ async fn every_inbound_route_is_posted_by_the_real_link_into_the_real_receiver_r
       continue;
     }
     *taker.refusing.lock().unwrap() = Some(given[index].clone());
-    let failure = link.message(on_provider::handovers().swap_remove(0)).await.unwrap_err();
-    match failure.downcast_ref::<bmo_chat::LinkFailure>() {
-      Some(bmo_chat::LinkFailure::Answered { status, answer, .. }) => {
-        assert_eq!(*status, error.code.status());
-        assert_eq!(answer.as_ref(), Some(&error));
-      }
-      other => panic!("the receiver answered, so the link says so: {other:?}"),
-    }
+    let (room_id, message_id) = KEYS[0];
+    let failure = link.hand_over(room_id, message_id, on_provider::handed_messages().swap_remove(0)).await;
+    assert_eq!(link_answered_with(failure.unwrap_err()), (error.code.status(), Some(error)));
   }
-  assert_eq!(taker.took.lock().unwrap().len(), expected.len(), "a refused hand-over is not taken");
+  assert_eq!(taker.took.lock().unwrap().len(), expected.len(), "a refused call is not taken");
 
-  let stranger = link_to(listening.base("receiver"), "a-wrong-token");
-  let failure = stranger.edited(on_provider::handovers().swap_remove(0)).await.unwrap_err();
-  match failure.downcast_ref::<bmo_chat::LinkFailure>() {
-    Some(bmo_chat::LinkFailure::Answered { status, answer, .. }) => {
-      assert_eq!(*status, 401);
-      assert_eq!(answer.as_ref().map(|answer| answer.code), Some(bmo_chat::ErrorCode::Unauthorized));
-    }
-    other => panic!("the receiver answered, so the link says so: {other:?}"),
-  }
+  let stranger = link_to(listening.base("receiving"), "a-wrong-token");
+  let failure = stranger
+    .avatars_changed(on_provider::avatar_changes().swap_remove(0))
+    .await
+    .unwrap_err();
+  let (status, answer) = link_answered_with(failure);
+  assert_eq!(
+    (status, answer.map(|answer| answer.code)),
+    (401, Some(bmo_chat::ErrorCode::Unauthorized))
+  );
 
   drop((link, stranger));
   listening.close().await;

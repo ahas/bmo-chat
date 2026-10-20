@@ -1,61 +1,66 @@
-//! The server for the receiver routes: the hand-overs and questions `docs/protocol.md` lists for the
-//! receiver, handed to the receiver the consuming service supplies, behind the token it supplies.
+//! The server for the receiving-side routes: the hand-overs and questions `docs/protocol.md` lists for the
+//! receiving side, handed to the receiving side the consuming service supplies, behind the token it supplies.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::StatusCode;
+use axum::extract::rejection::{PathRejection, QueryRejection};
+use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use axum::http::header::RETRY_AFTER;
+use axum::http::{Method, StatusCode, Uri};
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Json, Response};
-use axum::routing::post;
+use axum::routing::{get, post, put};
 use headers::authorization::Bearer;
 use headers::{Authorization, HeaderMapExt};
 use serde::de::DeserializeOwned;
-use serde_json::{Map, Value};
 
-use crate::error::{ErrorCode, WireError};
-use crate::message::{ChatGathered, ChatHandover};
-use crate::receiver_bodies::{
-  AvatarsUpdated, HistoryKept, HistoryRoom, Listened, ListenedQuery, RoomsOf, RoomsOfQuery,
-};
+use crate::bodies::Page;
+use crate::error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
+use crate::message::{GatheredPatch, HandedMessage};
+use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
 
-/// What the receiver does with what a provider hands over, and how it answers what a provider asks. The
-/// consuming service implements it. A call it could not take or answer is answered with the error it gives,
-/// in the error shape and at its code's status.
+/// What the receiving side does with what a provider hands over, and how it answers what a provider asks.
+/// The consuming service implements it. A call it could not take or answer is answered with the error it
+/// gives, in the error shape and at its code's status.
 #[async_trait]
 pub trait ChatReceiver: Send + Sync {
-  /// A message a room said.
-  async fn message(&self, handover: ChatHandover) -> Result<(), WireError>;
+  /// A message of a room handed over, whatever its origin: the message as the receiving side now holds it,
+  /// and whether it held it before. A `live` message already held is not taken again, an `edit` replaces
+  /// the words and the sender held, and a `history` message already held is left as it is.
+  async fn hand_over(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    message: HandedMessage,
+  ) -> Result<HeldMessage, WireError>;
 
-  /// A message carrying a file, with the file or the promise of it.
-  async fn attachment(&self, handover: ChatHandover) -> Result<(), WireError>;
-
-  /// A message already handed over, changed: the receiver keeps its words and its sender as handed over.
-  async fn edited(&self, handover: ChatHandover) -> Result<(), WireError>;
-
-  /// The file a message's `gathering` promised, or why it was not kept.
-  async fn gathered(&self, gathered: ChatGathered) -> Result<(), WireError>;
-
-  /// A past message read back from a room, archived where the receiver lacks it and waking nobody. True
-  /// where the receiver archived it, false where it already held it.
-  async fn history(&self, handover: ChatHandover) -> Result<bool, WireError>;
+  /// The files a message's gathering promised, or why they were not kept: the message as the receiving side
+  /// now holds it, no longer gathering. `not-found` where it does not hold the message, `conflict` where the
+  /// message promised no files.
+  async fn gathered(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    patch: GatheredPatch,
+  ) -> Result<HandedMessage, WireError>;
 
   /// Word that the kept profile pictures of these rooms and people changed.
-  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), WireError>;
+  async fn avatars_changed(&self, change: AvatarChange) -> Result<(), WireError>;
 
-  /// Whether the receiver listens to the room.
-  async fn listened(&self, query: ListenedQuery) -> Result<bool, WireError>;
+  /// The room as the receiving side holds it for the provider `via`, or null where it holds nothing of it.
+  async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError>;
 
-  /// The rooms of the provider `via` whose past it may read back, each with the oldest message the receiver
-  /// holds of it: in ascending order of room number, only those after `after`, at most `limit`.
-  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, WireError>;
+  /// The rooms of the provider `via` whose past it may read back, each with the oldest message held of it:
+  /// in ascending order of room number, only those after `after`, at most `limit`. The router asks for one
+  /// more than its caller's limit, to tell whether more stand past the page it answers.
+  async fn rooms(&self, query: RoomsQuery) -> Result<Vec<ReceiverRoom>, WireError>;
 }
 
-/// The receiver routes over `receiver`, each answering only a request that carries `token` as its bearer
-/// token. The serving service mounts the router where it likes and supplies the token from its own
+/// The receiving-side routes over `receiver`, each answering only a request that carries `token` as its
+/// bearer token. The serving service mounts the router where it likes and supplies the token from its own
 /// configuration. No body limit is set, since a hand-over carries its files in its body.
 pub fn receiver_router(receiver: Arc<dyn ChatReceiver>, token: impl Into<String>) -> Router {
   let served = Served {
@@ -63,14 +68,10 @@ pub fn receiver_router(receiver: Arc<dyn ChatReceiver>, token: impl Into<String>
     token: token.into().into(),
   };
   Router::new()
-    .route("/message", post(message))
-    .route("/attachment", post(attachment))
-    .route("/edited", post(edited))
-    .route("/gathered", post(gathered))
-    .route("/history", post(history))
-    .route("/avatars/updated", post(avatars_updated))
-    .route("/rooms/listened", post(listened))
-    .route("/rooms/of", post(rooms_of))
+    .route("/rooms", get(rooms))
+    .route("/rooms/{room_id}", get(room))
+    .route("/rooms/{room_id}/messages/{message_id}", put(hand_over).patch(gathered))
+    .route("/avatar-changes", post(avatars_changed))
     .fallback(no_route)
     .method_not_allowed_fallback(no_route)
     .layer(DefaultBodyLimit::disable())
@@ -84,14 +85,19 @@ struct Served {
   token: Arc<str>,
 }
 
-/// An answer in the error shape.
+/// An answer in the error shape, with its code's status and, for `not-ready`, a `Retry-After`.
 struct Answer(WireError);
 
 impl IntoResponse for Answer {
   fn into_response(self) -> Response {
     let Answer(error) = self;
     let status = StatusCode::from_u16(error.code.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    (status, Json(error)).into_response()
+    let not_ready = error.code == ErrorCode::NotReady;
+    let mut response = (status, Json(error)).into_response();
+    if not_ready {
+      response.headers_mut().insert(RETRY_AFTER, RETRY_AFTER_SECONDS.into());
+    }
+    response
   }
 }
 
@@ -101,12 +107,7 @@ impl From<WireError> for Answer {
   }
 }
 
-/// A hand-over taken: an empty JSON object.
-type Taken = Result<Json<Map<String, Value>>, Answer>;
-
-fn taken() -> Taken {
-  Ok(Json(Map::new()))
-}
+type Answered<T> = Result<Json<T>, Answer>;
 
 async fn authorized(State(served): State<Served>, request: Request, next: Next) -> Response {
   let bearer = request.headers().typed_get::<Authorization<Bearer>>();
@@ -118,10 +119,11 @@ async fn authorized(State(served): State<Served>, request: Request, next: Next) 
 }
 
 async fn no_route(request: Request) -> Answer {
-  Answer(WireError::new(
-    ErrorCode::NoRoute,
-    format!("There is no route at {} {}.", request.method(), request.uri().path()),
-  ))
+  no_route_at(request.method().as_str(), request.uri().path())
+}
+
+fn no_route_at(method: &str, path: &str) -> Answer {
+  Answer(WireError::new(ErrorCode::NoRoute, format!("There is no route at {method} {path}.")))
 }
 
 /// The body read as the shape the route takes.
@@ -134,42 +136,89 @@ fn read<T: DeserializeOwned>(body: &Bytes) -> Result<T, Answer> {
   })
 }
 
-async fn message(State(served): State<Served>, body: Bytes) -> Taken {
-  served.receiver.message(read(&body)?).await?;
-  taken()
+/// The query read as the shape the route takes.
+fn query<T>(query: Result<Query<T>, QueryRejection>) -> Result<T, Answer> {
+  let Query(query) = query.map_err(|rejection| {
+    Answer(WireError::new(
+      ErrorCode::BadRequest,
+      format!("The query is not the shape this route takes: {rejection}."),
+    ))
+  })?;
+  Ok(query)
 }
 
-async fn attachment(State(served): State<Served>, body: Bytes) -> Taken {
-  served.receiver.attachment(read(&body)?).await?;
-  taken()
+/// The path's keys, where they are numbers; a key that is not names no route.
+fn keys<T>(method: &Method, uri: &Uri, path: Result<Path<T>, PathRejection>) -> Result<T, Answer> {
+  let Path(keys) = path.map_err(|_| no_route_at(method.as_str(), uri.path()))?;
+  Ok(keys)
 }
 
-async fn edited(State(served): State<Served>, body: Bytes) -> Taken {
-  served.receiver.edited(read(&body)?).await?;
-  taken()
+async fn rooms(
+  State(served): State<Served>,
+  asked: Result<Query<RoomsQuery>, QueryRejection>,
+) -> Answered<Page<ReceiverRoom>> {
+  let asked = query(asked)?;
+  let limit = asked.limit;
+  let mut items = served
+    .receiver
+    .rooms(RoomsQuery {
+      limit: limit.map(|limit| limit.saturating_add(1)),
+      ..asked
+    })
+    .await?;
+  let more = limit.is_some_and(|limit| items.len() > limit as usize);
+  if let Some(limit) = limit {
+    items.truncate(limit as usize);
+  }
+  Ok(Json(Page { items, more }))
 }
 
-async fn gathered(State(served): State<Served>, body: Bytes) -> Taken {
-  served.receiver.gathered(read(&body)?).await?;
-  taken()
+async fn room(
+  State(served): State<Served>,
+  method: Method,
+  uri: Uri,
+  path: Result<Path<i64>, PathRejection>,
+  asked: Result<Query<RoomQuery>, QueryRejection>,
+) -> Answered<ReceiverRoom> {
+  let room_id = keys(&method, &uri, path)?;
+  let room = served.receiver.room(room_id, query(asked)?).await?;
+  let room = room.ok_or_else(|| {
+    Answer(WireError::new(ErrorCode::NotFound, format!("Nothing is held of room {room_id}.")))
+  })?;
+  Ok(Json(room))
 }
 
-async fn history(State(served): State<Served>, body: Bytes) -> Result<Json<HistoryKept>, Answer> {
-  let kept = served.receiver.history(read(&body)?).await?;
-  Ok(Json(HistoryKept { kept }))
+async fn hand_over(
+  State(served): State<Served>,
+  method: Method,
+  uri: Uri,
+  path: Result<Path<(i64, i64)>, PathRejection>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<HandedMessage>), Answer> {
+  let (room_id, message_id) = keys(&method, &uri, path)?;
+  let HeldMessage { created, message } =
+    served.receiver.hand_over(room_id, message_id, read(&body)?).await?;
+  let status = if created { StatusCode::CREATED } else { StatusCode::OK };
+  Ok((status, Json(message)))
 }
 
-async fn avatars_updated(State(served): State<Served>, body: Bytes) -> Taken {
-  served.receiver.avatars_updated(read(&body)?).await?;
-  taken()
+async fn gathered(
+  State(served): State<Served>,
+  method: Method,
+  uri: Uri,
+  path: Result<Path<(i64, i64)>, PathRejection>,
+  body: Bytes,
+) -> Answered<HandedMessage> {
+  let (room_id, message_id) = keys(&method, &uri, path)?;
+  let message = served.receiver.gathered(room_id, message_id, read(&body)?).await?;
+  Ok(Json(message))
 }
 
-async fn listened(State(served): State<Served>, body: Bytes) -> Result<Json<Listened>, Answer> {
-  let listened = served.receiver.listened(read(&body)?).await?;
-  Ok(Json(Listened { listened }))
-}
-
-async fn rooms_of(State(served): State<Served>, body: Bytes) -> Result<Json<RoomsOf>, Answer> {
-  let rooms = served.receiver.rooms_of(read(&body)?).await?;
-  Ok(Json(RoomsOf { rooms }))
+async fn avatars_changed(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<AvatarChange>), Answer> {
+  let change: AvatarChange = read(&body)?;
+  served.receiver.avatars_changed(change.clone()).await?;
+  Ok((StatusCode::CREATED, Json(change)))
 }

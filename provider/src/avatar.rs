@@ -4,6 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::bodies::Page;
+
 /// Whose picture one is: a room's or a person's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,12 +52,14 @@ pub struct AvatarsQuery {
 
 impl AvatarsQuery {
   /// The page of `kept` this query asks for: oldest taken first, only those taken after the cursor, and at
-  /// most `limit`, except that a page never ends between two pictures taken at the same moment.
-  pub fn page(&self, mut kept: Vec<ChatAvatar>) -> Vec<ChatAvatar> {
+  /// most `limit`, except that a page never ends between two pictures taken at the same moment. `more` says
+  /// whether pictures stand past the page's last.
+  pub fn page(&self, mut kept: Vec<ChatAvatar>) -> Page<ChatAvatar> {
     kept.sort_by_key(|avatar| (avatar.taken_at, avatar.kind, avatar.id));
     if let Some(after) = self.after {
       kept.retain(|avatar| avatar.taken_at > after);
     }
+    let mut more = false;
     if let Some(limit) = self.limit.and_then(|limit| usize::try_from(limit).ok())
       && limit < kept.len()
     {
@@ -66,14 +70,9 @@ impl AvatarsQuery {
         }
         None => 0,
       };
+      more = end < kept.len();
       kept.truncate(end);
     }
-    kept
+    Page { items: kept, more }
   }
-}
-
-/// The answer of `GET /avatars`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AvatarList {
-  pub avatars: Vec<ChatAvatar>,
 }

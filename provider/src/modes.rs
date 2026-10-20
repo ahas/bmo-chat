@@ -10,10 +10,10 @@ pub enum ChatVoice {
   BotAccount,
   /// A person's account, read only; a send in the owner's own words goes out in it.
   HumanReader,
-  /// A person's account, with the agent answering in it behind a prefix the caller supplies.
+  /// A person's account, answered in behind a prefix the caller supplies.
   HumanAvatar,
-  /// An account that belongs to the agent itself.
-  HumanAsAgent,
+  /// An ordinary account of the provider's own, held by no person.
+  OwnAccount,
   /// No platform: the owner typing into the machine.
   Direct,
 }

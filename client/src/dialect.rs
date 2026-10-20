@@ -3,7 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The agent's markdown once a dialect has read it.
+/// Markdown once a dialect has read it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ChatMarkup {
   /// What goes out.

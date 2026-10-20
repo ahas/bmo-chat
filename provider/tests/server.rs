@@ -15,7 +15,8 @@ use bmo_chat::{
   ChatAvatar, ChatAvatarKind, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatMarkup,
   ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering,
   ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest,
-  ChatSendResult, ChatSent, ChatVoice, MessageFile, RoomKind, provider_router,
+  ChatSendResult, ChatSent, ChatVoice, MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind,
+  provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -23,6 +24,10 @@ use tower::ServiceExt;
 const TOKEN: &str = "the-provider-token";
 const ROOM: i64 = -100;
 const OWNER: i64 = 42;
+/// A room the stand-in knows but does not own.
+const ELSEWHERE: i64 = 9;
+/// A room the stand-in knows nothing of.
+const UNKNOWN: i64 = 13;
 
 /// A dialect whose every answer shows which of its members gave it.
 struct Loud;
@@ -110,6 +115,9 @@ impl ChatProvider for Desk {
   fn label(&self) -> &str {
     "Platform"
   }
+  fn version(&self) -> &str {
+    "2.3.4"
+  }
   fn configured(&self) -> Option<String> {
     self.configured.lock().unwrap().clone()
   }
@@ -140,34 +148,36 @@ impl ChatProvider for Desk {
       ranges: ChatNumberRanges::default(),
     }
   }
-  async fn owns_room(&self, chat_id: i64) -> Result<bool, ChatFailure> {
-    self.ask(format!("owns {chat_id}"))?;
-    Ok(chat_id == ROOM)
-  }
-  async fn identity_of(&self, chat_id: i64) -> Result<Option<i64>, ChatFailure> {
-    self.ask(format!("identity {chat_id}"))?;
-    Ok((chat_id == ROOM).then_some(7))
-  }
-  async fn is_owner_room(&self, chat_id: i64) -> Result<RoomKind, ChatFailure> {
-    self.ask(format!("is-owner {chat_id}"))?;
-    Ok(if chat_id == ROOM { RoomKind::Owner } else { RoomKind::Group })
-  }
-  async fn private_room_of(&self, chat_id: i64) -> Result<Option<i64>, ChatFailure> {
-    self.ask(format!("private-of {chat_id}"))?;
-    Ok((chat_id == ROOM).then_some(OWNER))
+  async fn room(&self, room_id: i64) -> Result<Option<ProviderRoom>, ChatFailure> {
+    self.ask(format!("room {room_id}"))?;
+    Ok(match room_id {
+      ROOM => Some(ProviderRoom {
+        id: ROOM,
+        owns: true,
+        identity: Some(7),
+        kind: RoomKind::Owner,
+        private_to: Some(OWNER),
+        title: Some("A Room".into()),
+      }),
+      ELSEWHERE => Some(ProviderRoom {
+        id: ELSEWHERE,
+        owns: false,
+        identity: None,
+        kind: RoomKind::Group,
+        private_to: None,
+        title: None,
+      }),
+      _ => None,
+    })
   }
   async fn owner_room(&self) -> Result<Option<i64>, ChatFailure> {
-    self.ask("owner-room".to_owned())?;
+    self.ask("owner".to_owned())?;
     Ok(Some(ROOM))
-  }
-  async fn room_title(&self, chat_id: i64) -> Result<Option<String>, ChatFailure> {
-    self.ask(format!("title {chat_id}"))?;
-    Ok((chat_id == ROOM).then(|| "A Room".to_owned()))
   }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
     let what = match &request.send {
       ChatSend::Document { bytes, .. } => format!("send a document of {} bytes", bytes.len()),
-      send => format!("send {:?} to {}", send.verb(), request.chat_id),
+      send => format!("send {:?} to {}", send.kind(), request.room_id),
     };
     self.ask(what)?;
     if let ChatSend::Delete { message_id } = request.send {
@@ -193,19 +203,25 @@ impl ChatProvider for Desk {
     }))
   }
   async fn fetch_media(&self, request: ChatMediaRequest) -> Result<ChatMediaResult, ChatFailure> {
-    self.ask(format!("media {} {}", request.chat_id, request.message_id))?;
-    if request.message_id != 5 {
+    let ChatMediaRequest {
+      room_id,
+      message_id,
+      sent_at,
+    } = request;
+    self.ask(format!("files {room_id} {message_id} {sent_at:?}"))?;
+    if message_id != 5 {
       return Ok(ChatMediaResult::Unavailable {
         reason: "The platform no longer has it.".into(),
       });
     }
-    Ok(ChatMediaResult::Fetched(MessageFile {
-      id: "file-1".into(),
-      name: "a.png".into(),
+    let file = |id: &str, name: &str| MessageFile {
+      id: id.into(),
+      name: name.into(),
       mime: "image/png".into(),
       bytes: vec![137, 80],
       kind: None,
-    }))
+    };
+    Ok(ChatMediaResult::Fetched(vec![file("file-1", "a.png"), file("file-2", "b.png")]))
   }
 }
 
@@ -216,7 +232,7 @@ fn kept_avatars() -> Vec<ChatAvatar> {
     avatar(ChatAvatarKind::Person, OWNER, 3_000),
     avatar(ChatAvatarKind::Room, ROOM, 1_000),
     avatar(ChatAvatarKind::Person, 7, 2_000),
-    avatar(ChatAvatarKind::Room, 9, 2_000),
+    avatar(ChatAvatarKind::Room, ELSEWHERE, 2_000),
   ]
 }
 
@@ -224,14 +240,21 @@ fn router(desk: &Arc<Desk>) -> Router {
   provider_router(desk.clone(), TOKEN)
 }
 
-/// One request with the given authorization header, answered with its status and its JSON body.
-async fn call_as(
+/// An answer: its status, its `Retry-After` where it gave one, and its JSON body.
+struct Answer {
+  status: u16,
+  retry_after: Option<String>,
+  body: Value,
+}
+
+/// One request with the given authorization header.
+async fn answer_as(
   router: &Router,
   authorization: Option<&str>,
   method: &str,
   path: &str,
   body: Option<Value>,
-) -> (u16, Value) {
+) -> Answer {
   let mut request = Request::builder().method(method).uri(path);
   if let Some(authorization) = authorization {
     request = request.header("authorization", authorization);
@@ -245,39 +268,49 @@ async fn call_as(
   };
   let answer = router.clone().oneshot(request.body(body).unwrap()).await.expect("the router answers");
   let status = answer.status().as_u16();
+  let retry_after = answer.headers().get("retry-after").map(|value| value.to_str().unwrap().to_owned());
   let bytes = to_bytes(answer.into_body(), usize::MAX).await.expect("the answer has a body");
   let body = serde_json::from_slice(&bytes).expect("every answer is JSON");
+  Answer {
+    status,
+    retry_after,
+    body,
+  }
+}
+
+/// One request with the token, answered with its status and its JSON body.
+async fn call(router: &Router, method: &str, path: &str, body: Option<Value>) -> (u16, Value) {
+  let Answer { status, body, .. } =
+    answer_as(router, Some(&format!("Bearer {TOKEN}")), method, path, body).await;
   (status, body)
 }
 
-async fn call(router: &Router, method: &str, path: &str, body: Option<Value>) -> (u16, Value) {
-  call_as(router, Some(&format!("Bearer {TOKEN}")), method, path, body).await
-}
-
-fn room() -> Option<Value> {
-  Some(json!({ "chatId": ROOM }))
-}
-
 fn text() -> Option<Value> {
-  Some(json!({ "verb": "text", "chatId": ROOM, "text": "hello" }))
+  Some(json!({ "kind": "text", "roomId": ROOM, "fields": { "text": "hello" } }))
 }
 
-/// Every provider route, with a body it takes.
-fn routes() -> Vec<(&'static str, &'static str, Option<Value>)> {
+/// The path of a message's files.
+fn files(message_id: i64) -> String {
+  format!("/rooms/{ROOM}/messages/{message_id}/files")
+}
+
+/// Every provider route but the avatar routes, with a body it takes.
+fn routes() -> Vec<(&'static str, String, Option<Value>)> {
   vec![
-    ("GET", "/declaration", None),
-    ("GET", "/health", None),
-    ("POST", "/send", text()),
-    ("POST", "/media", Some(json!({ "chatId": ROOM, "messageId": 5 }))),
-    ("POST", "/dialect/read", Some(json!({ "text": "hello" }))),
-    ("POST", "/dialect/check", Some(json!({ "markup": "hello" }))),
-    ("POST", "/room/owns", room()),
-    ("POST", "/room/identity", room()),
-    ("POST", "/room/is-owner", room()),
-    ("POST", "/room/private-of", room()),
-    ("POST", "/room/title", room()),
-    ("GET", "/owner-room", None),
+    ("GET", "/declaration".into(), None),
+    ("GET", "/health".into(), None),
+    ("POST", "/sends".into(), text()),
+    ("GET", format!("/rooms/{ROOM}"), None),
+    ("GET", "/owner".into(), None),
+    ("GET", files(5), None),
+    ("POST", "/dialect/readings".into(), Some(json!({ "text": "hello" }))),
+    ("POST", "/dialect/checks".into(), Some(json!({ "markup": "hello" }))),
   ]
+}
+
+/// Whether a route answers whatever state the provider is in.
+fn ungated(path: &str) -> bool {
+  matches!(path, "/declaration" | "/health" | "/dialect/readings" | "/dialect/checks")
 }
 
 #[tokio::test]
@@ -287,34 +320,46 @@ async fn every_route_and_every_unknown_path_needs_the_token() {
   let unauthorized = json!({ "code": "unauthorized", "error": "The bearer token is missing or wrong." });
   let mut routes = routes();
   routes.extend([
-    ("GET", "/avatars", None),
-    ("GET", "/avatars/room/-100", None),
-    ("GET", "/nowhere", None),
+    ("GET", "/avatars".into(), None),
+    ("GET", format!("/rooms/{ROOM}/avatar"), None),
+    ("GET", "/people/7/avatar".into(), None),
+    ("GET", "/nowhere".into(), None),
   ]);
   for (method, path, body) in routes {
     for authorization in [None, Some("Bearer another-token"), Some("Basic dGhlLXByb3ZpZGVyLXRva2Vu")] {
-      let answer = call_as(&router, authorization, method, path, body.clone()).await;
-      assert_eq!(answer, (401, unauthorized.clone()), "{method} {path} with {authorization:?}");
+      let answer = answer_as(&router, authorization, method, &path, body.clone()).await;
+      assert_eq!(
+        (answer.status, answer.body),
+        (401, unauthorized.clone()),
+        "{method} {path} with {authorization:?}"
+      );
     }
   }
   assert_eq!(desk.asked(), Vec::<String>::new());
 }
 
 #[tokio::test]
-async fn an_unknown_path_or_method_is_no_route() {
-  let router = router(&Desk::new(&[]));
-  assert_eq!(
-    call(&router, "GET", "/nowhere", None).await,
-    (404, json!({ "code": "no-route", "error": "There is no route at GET /nowhere." }))
-  );
-  assert_eq!(
-    call(&router, "GET", "/send", None).await,
-    (404, json!({ "code": "no-route", "error": "There is no route at GET /send." }))
-  );
-  assert_eq!(
-    call(&router, "POST", "/declaration", None).await,
-    (404, json!({ "code": "no-route", "error": "There is no route at POST /declaration." }))
-  );
+async fn an_unknown_path_or_method_or_a_key_that_is_not_a_number_is_no_route() {
+  let desk = Desk::new(&[ChatCapability::Avatars]);
+  let router = router(&desk);
+  for (method, path) in [
+    ("GET", "/nowhere"),
+    ("GET", "/sends"),
+    ("POST", "/declaration"),
+    ("GET", "/rooms/seven"),
+    ("GET", "/rooms/-100/messages/five/files"),
+    ("GET", "/people/someone/avatar"),
+  ] {
+    assert_eq!(
+      call(&router, method, path, None).await,
+      (
+        404,
+        json!({ "code": "no-route", "error": format!("There is no route at {method} {path}.") })
+      ),
+      "{method} {path}"
+    );
+  }
+  assert_eq!(desk.asked(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -325,62 +370,70 @@ async fn declaration_and_health_while_ready() {
   assert_eq!(call(&router, "GET", "/declaration", None).await, (200, declared));
   assert_eq!(
     call(&router, "GET", "/health", None).await,
-    (200, json!({ "ready": true, "reason": null }))
+    (200, json!({ "ready": true, "reason": null, "version": "2.3.4" }))
   );
 }
 
 #[tokio::test]
-async fn while_not_ready_only_the_declaration_health_and_dialect_routes_answer() {
+async fn while_not_ready_the_gated_routes_answer_not_ready_with_when_to_ask_again() {
   let desk = Desk::new(&[ChatCapability::Text, ChatCapability::FetchMedia]);
   desk.unconfigured("No token is configured.");
   let router = router(&desk);
   for (method, path, body) in routes() {
-    let (status, answer) = call(&router, method, path, body).await;
-    match path {
+    let answer = answer_as(&router, Some(&format!("Bearer {TOKEN}")), method, &path, body).await;
+    match path.as_str() {
       "/declaration" => {
-        assert_eq!(status, 200);
-        assert_eq!(answer["configured"], "No token is configured.");
+        assert_eq!(answer.status, 200);
+        assert_eq!(answer.body["configured"], "No token is configured.");
       }
-      "/health" => {
-        assert_eq!((status, answer), (200, json!({ "ready": false, "reason": "No token is configured." })))
-      }
-      "/dialect/read" | "/dialect/check" => assert_eq!(status, 200, "{path} answers in any state"),
-      _ => assert_eq!(
-        (status, answer),
-        (
-          409,
-          json!({ "code": "not-ready", "error": "Platform is not ready yet: No token is configured." })
-        ),
-        "{method} {path}"
+      "/health" => assert_eq!(
+        (answer.status, answer.body),
+        (200, json!({ "ready": false, "reason": "No token is configured.", "version": "2.3.4" }))
       ),
+      path if ungated(path) => assert_eq!(answer.status, 200, "{path} answers in any state"),
+      _ => {
+        assert_eq!(
+          (answer.status, answer.body),
+          (
+            503,
+            json!({ "code": "not-ready", "error": "Platform is not ready yet: No token is configured." })
+          ),
+          "{method} {path}"
+        );
+        assert_eq!(answer.retry_after, Some(RETRY_AFTER_SECONDS.to_string()), "{method} {path}");
+      }
     }
   }
   assert_eq!(desk.asked(), Vec::<String>::new(), "a provider that is not ready is never asked");
 }
 
 #[tokio::test]
-async fn a_body_not_of_the_route_shape_is_a_bad_request_naming_what_is_missing() {
-  let desk = Desk::new(&[ChatCapability::Text]);
+async fn a_body_or_query_not_of_the_route_shape_is_a_bad_request_naming_what_is_wrong() {
+  let desk = Desk::new(&[ChatCapability::Text, ChatCapability::FetchMedia]);
   let router = router(&desk);
-  let (status, answer) = call(&router, "POST", "/room/owns", Some(json!({}))).await;
-  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")));
-  assert!(answer["error"].as_str().unwrap().contains("missing field `chatId`"), "{answer}");
-  let (status, answer) = call(&router, "POST", "/dialect/read", Some(json!({ "markdown": "hi" }))).await;
-  assert_eq!(status, 400);
-  assert!(answer["error"].as_str().unwrap().contains("missing field `text`"), "{answer}");
   let (status, answer) =
-    call(&router, "POST", "/send", Some(json!({ "verb": "shout", "chatId": ROOM }))).await;
+    call(&router, "POST", "/dialect/readings", Some(json!({ "markdown": "hi" }))).await;
   assert_eq!((status, &answer["code"]), (400, &json!("bad-request")));
-  let (status, answer) = call(&router, "POST", "/room/title", None).await;
-  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")));
+  assert!(answer["error"].as_str().unwrap().contains("missing field `text`"), "{answer}");
+  let shout = json!({ "kind": "shout", "roomId": ROOM, "fields": {} });
+  let (status, answer) = call(&router, "POST", "/sends", Some(shout)).await;
+  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+  let (status, answer) = call(&router, "POST", "/sends", None).await;
+  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+  let (status, answer) = call(&router, "GET", &format!("{}?sentAt=soon", files(5)), None).await;
+  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+  assert!(answer["error"].as_str().unwrap().starts_with("The query is not the shape"), "{answer}");
   assert_eq!(desk.asked(), Vec::<String>::new());
 }
 
 #[tokio::test]
-async fn a_declared_send_reaches_the_provider() {
+async fn a_declared_send_reaches_the_provider_and_is_answered_created() {
   let desk = Desk::new(&[ChatCapability::Text]);
   let router = router(&desk);
-  assert_eq!(call(&router, "POST", "/send", text()).await, (200, json!({ "messageId": 40 })));
+  assert_eq!(
+    call(&router, "POST", "/sends", text()).await,
+    (201, json!({ "messageId": 40, "missed": [] }))
+  );
   assert_eq!(desk.asked(), ["send Text to -100"]);
 }
 
@@ -390,9 +443,13 @@ async fn a_send_carrying_a_large_file_is_taken_whole() {
   let router = router(&desk);
   let bytes = vec![7u8; 5 * 1024 * 1024];
   let send = json!({
-    "verb": "document", "chatId": ROOM, "bytes": STANDARD.encode(&bytes), "fileName": "large.bin",
+    "kind": "document", "roomId": ROOM,
+    "fields": { "bytes": STANDARD.encode(&bytes), "fileName": "large.bin" },
   });
-  assert_eq!(call(&router, "POST", "/send", Some(send)).await, (200, json!({ "messageId": 40 })));
+  assert_eq!(
+    call(&router, "POST", "/sends", Some(send)).await,
+    (201, json!({ "messageId": 40, "missed": [] }))
+  );
   assert_eq!(desk.asked(), [format!("send a document of {} bytes", bytes.len())]);
 }
 
@@ -400,9 +457,9 @@ async fn a_send_carrying_a_large_file_is_taken_whole() {
 async fn an_undeclared_send_is_refused_before_the_provider_is_asked() {
   let desk = Desk::new(&[ChatCapability::Text]);
   let router = router(&desk);
-  let pin = json!({ "verb": "pin", "chatId": ROOM, "messageId": 5, "on": true });
+  let pin = json!({ "kind": "pin", "roomId": ROOM, "fields": { "messageId": 5, "on": true } });
   assert_eq!(
-    call(&router, "POST", "/send", Some(pin)).await,
+    call(&router, "POST", "/sends", Some(pin)).await,
     (
       422,
       json!({ "code": "unsupported-capability", "error": desk.unsupported(ChatCapability::Pin).to_string() })
@@ -414,9 +471,9 @@ async fn an_undeclared_send_is_refused_before_the_provider_is_asked() {
 #[tokio::test]
 async fn a_refusal_the_provider_answers_crosses_with_its_code_and_status() {
   let desk = Desk::new(&[ChatCapability::Delete]);
-  let delete = json!({ "verb": "delete", "chatId": ROOM, "messageId": 5 });
+  let delete = json!({ "kind": "delete", "roomId": ROOM, "fields": { "messageId": 5 } });
   assert_eq!(
-    call(&router(&desk), "POST", "/send", Some(delete)).await,
+    call(&router(&desk), "POST", "/sends", Some(delete)).await,
     (410, json!({ "code": "gone", "error": "Platform: Message 5 is no longer there." }))
   );
 }
@@ -427,21 +484,22 @@ async fn a_provider_that_fails_answers_failed() {
   desk.fails();
   let router = router(&desk);
   let failed = json!({ "code": "failed", "error": "The platform connection dropped." });
-  for (method, path, body) in routes() {
-    if matches!(path, "/declaration" | "/health" | "/dialect/read" | "/dialect/check") {
-      continue;
-    }
-    assert_eq!(call(&router, method, path, body).await, (500, failed.clone()), "{method} {path}");
+  let gated: Vec<_> = routes().into_iter().filter(|(_, path, _)| !ungated(path)).collect();
+  for (method, path, body) in &gated {
+    assert_eq!(
+      call(&router, method, path, body.clone()).await,
+      (500, failed.clone()),
+      "{method} {path}"
+    );
   }
-  assert_eq!(desk.asked().len(), 8, "{:?}", desk.asked());
+  assert_eq!(desk.asked().len(), gated.len(), "{:?}", desk.asked());
 }
 
 #[tokio::test]
-async fn media_is_refused_where_undeclared_and_fetched_where_declared() {
-  let request = Some(json!({ "chatId": ROOM, "messageId": 5, "sentAt": 1_760_000_000_000_i64 }));
+async fn files_are_refused_where_undeclared_and_fetched_as_one_page_where_declared() {
   let undeclared = Desk::new(&[ChatCapability::Text]);
   assert_eq!(
-    call(&router(&undeclared), "POST", "/media", request.clone()).await,
+    call(&router(&undeclared), "GET", &files(5), None).await,
     (
       422,
       json!({
@@ -451,23 +509,27 @@ async fn media_is_refused_where_undeclared_and_fetched_where_declared() {
   );
   assert_eq!(undeclared.asked(), Vec::<String>::new());
   let declared = Desk::new(&[ChatCapability::FetchMedia]);
+  let router = router(&declared);
+  let file = |id: &str, name: &str| json!({ "id": id, "name": name, "mime": "image/png", "bytes": "iVA=" });
   assert_eq!(
-    call(&router(&declared), "POST", "/media", request).await,
-    (200, json!({ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }))
+    call(&router, "GET", &format!("{}?sentAt=1760000000000", files(5)), None).await,
+    (
+      200,
+      json!({ "items": [file("file-1", "a.png"), file("file-2", "b.png")], "more": false })
+    )
   );
-  let withheld = Some(json!({ "chatId": ROOM, "messageId": 6 }));
   assert_eq!(
-    call(&router(&declared), "POST", "/media", withheld).await,
+    call(&router, "GET", &files(6), None).await,
     (404, json!({ "code": "unavailable", "error": "The platform no longer has it." }))
   );
-  assert_eq!(declared.asked(), ["media -100 5", "media -100 6"]);
+  assert_eq!(declared.asked(), ["files -100 5 Some(1760000000000)", "files -100 6 None"]);
 }
 
 #[tokio::test]
 async fn the_dialect_routes_answer_from_the_dialect() {
   let router = router(&Desk::new(&[]));
   assert_eq!(
-    call(&router, "POST", "/dialect/read", Some(json!({ "text": "first part\n\nsecond" }))).await,
+    call(&router, "POST", "/dialect/readings", Some(json!({ "text": "first part\n\nsecond" }))).await,
     (
       200,
       json!({
@@ -477,55 +539,50 @@ async fn the_dialect_routes_answer_from_the_dialect() {
     )
   );
   assert_eq!(
-    call(&router, "POST", "/dialect/read", Some(json!({ "text": "short" }))).await,
+    call(&router, "POST", "/dialect/readings", Some(json!({ "text": "short" }))).await,
     (
       200,
       json!({ "markup": "SHORT", "plain": "short", "formatted": true, "parts": ["short"], "fold": null })
     )
   );
   assert_eq!(
-    call(&router, "POST", "/dialect/check", Some(json!({ "markup": "<B Open" }))).await,
+    call(&router, "POST", "/dialect/checks", Some(json!({ "markup": "<B Open" }))).await,
     (200, json!({ "fault": "A tag is left open.", "visible": "<b open" }))
   );
   assert_eq!(
-    call(&router, "POST", "/dialect/check", Some(json!({ "markup": "<B>Shut</B>" }))).await,
+    call(&router, "POST", "/dialect/checks", Some(json!({ "markup": "<B>Shut</B>" }))).await,
     (200, json!({ "fault": null, "visible": "<b>shut</b>" }))
   );
 }
 
 #[tokio::test]
-async fn every_room_route_answers_from_the_provider() {
+async fn a_room_and_the_owner_are_answered_from_the_provider_and_an_unknown_room_is_not_found() {
   let desk = Desk::new(&[]);
   let router = router(&desk);
-  let elsewhere = Some(json!({ "chatId": 9 }));
-  let asked = [
-    ("/room/owns", json!({ "owns": true }), json!({ "owns": false })),
-    ("/room/identity", json!({ "identity": 7 }), json!({ "identity": null })),
-    ("/room/is-owner", json!({ "kind": "owner" }), json!({ "kind": "group" })),
-    ("/room/private-of", json!({ "person": OWNER }), json!({ "person": null })),
-    ("/room/title", json!({ "title": "A Room" }), json!({ "title": null })),
-  ];
-  for (path, here, there) in asked {
-    assert_eq!(call(&router, "POST", path, room()).await, (200, here), "{path}");
-    assert_eq!(call(&router, "POST", path, elsewhere.clone()).await, (200, there), "{path}");
-  }
-  assert_eq!(call(&router, "GET", "/owner-room", None).await, (200, json!({ "chatId": ROOM })));
   assert_eq!(
-    desk.asked(),
-    [
-      "owns -100",
-      "owns 9",
-      "identity -100",
-      "identity 9",
-      "is-owner -100",
-      "is-owner 9",
-      "private-of -100",
-      "private-of 9",
-      "title -100",
-      "title 9",
-      "owner-room",
-    ]
+    call(&router, "GET", &format!("/rooms/{ROOM}"), None).await,
+    (
+      200,
+      json!({
+        "id": ROOM, "owns": true, "identity": 7, "kind": "owner", "privateTo": OWNER, "title": "A Room",
+      })
+    )
   );
+  assert_eq!(
+    call(&router, "GET", &format!("/rooms/{ELSEWHERE}"), None).await,
+    (
+      200,
+      json!({
+        "id": ELSEWHERE, "owns": false, "identity": null, "kind": "group", "privateTo": null, "title": null,
+      })
+    )
+  );
+  assert_eq!(
+    call(&router, "GET", &format!("/rooms/{UNKNOWN}"), None).await,
+    (404, json!({ "code": "not-found", "error": "Nothing is known of room 13." }))
+  );
+  assert_eq!(call(&router, "GET", "/owner", None).await, (200, json!({ "roomId": ROOM })));
+  assert_eq!(desk.asked(), ["room -100", "room 9", "room 13", "owner"]);
 }
 
 /// One request with the token and no body, answered with its status, its type and its bytes.
@@ -547,70 +604,74 @@ async fn fetch(router: &Router, path: &str) -> (u16, Option<String>, Vec<u8>) {
 async fn a_provider_that_does_not_declare_avatars_keeps_none_and_is_not_asked() {
   let desk = Desk::new(&[ChatCapability::Text]);
   let router = router(&desk);
-  assert_eq!(call(&router, "GET", "/avatars", None).await, (200, json!({ "avatars": [] })));
   assert_eq!(
-    call(&router, "GET", "/avatars/room/-100", None).await,
+    call(&router, "GET", "/avatars", None).await,
+    (200, json!({ "items": [], "more": false }))
+  );
+  assert_eq!(
+    call(&router, "GET", &format!("/rooms/{ROOM}/avatar"), None).await,
     (
       404,
-      json!({ "code": "nothing-held", "error": "No profile picture is kept for room -100." })
+      json!({ "code": "not-found", "error": "No profile picture is kept for room -100." })
     )
   );
   assert_eq!(desk.asked(), Vec::<String>::new());
 }
 
 #[tokio::test]
-async fn the_kept_pictures_are_listed_oldest_first_from_the_cursor_and_never_parted_at_one_moment() {
+async fn the_kept_pictures_are_paged_oldest_first_from_the_cursor_and_never_parted_at_one_moment() {
   let desk = Desk::new(&[ChatCapability::Avatars]);
   let router = router(&desk);
   let listed = async |query: &str| {
     let (status, answer) = call(&router, "GET", &format!("/avatars{query}"), None).await;
     assert_eq!(status, 200, "{query}: {answer}");
-    let subjects: Vec<String> = answer["avatars"]
+    let subjects: Vec<String> = answer["items"]
       .as_array()
       .unwrap()
       .iter()
       .map(|avatar| format!("{} {} {}", avatar["kind"].as_str().unwrap(), avatar["id"], avatar["takenAt"]))
       .collect();
-    subjects
+    (subjects, answer["more"].as_bool().unwrap())
   };
-  assert_eq!(listed("").await, ["room -100 1000", "room 9 2000", "person 7 2000", "person 42 3000"]);
-  assert_eq!(listed("?after=1000").await, ["room 9 2000", "person 7 2000", "person 42 3000"]);
-  assert_eq!(listed("?after=1000&limit=1").await, ["room 9 2000", "person 7 2000"]);
-  assert_eq!(listed("?limit=1").await, ["room -100 1000"]);
-  assert_eq!(listed("?limit=0").await, Vec::<String>::new());
-  assert_eq!(listed("?after=3000").await, Vec::<String>::new());
+  let every = ["room -100 1000", "room 9 2000", "person 7 2000", "person 42 3000"];
+  assert_eq!(listed("").await, (every.map(String::from).to_vec(), false));
+  assert_eq!(listed("?after=1000").await, (every[1..].iter().map(|s| s.to_string()).collect(), false));
+  assert_eq!(
+    listed("?after=1000&limit=1").await,
+    (every[1..3].iter().map(|s| s.to_string()).collect(), true)
+  );
+  assert_eq!(
+    listed("?after=1000&limit=3").await,
+    (every[1..].iter().map(|s| s.to_string()).collect(), false)
+  );
+  assert_eq!(listed("?limit=1").await, (vec![every[0].to_string()], true));
+  assert_eq!(listed("?limit=0").await, (Vec::new(), true));
+  assert_eq!(listed("?after=3000").await, (Vec::new(), false));
   let (status, answer) = call(&router, "GET", "/avatars?after=yesterday", None).await;
   assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
-  assert_eq!(desk.asked().len(), 6);
+  assert_eq!(desk.asked().len(), 7);
 }
 
 #[tokio::test]
-async fn a_kept_picture_is_answered_as_its_bytes_and_a_missing_one_as_nothing_held() {
+async fn a_kept_picture_is_answered_as_its_bytes_and_a_missing_one_as_not_found() {
   let desk = Desk::new(&[ChatCapability::Avatars]);
   desk.unconfigured("No token is configured.");
   let router = router(&desk);
   assert_eq!(
-    fetch(&router, "/avatars/room/-100").await,
+    fetch(&router, &format!("/rooms/{ROOM}/avatar")).await,
     (200, Some("image/jpeg".into()), vec![0xff, 0xd8, 0xff]),
     "a kept picture is served whatever state the provider is in"
   );
   assert_eq!(
-    call(&router, "GET", "/avatars/person/7", None).await,
-    (
-      404,
-      json!({ "code": "nothing-held", "error": "No profile picture is kept for person 7." })
-    )
+    call(&router, "GET", "/people/7/avatar", None).await,
+    (404, json!({ "code": "not-found", "error": "No profile picture is kept for person 7." }))
   );
-  for path in ["/avatars/somebody/7", "/avatars/room/seven"] {
-    assert_eq!(
-      call(&router, "GET", path, None).await,
-      (404, json!({ "code": "no-route", "error": format!("There is no route at GET {path}.") })),
-      "{path}"
-    );
-  }
   assert_eq!(desk.asked(), ["avatar room -100", "avatar person 7"]);
   desk.fails();
   let failed = json!({ "code": "failed", "error": "The platform connection dropped." });
-  assert_eq!(call(&router, "GET", "/avatars/room/-100", None).await, (500, failed.clone()));
+  assert_eq!(
+    call(&router, "GET", &format!("/rooms/{ROOM}/avatar"), None).await,
+    (500, failed.clone())
+  );
   assert_eq!(call(&router, "GET", "/avatars", None).await, (500, failed));
 }

@@ -1,9 +1,9 @@
-//! Every send verb crosses the wire in the shape `docs/contract.md` and `docs/protocol.md` state, and comes
-//! back as it went.
+//! Every kind of send crosses the wire in the shape `docs/contract.md` and `docs/protocol.md` state, and
+//! comes back as it went.
 
 use bmo_chat::{
-  AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatSpeaker, ChatVerb, ChatVoice, FileItem,
-  MissedPicture, MissedPictureReason,
+  AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatVerb, ChatVoice, FileItem, MissedPicture,
+  MissedPictureReason,
 };
 use serde_json::{Value, json};
 
@@ -22,18 +22,24 @@ fn send(send: ChatSend) -> ChatSendRequest {
   ChatSendRequest::new(7, send)
 }
 
+/// The same send, answering a message.
+fn answering(message_id: i64, send: ChatSend) -> ChatSendRequest {
+  ChatSendRequest {
+    reply_to_message_id: Some(message_id),
+    ..ChatSendRequest::new(7, send)
+  }
+}
+
 #[test]
 fn text_with_every_field() {
   let request = ChatSendRequest {
-    voice: Some(ChatVoice::HumanReader),
-    speaker: Some(ChatSpeaker {
-      agent: "agent-2".into(),
-    }),
+    mode: Some(ChatVoice::HumanReader),
+    speaker: Some("helper-2".into()),
     tag: Some("tag-1".into()),
-    prefix: Some("[agent] ".into()),
+    prefix: Some("[helper] ".into()),
+    reply_to_message_id: Some(3),
     ..send(ChatSend::Text {
       text: "**hello**".into(),
-      reply_to: Some(3),
       silent: true,
       fold: true,
     })
@@ -41,8 +47,9 @@ fn text_with_every_field() {
   crosses(
     &request,
     json!({
-      "verb": "text", "chatId": 7, "text": "**hello**", "replyTo": 3, "silent": true, "fold": true,
-      "as": "human-reader", "speaker": { "agent": "agent-2" }, "tag": "tag-1", "prefix": "[agent] ",
+      "kind": "text", "roomId": 7, "fields": { "text": "**hello**", "silent": true, "fold": true },
+      "mode": "human-reader", "speaker": "helper-2", "tag": "tag-1", "prefix": "[helper] ",
+      "replyToMessageId": 3,
     }),
   );
 }
@@ -51,62 +58,71 @@ fn text_with_every_field() {
 fn text_with_only_its_words() {
   let request = send(ChatSend::Text {
     text: "hello".into(),
-    reply_to: None,
     silent: false,
     fold: false,
   });
-  crosses(&request, json!({ "verb": "text", "chatId": 7, "text": "hello" }));
+  crosses(&request, json!({ "kind": "text", "roomId": 7, "fields": { "text": "hello" } }));
 }
 
 #[test]
-fn text_carries_no_sanitiser_or_gate_flag() {
-  let wire = json!({ "verb": "text", "chatId": 7, "text": "hello", "cleaned": true, "gate": true });
+fn text_carries_no_flag_the_protocol_does_not_state() {
+  let wire = json!({
+    "kind": "text", "roomId": 7, "fields": { "text": "hello", "cleaned": true }, "checked": true,
+  });
   let request: ChatSendRequest = serde_json::from_value(wire).expect("unknown fields are passed over");
   assert_eq!(
     serde_json::to_value(&request).unwrap(),
-    json!({ "verb": "text", "chatId": 7, "text": "hello" })
+    json!({ "kind": "text", "roomId": 7, "fields": { "text": "hello" } })
   );
 }
 
 #[test]
 fn photo() {
-  let request = send(ChatSend::Photo {
-    image_url: "https://example.com/a.png".into(),
-    caption: Some("a picture".into()),
-    reply_to: Some(4),
-  });
+  let request = answering(
+    4,
+    ChatSend::Photo {
+      image_url: "https://example.com/a.png".into(),
+      caption: Some("a picture".into()),
+    },
+  );
   crosses(
     &request,
     json!({
-      "verb": "photo", "chatId": 7, "imageUrl": "https://example.com/a.png", "caption": "a picture", "replyTo": 4,
+      "kind": "photo", "roomId": 7, "replyToMessageId": 4,
+      "fields": { "imageUrl": "https://example.com/a.png", "caption": "a picture" },
     }),
   );
 }
 
 #[test]
 fn album_of_addresses_and_inline_files() {
-  let request = send(ChatSend::Album {
-    items: vec![
-      AlbumItem::Address {
-        address: "https://example.com/a.png".into(),
-      },
-      AlbumItem::File(FileItem {
-        name: "b.png".into(),
-        mime: "image/png".into(),
-        bytes: vec![1, 2, 3],
-      }),
-    ],
-    caption: Some("two".into()),
-    reply_to: Some(5),
-  });
+  let request = answering(
+    5,
+    ChatSend::Album {
+      items: vec![
+        AlbumItem::Address {
+          address: "https://example.com/a.png".into(),
+        },
+        AlbumItem::File(FileItem {
+          name: "b.png".into(),
+          mime: "image/png".into(),
+          bytes: vec![1, 2, 3],
+        }),
+      ],
+      caption: Some("two".into()),
+    },
+  );
   crosses(
     &request,
     json!({
-      "verb": "album", "chatId": 7, "caption": "two", "replyTo": 5,
-      "items": [
-        { "address": "https://example.com/a.png" },
-        { "name": "b.png", "mime": "image/png", "bytes": "AQID" },
-      ],
+      "kind": "album", "roomId": 7, "replyToMessageId": 5,
+      "fields": {
+        "caption": "two",
+        "items": [
+          { "address": "https://example.com/a.png" },
+          { "name": "b.png", "mime": "image/png", "bytes": "AQID" },
+        ],
+      },
     }),
   );
 }
@@ -116,41 +132,47 @@ fn document() {
   let request = send(ChatSend::Document {
     bytes: b"report".to_vec(),
     file_name: "report.txt".into(),
-    reply_to: None,
   });
   crosses(
     &request,
-    json!({ "verb": "document", "chatId": 7, "bytes": "cmVwb3J0", "fileName": "report.txt" }),
+    json!({ "kind": "document", "roomId": 7, "fields": { "bytes": "cmVwb3J0", "fileName": "report.txt" } }),
   );
 }
 
 #[test]
 fn audio() {
-  let request = send(ChatSend::Audio {
-    audio: vec![0, 255],
-    file_name: "song.mp3".into(),
-    reply_to: Some(6),
-  });
+  let request = answering(
+    6,
+    ChatSend::Audio {
+      audio: vec![0, 255],
+      file_name: "song.mp3".into(),
+    },
+  );
   crosses(
     &request,
-    json!({ "verb": "audio", "chatId": 7, "audio": "AP8=", "fileName": "song.mp3", "replyTo": 6 }),
+    json!({
+      "kind": "audio", "roomId": 7, "replyToMessageId": 6,
+      "fields": { "audio": "AP8=", "fileName": "song.mp3" },
+    }),
   );
 }
 
 #[test]
 fn voice() {
-  let request = send(ChatSend::Voice {
-    audio: vec![9, 8, 7],
-    said: "the line".into(),
-    caption: Some("under it".into()),
-    transcript: Some("what was read".into()),
-    reply_to: Some(8),
-  });
+  let request = answering(
+    8,
+    ChatSend::Voice {
+      audio: vec![9, 8, 7],
+      said: "the line".into(),
+      caption: Some("under it".into()),
+      transcript: Some("what was read".into()),
+    },
+  );
   crosses(
     &request,
     json!({
-      "verb": "voice", "chatId": 7, "audio": "CQgH", "said": "the line", "caption": "under it",
-      "transcript": "what was read", "replyTo": 8,
+      "kind": "voice", "roomId": 7, "replyToMessageId": 8,
+      "fields": { "audio": "CQgH", "said": "the line", "caption": "under it", "transcript": "what was read" },
     }),
   );
 }
@@ -161,7 +183,7 @@ fn sticker() {
     &send(ChatSend::Sticker {
       emoji: "🙂".into()
     }),
-    json!({ "verb": "sticker", "chatId": 7, "emoji": "🙂" }),
+    json!({ "kind": "sticker", "roomId": 7, "fields": { "emoji": "🙂" } }),
   );
 }
 
@@ -172,14 +194,14 @@ fn reaction_on_and_off() {
       message_id: 9,
       emoji: "👍".into(),
     }),
-    json!({ "verb": "reaction", "chatId": 7, "messageId": 9, "emoji": "👍" }),
+    json!({ "kind": "reaction", "roomId": 7, "fields": { "messageId": 9, "emoji": "👍" } }),
   );
   crosses(
     &send(ChatSend::Reaction {
       message_id: 9,
       emoji: String::new(),
     }),
-    json!({ "verb": "reaction", "chatId": 7, "messageId": 9, "emoji": "" }),
+    json!({ "kind": "reaction", "roomId": 7, "fields": { "messageId": 9, "emoji": "" } }),
   );
 }
 
@@ -191,7 +213,7 @@ fn pin() {
       on: true,
       silent: true,
     }),
-    json!({ "verb": "pin", "chatId": 7, "messageId": 10, "on": true, "silent": true }),
+    json!({ "kind": "pin", "roomId": 7, "fields": { "messageId": 10, "on": true, "silent": true } }),
   );
   crosses(
     &send(ChatSend::Pin {
@@ -199,7 +221,7 @@ fn pin() {
       on: false,
       silent: false,
     }),
-    json!({ "verb": "pin", "chatId": 7, "messageId": 10, "on": false }),
+    json!({ "kind": "pin", "roomId": 7, "fields": { "messageId": 10, "on": false } }),
   );
 }
 
@@ -207,7 +229,7 @@ fn pin() {
 fn typing() {
   crosses(
     &send(ChatSend::Typing { on: true }),
-    json!({ "verb": "typing", "chatId": 7, "on": true }),
+    json!({ "kind": "typing", "roomId": 7, "fields": { "on": true } }),
   );
 }
 
@@ -218,7 +240,7 @@ fn edit() {
       message_id: 11,
       text: "again".into(),
     }),
-    json!({ "verb": "edit", "chatId": 7, "messageId": 11, "text": "again" }),
+    json!({ "kind": "edit", "roomId": 7, "fields": { "messageId": 11, "text": "again" } }),
   );
 }
 
@@ -226,17 +248,16 @@ fn edit() {
 fn delete() {
   crosses(
     &send(ChatSend::Delete { message_id: 12 }),
-    json!({ "verb": "delete", "chatId": 7, "messageId": 12 }),
+    json!({ "kind": "delete", "roomId": 7, "fields": { "messageId": 12 } }),
   );
 }
 
 #[test]
-fn every_verb_names_itself() {
+fn every_kind_names_itself() {
   let sends = [
     (
       ChatSend::Text {
         text: String::new(),
-        reply_to: None,
         silent: false,
         fold: false,
       },
@@ -246,7 +267,6 @@ fn every_verb_names_itself() {
       ChatSend::Photo {
         image_url: String::new(),
         caption: None,
-        reply_to: None,
       },
       ChatVerb::Photo,
     ),
@@ -254,7 +274,6 @@ fn every_verb_names_itself() {
       ChatSend::Album {
         items: vec![],
         caption: None,
-        reply_to: None,
       },
       ChatVerb::Album,
     ),
@@ -262,7 +281,6 @@ fn every_verb_names_itself() {
       ChatSend::Document {
         bytes: vec![],
         file_name: String::new(),
-        reply_to: None,
       },
       ChatVerb::Document,
     ),
@@ -270,7 +288,6 @@ fn every_verb_names_itself() {
       ChatSend::Audio {
         audio: vec![],
         file_name: String::new(),
-        reply_to: None,
       },
       ChatVerb::Audio,
     ),
@@ -280,7 +297,6 @@ fn every_verb_names_itself() {
         said: String::new(),
         caption: None,
         transcript: None,
-        reply_to: None,
       },
       ChatVerb::Voice,
     ),
@@ -315,18 +331,26 @@ fn every_verb_names_itself() {
     ),
     (ChatSend::Delete { message_id: 1 }, ChatVerb::Delete),
   ];
-  for (send, verb) in sends {
-    assert_eq!(send.verb(), verb);
+  for (send, kind) in sends {
+    assert_eq!(send.kind(), kind);
     let wire = serde_json::to_value(ChatSendRequest::new(1, send)).unwrap();
-    assert_eq!(wire["verb"], serde_json::to_value(verb).unwrap());
+    assert_eq!(wire["kind"], serde_json::to_value(kind).unwrap());
   }
 }
 
 #[test]
 fn bytes_that_are_not_base64_are_refused() {
-  let wire = json!({ "verb": "document", "chatId": 7, "bytes": "not base64!", "fileName": "a" });
+  let wire = json!({
+    "kind": "document", "roomId": 7, "fields": { "bytes": "not base64!", "fileName": "a" },
+  });
   let why = serde_json::from_value::<ChatSendRequest>(wire).unwrap_err().to_string();
   assert!(why.contains("not base64"), "{why}");
+}
+
+#[test]
+fn a_kind_without_its_fields_is_refused() {
+  let wire = json!({ "kind": "text", "roomId": 7 });
+  assert!(serde_json::from_value::<ChatSendRequest>(wire).is_err());
 }
 
 #[test]
@@ -336,14 +360,14 @@ fn sent() {
       message_id: Some(40),
       missed: vec![],
     },
-    json!({ "messageId": 40 }),
+    json!({ "messageId": 40, "missed": [] }),
   );
   crosses(
     &ChatSent {
       message_id: None,
       missed: vec![],
     },
-    json!({ "messageId": null }),
+    json!({ "messageId": null, "missed": [] }),
   );
 }
 

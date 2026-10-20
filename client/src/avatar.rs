@@ -49,10 +49,3 @@ pub struct AvatarsQuery {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub limit: Option<u32>,
 }
-
-/// The answer of `GET /avatars`: oldest taken first, never ending between two pictures taken at the same
-/// moment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct AvatarList {
-  pub avatars: Vec<ChatAvatar>,
-}

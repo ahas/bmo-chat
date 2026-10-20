@@ -27,6 +27,6 @@ pub struct ChatDeclaration {
   /// only what it carries.
   pub shows: Option<String>,
   pub numbering: ChatNumbering,
-  /// Whether a send may name an agent speaker other than the one the room is answered by.
+  /// Whether a send may name a speaker other than the one the room is answered by.
   pub speakers: bool,
 }

@@ -1,5 +1,5 @@
-//! The provider client: how the receiver reaches one provider over the provider routes of
-//! `docs/protocol.md`.
+//! The provider client: how the receiving side, or a harness, reaches one provider over the provider routes
+//! of `docs/protocol.md`.
 
 use std::fmt;
 use std::io;
@@ -10,15 +10,14 @@ use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::avatar::{AvatarList, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
+use crate::avatar::{AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::{
-  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, OwnerRoom, RoomIdentity,
-  RoomKindAnswer, RoomOwns, RoomPerson, RoomQuery, RoomTitle,
+  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page, ProviderOwner, ProviderRoom,
 };
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
-use crate::media::ChatMediaRequest;
-use crate::message::{MessageFile, RoomKind};
+use crate::media::{ChatMediaRequest, FilesQuery};
+use crate::message::MessageFile;
 use crate::patience::ChatPatience;
 use crate::send::{ChatSendRequest, ChatSent};
 
@@ -84,9 +83,9 @@ impl ClientFailure {
   }
 }
 
-/// One provider as the receiver reaches it: the provider routes at a base address, behind the provider's
-/// token. The receiver's own deployment configuration gives both, and the receiver holds one client for
-/// each provider it lists.
+/// One provider as a caller reaches it: the provider routes at a base address, behind the provider's token.
+/// The caller's own configuration gives both, and a receiving side holds one client for each provider it
+/// lists.
 #[derive(Debug, Clone)]
 pub struct ChatProviderClient {
   base: String,
@@ -126,82 +125,61 @@ impl ChatProviderClient {
     self.get("health").await
   }
 
-  /// `POST /send`. A send the provider does not perform comes back as `ClientFailure::Answered` with the
+  /// `POST /sends`. A send the provider does not perform comes back as `ClientFailure::Answered` with the
   /// refusal's code.
   pub async fn send(&self, request: &ChatSendRequest) -> Result<ChatSent, ClientFailure> {
-    self.post("send", request).await
+    self.post("sends", request).await
   }
 
-  /// `POST /media`. A file the platform would not give comes back as `ClientFailure::Answered` with
-  /// `unavailable`, and a refusal with the refusal's code.
-  pub async fn media(&self, request: &ChatMediaRequest) -> Result<MessageFile, ClientFailure> {
-    self.post("media", request).await
+  /// `GET /rooms/{roomId}`. A room the provider knows nothing of comes back as `ClientFailure::Answered` with
+  /// `not-found`.
+  pub async fn room(&self, room_id: i64) -> Result<ProviderRoom, ClientFailure> {
+    self.get(&format!("rooms/{room_id}")).await
   }
 
-  /// `POST /dialect/read`.
-  pub async fn dialect_read(&self, text: impl Into<String>) -> Result<DialectReading, ClientFailure> {
-    self.post("dialect/read", &DialectRead { text: text.into() }).await
+  /// `GET /owner`.
+  pub async fn owner(&self) -> Result<ProviderOwner, ClientFailure> {
+    self.get("owner").await
   }
 
-  /// `POST /dialect/check`.
+  /// `GET /rooms/{roomId}/messages/{messageId}/files`. Files the platform would not give come back as
+  /// `ClientFailure::Answered` with `unavailable`, and a refusal with the refusal's code.
+  pub async fn message_files(
+    &self,
+    request: &ChatMediaRequest,
+  ) -> Result<Page<MessageFile>, ClientFailure> {
+    let ChatMediaRequest {
+      room_id,
+      message_id,
+      sent_at,
+    } = *request;
+    let route = format!("rooms/{room_id}/messages/{message_id}/files");
+    self.get_with(&route, &FilesQuery { sent_at }).await
+  }
+
+  /// `POST /dialect/readings`.
+  pub async fn dialect_reading(&self, text: impl Into<String>) -> Result<DialectReading, ClientFailure> {
+    self.post("dialect/readings", &DialectRead { text: text.into() }).await
+  }
+
+  /// `POST /dialect/checks`.
   pub async fn dialect_check(&self, markup: impl Into<String>) -> Result<DialectChecked, ClientFailure> {
-    self
-      .post(
-        "dialect/check",
-        &DialectCheck {
-          markup: markup.into(),
-        },
-      )
-      .await
+    let markup = markup.into();
+    self.post("dialect/checks", &DialectCheck { markup }).await
   }
 
-  /// `POST /room/owns`.
-  pub async fn room_owns(&self, chat_id: i64) -> Result<bool, ClientFailure> {
-    let answer: RoomOwns = self.post("room/owns", &RoomQuery { chat_id }).await?;
-    Ok(answer.owns)
+  /// `GET /avatars`: a page of the profile pictures the provider keeps, oldest taken first.
+  pub async fn avatars(&self, query: &AvatarsQuery) -> Result<Page<ChatAvatar>, ClientFailure> {
+    self.get_with("avatars", query).await
   }
 
-  /// `POST /room/identity`.
-  pub async fn room_identity(&self, chat_id: i64) -> Result<Option<i64>, ClientFailure> {
-    let answer: RoomIdentity = self.post("room/identity", &RoomQuery { chat_id }).await?;
-    Ok(answer.identity)
-  }
-
-  /// `POST /room/is-owner`.
-  pub async fn room_kind(&self, chat_id: i64) -> Result<RoomKind, ClientFailure> {
-    let answer: RoomKindAnswer = self.post("room/is-owner", &RoomQuery { chat_id }).await?;
-    Ok(answer.kind)
-  }
-
-  /// `POST /room/private-of`.
-  pub async fn room_private_of(&self, chat_id: i64) -> Result<Option<i64>, ClientFailure> {
-    let answer: RoomPerson = self.post("room/private-of", &RoomQuery { chat_id }).await?;
-    Ok(answer.person)
-  }
-
-  /// `POST /room/title`.
-  pub async fn room_title(&self, chat_id: i64) -> Result<Option<String>, ClientFailure> {
-    let answer: RoomTitle = self.post("room/title", &RoomQuery { chat_id }).await?;
-    Ok(answer.title)
-  }
-
-  /// `GET /owner-room`.
-  pub async fn owner_room(&self) -> Result<Option<i64>, ClientFailure> {
-    let answer: OwnerRoom = self.get("owner-room").await?;
-    Ok(answer.chat_id)
-  }
-
-  /// `GET /avatars`: the profile pictures the provider keeps, oldest taken first.
-  pub async fn avatars(&self, query: &AvatarsQuery) -> Result<Vec<ChatAvatar>, ClientFailure> {
-    let url = self.url("avatars");
-    let answer: AvatarList = self.call(&url, self.client.get(&url).query(query)).await?;
-    Ok(answer.avatars)
-  }
-
-  /// `GET /avatars/{kind}/{id}`: the picture the provider keeps for a room or a person, or null where it
-  /// answers `nothing-held`.
+  /// `GET /rooms/{roomId}/avatar` or `GET /people/{personId}/avatar`: the picture the provider keeps for a
+  /// room or a person, or null where it answers `not-found`.
   pub async fn avatar(&self, kind: ChatAvatarKind, id: i64) -> Result<Option<ChatPicture>, ClientFailure> {
-    let url = self.url(&format!("avatars/{kind}/{id}"));
+    let url = match kind {
+      ChatAvatarKind::Room => self.url(&format!("rooms/{id}/avatar")),
+      ChatAvatarKind::Person => self.url(&format!("people/{id}/avatar")),
+    };
     match self.exchange(&url, self.client.get(&url)).await {
       Ok(Exchanged { mime, bytes }) => Ok(Some(ChatPicture {
         mime: mime.unwrap_or_else(|| "application/octet-stream".into()),
@@ -209,7 +187,7 @@ impl ChatProviderClient {
       })),
       Err(ClientFailure::Answered {
         answer: Some(WireError {
-          code: ErrorCode::NothingHeld,
+          code: ErrorCode::NotFound,
           ..
         }),
         ..
@@ -221,6 +199,15 @@ impl ChatProviderClient {
   async fn get<T: DeserializeOwned>(&self, route: &str) -> Result<T, ClientFailure> {
     let url = self.url(route);
     self.call(&url, self.client.get(&url)).await
+  }
+
+  async fn get_with<T: DeserializeOwned>(
+    &self,
+    route: &str,
+    query: &impl Serialize,
+  ) -> Result<T, ClientFailure> {
+    let url = self.url(route);
+    self.call(&url, self.client.get(&url).query(query)).await
   }
 
   async fn post<T: DeserializeOwned>(

@@ -1,0 +1,27 @@
+[package]
+name = "bmo-chat-plugin"
+description = "The chat protocol's harness plugin: the bmo-chat command, whose MCP server drives any chat provider through bmo-chat-client, the ahas-chat skill, and the protocol's OpenAPI documents."
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "bmo-chat"
+path = "src/main.rs"
+
+[dependencies]
+bmo-chat-client = { path = "../client" }
+clap.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strum.workspace = true
+tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+async-trait.workspace = true
+axum.workspace = true
+jsonschema.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "process", "sync", "time"] }
+toml.workspace = true
+tower.workspace = true

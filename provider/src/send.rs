@@ -1,4 +1,4 @@
-//! A send, one verb at a time, and what it came to.
+//! A send, one kind at a time, and what it came to.
 
 use serde::{Deserialize, Serialize};
 
@@ -6,12 +6,6 @@ use crate::capability::ChatVerb;
 use crate::message::FileItem;
 use crate::modes::ChatVoice;
 use crate::refusal::{ChatRefusal, MissedPicture};
-
-/// An agent other than the one the room is answered by, by its registry id.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ChatSpeaker {
-  pub agent: String,
-}
 
 /// One picture of an album: an address the provider can read, or the file itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,19 +18,21 @@ pub enum AlbumItem {
   File(FileItem),
 }
 
-/// The verb of a send with its own fields. `reply_to` is a modifier a provider that does not declare
-/// `replyTo` ignores.
+/// The kind of a send with its own fields, which cross as `kind` and `fields`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "verb", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+  tag = "kind",
+  content = "fields",
+  rename_all = "camelCase",
+  rename_all_fields = "camelCase"
+)]
 pub enum ChatSend {
   Text {
     text: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
     /// A notice that must not buzz a phone.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     silent: bool,
-    /// Fold where the dialect can; whether to fold is decided upstream.
+    /// Fold where the dialect can; whether to fold is the sender's decision.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     fold: bool,
   },
@@ -44,29 +40,21 @@ pub enum ChatSend {
     image_url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     caption: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
   },
   Album {
     items: Vec<AlbumItem>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     caption: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
   },
   Document {
     #[serde(with = "crate::bytes")]
     bytes: Vec<u8>,
     file_name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
   },
   Audio {
     #[serde(with = "crate::bytes")]
     audio: Vec<u8>,
     file_name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
   },
   Voice {
     #[serde(with = "crate::bytes")]
@@ -78,13 +66,11 @@ pub enum ChatSend {
     /// What was actually read out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     transcript: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    reply_to: Option<i64>,
   },
   Sticker {
     emoji: String,
   },
-  /// An empty emoji takes the agent's own reaction off.
+  /// An empty emoji takes the account's own reaction off.
   Reaction {
     message_id: i64,
     emoji: String,
@@ -108,7 +94,8 @@ pub enum ChatSend {
 }
 
 impl ChatSend {
-  pub fn verb(&self) -> ChatVerb {
+  /// The kind of the send, as the capability it needs names it.
+  pub fn kind(&self) -> ChatVerb {
     match self {
       Self::Text { .. } => ChatVerb::Text,
       Self::Photo { .. } => ChatVerb::Photo,
@@ -130,45 +117,51 @@ impl ChatSend {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSendRequest {
-  pub chat_id: i64,
+  pub room_id: i64,
   #[serde(flatten)]
   pub send: ChatSend,
   /// The voice to speak with; unnamed, the provider speaks with the voice it answers the room by.
-  #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
-  pub voice: Option<ChatVoice>,
-  /// Taken only by a provider that declares `speakers`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub speaker: Option<ChatSpeaker>,
+  pub mode: Option<ChatVoice>,
+  /// Who speaks, where it is not the one the room is answered by, as the caller's opaque string. Taken only
+  /// by a provider that declares `speakers`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub speaker: Option<String>,
   /// Returned on the inbound message that is the platform's echo of this send.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub tag: Option<String>,
-  /// The words the agent's lines carry before them in the `human-avatar` voice; ignored in any other voice.
+  /// The words the answers carry before them in the `human-avatar` voice; ignored in any other voice.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub prefix: Option<String>,
+  /// The message the send answers. Ignored by a provider that does not declare `replyTo`, and by every kind
+  /// that answers no message.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub reply_to_message_id: Option<i64>,
 }
 
 impl ChatSendRequest {
-  /// A send in the room's own voice, with no speaker, no tag and no prefix.
-  pub fn new(chat_id: i64, send: ChatSend) -> Self {
+  /// A send in the room's own voice, with no speaker, no tag, no prefix and answering no message.
+  pub fn new(room_id: i64, send: ChatSend) -> Self {
     Self {
-      chat_id,
+      room_id,
       send,
-      voice: None,
+      mode: None,
       speaker: None,
       tag: None,
       prefix: None,
+      reply_to_message_id: None,
     }
   }
 }
 
-/// A send the provider performed: the answer of `send`.
+/// A send the provider performed: the answer of `POST /sends`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSent {
   /// Null where the platform hands none back.
   pub message_id: Option<i64>,
-  /// The pictures of an album that did not go; empty where everything went, and then left out.
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  /// The pictures of an album that did not go; empty where everything went.
+  #[serde(default)]
   pub missed: Vec<MissedPicture>,
 }
 

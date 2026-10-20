@@ -1,5 +1,5 @@
-//! The receiver link: how a provider hands what a room said to the receiver, and asks it what it needs to
-//! know, over the receiver routes of `docs/protocol.md`.
+//! The link to the receiving side: how a provider hands what a room said to the receiving side, and asks it
+//! what it needs to know, over the receiving-side routes of `docs/protocol.md`.
 
 use std::fmt;
 use std::io;
@@ -7,17 +7,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reqwest::Client;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::{Client, Method};
 use serde::Serialize;
 use serde::de::{DeserializeOwned, IgnoredAny};
+use serde_json::Value;
 
-use crate::error::WireError;
-use crate::message::{ChatGathered, ChatHandover};
+use crate::bodies::Page;
+use crate::error::{ErrorCode, WireError};
+use crate::message::{GatheredPatch, HandedMessage};
 use crate::provider::{ChatFailure, ChatReceiver};
-use crate::receiver_bodies::{
-  AvatarsUpdated, HistoryKept, HistoryRoom, Listened, ListenedQuery, RoomsOf, RoomsOfQuery,
-};
+use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
 
 /// How a wait between two offers of a request is spent. The link counts the time it has waited by the
 /// intervals it asked for, never by reading a clock, so a waiter that returns at once makes a whole window
@@ -68,7 +68,7 @@ impl fmt::Debug for ChatPatience {
   }
 }
 
-/// Why a call did not reach the receiver, or was not taken or answered.
+/// Why a call did not reach the receiving side, or was not taken or answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkFailure {
   /// Nothing listened at the address for the whole patience window.
@@ -77,14 +77,14 @@ pub enum LinkFailure {
     waited: Duration,
     why: String,
   },
-  /// The receiver answered, and not with success. Such a request is never offered again.
+  /// The receiving side answered, and not with success. Such a request is never offered again.
   Answered {
     url: String,
     status: u16,
     /// The error shape, where the answer carried one.
     answer: Option<WireError>,
   },
-  /// The receiver answered with success, in a body that is not the route's answer.
+  /// The receiving side answered with success, in a body that is not the route's answer.
   Undecodable { url: String, why: String },
   /// The request failed after it may have reached a listener, so it is not offered again.
   Transport { url: String, why: String },
@@ -116,7 +116,7 @@ impl fmt::Display for LinkFailure {
 
 impl std::error::Error for LinkFailure {}
 
-/// The receiver as a provider reaches it: the receiver routes at a base address, behind the receiver's
+/// The receiving side as a provider reaches it: the receiving-side routes at a base address, behind its
 /// token. The provider's own configuration gives both.
 #[derive(Debug, Clone)]
 pub struct ChatReceiverLink {
@@ -127,8 +127,8 @@ pub struct ChatReceiverLink {
 }
 
 impl ChatReceiverLink {
-  /// A link to the receiver at `base`, with the default patience. It reads no environment of its own, so no
-  /// proxy is taken from it.
+  /// A link to the receiving side at `base`, with the default patience. It reads no environment of its own,
+  /// so no proxy is taken from it.
   pub fn new(base: impl Into<String>, token: impl Into<String>) -> Self {
     let client = Client::builder()
       .no_proxy()
@@ -147,14 +147,11 @@ impl ChatReceiverLink {
     self
   }
 
-  /// Posts `body` to the route, offering it again only while the connection is refused and the patience
-  /// window lasts, and decodes a successful answer as the route's.
-  async fn post<T: DeserializeOwned>(&self, route: &str, body: &impl Serialize) -> Result<T, LinkFailure> {
+  /// Makes the call behind the receiving side's token, offering it again only while the connection is
+  /// refused and the patience window lasts, and gives a successful answer's status and bytes.
+  async fn exchange(&self, method: Method, route: &str, call: Call) -> Result<Exchanged, LinkFailure> {
     let url = format!("{}/{route}", self.base);
-    let body = serde_json::to_vec(body).map_err(|error| LinkFailure::Transport {
-      url: url.clone(),
-      why: error.to_string(),
-    })?;
+    let body = call.body.map(|body| body.to_string());
     let ChatPatience {
       window,
       every,
@@ -162,15 +159,14 @@ impl ChatReceiverLink {
     } = &self.patience;
     let mut waited = Duration::ZERO;
     loop {
-      let offered = self
-        .client
-        .post(&url)
-        .bearer_auth(&self.token)
-        .header(CONTENT_TYPE, "application/json")
-        .body(body.clone())
-        .send()
-        .await;
-      let error = match offered {
+      let mut request = self.client.request(method.clone(), &url).bearer_auth(&self.token);
+      if let Some(query) = &call.query {
+        request = request.query(query);
+      }
+      if let Some(body) = &body {
+        request = request.header(CONTENT_TYPE, "application/json").body(body.clone());
+      }
+      let error = match request.send().await {
         Ok(answer) => {
           let status = answer.status();
           let bytes = answer.bytes().await.map_err(|error| LinkFailure::Transport {
@@ -184,9 +180,10 @@ impl ChatReceiverLink {
               answer: serde_json::from_slice(&bytes).ok(),
             });
           }
-          return serde_json::from_slice(&bytes).map_err(|error| LinkFailure::Undecodable {
+          return Ok(Exchanged {
             url,
-            why: error.to_string(),
+            status: status.as_u16(),
+            bytes: bytes.to_vec(),
           });
         }
         Err(error) => error,
@@ -209,48 +206,106 @@ impl ChatReceiverLink {
     }
   }
 
-  /// Posts a hand-over, whose answer says nothing beyond that it was taken.
-  async fn hand_over(&self, route: &str, body: &impl Serialize) -> Result<(), ChatFailure> {
-    let IgnoredAny = self.post(route, body).await?;
-    Ok(())
+  /// Makes the call and decodes a successful answer as the route's.
+  async fn call<T: DeserializeOwned>(
+    &self,
+    method: Method,
+    route: &str,
+    call: Call,
+  ) -> Result<(u16, T), LinkFailure> {
+    let Exchanged { url, status, bytes } = self.exchange(method, route, call).await?;
+    let answer = serde_json::from_slice(&bytes).map_err(|error| LinkFailure::Undecodable {
+      url,
+      why: error.to_string(),
+    })?;
+    Ok((status, answer))
   }
+}
+
+/// What a call carries beside its method and route, each as the JSON it is written as.
+#[derive(Default)]
+struct Call {
+  query: Option<Value>,
+  body: Option<Value>,
+}
+
+impl Call {
+  fn query(query: &impl Serialize) -> Self {
+    Self {
+      query: Some(serde_json::to_value(query).expect("a wire query always renders as JSON")),
+      body: None,
+    }
+  }
+
+  fn body(body: &impl Serialize) -> Self {
+    Self {
+      query: None,
+      body: Some(serde_json::to_value(body).expect("a wire body always renders as JSON")),
+    }
+  }
+}
+
+/// A successful answer: the address asked, its status and its bytes.
+struct Exchanged {
+  url: String,
+  status: u16,
+  bytes: Vec<u8>,
 }
 
 #[async_trait]
 impl ChatReceiver for ChatReceiverLink {
-  async fn message(&self, handover: ChatHandover) -> Result<(), ChatFailure> {
-    self.hand_over("message", &handover).await
+  async fn hand_over(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    message: HandedMessage,
+  ) -> Result<HeldMessage, ChatFailure> {
+    let route = format!("rooms/{room_id}/messages/{message_id}");
+    let call = Call::body(&message);
+    let (status, message) = self.call(Method::PUT, &route, call).await?;
+    Ok(HeldMessage {
+      created: status == 201,
+      message,
+    })
   }
 
-  async fn attachment(&self, handover: ChatHandover) -> Result<(), ChatFailure> {
-    self.hand_over("attachment", &handover).await
+  async fn gathered(
+    &self,
+    room_id: i64,
+    message_id: i64,
+    patch: GatheredPatch,
+  ) -> Result<HandedMessage, ChatFailure> {
+    let route = format!("rooms/{room_id}/messages/{message_id}");
+    let call = Call::body(&patch);
+    let (_, message) = self.call(Method::PATCH, &route, call).await?;
+    Ok(message)
   }
 
-  async fn edited(&self, handover: ChatHandover) -> Result<(), ChatFailure> {
-    self.hand_over("edited", &handover).await
+  async fn avatars_changed(&self, change: AvatarChange) -> Result<(), ChatFailure> {
+    let call = Call::body(&change);
+    let (_, IgnoredAny) = self.call(Method::POST, "avatar-changes", call).await?;
+    Ok(())
   }
 
-  async fn gathered(&self, gathered: ChatGathered) -> Result<(), ChatFailure> {
-    self.hand_over("gathered", &gathered).await
+  async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, ChatFailure> {
+    let call = Call::query(&query);
+    match self.call(Method::GET, &format!("rooms/{room_id}"), call).await {
+      Ok((_, room)) => Ok(Some(room)),
+      Err(LinkFailure::Answered {
+        answer: Some(WireError {
+          code: ErrorCode::NotFound,
+          ..
+        }),
+        ..
+      }) => Ok(None),
+      Err(failure) => Err(failure.into()),
+    }
   }
 
-  async fn history(&self, handover: ChatHandover) -> Result<bool, ChatFailure> {
-    let answer: HistoryKept = self.post("history", &handover).await?;
-    Ok(answer.kept)
-  }
-
-  async fn avatars_updated(&self, updated: AvatarsUpdated) -> Result<(), ChatFailure> {
-    self.hand_over("avatars/updated", &updated).await
-  }
-
-  async fn listened(&self, query: ListenedQuery) -> Result<bool, ChatFailure> {
-    let answer: Listened = self.post("rooms/listened", &query).await?;
-    Ok(answer.listened)
-  }
-
-  async fn rooms_of(&self, query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, ChatFailure> {
-    let answer: RoomsOf = self.post("rooms/of", &query).await?;
-    Ok(answer.rooms)
+  async fn rooms(&self, query: RoomsQuery) -> Result<Page<ReceiverRoom>, ChatFailure> {
+    let call = Call::query(&query);
+    let (_, page) = self.call(Method::GET, "rooms", call).await?;
+    Ok(page)
   }
 }
 

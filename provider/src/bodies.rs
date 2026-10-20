@@ -1,85 +1,69 @@
-//! The bodies of the provider routes that carry no piece of their own: health, the dialect routes and the
-//! room routes.
+//! The bodies of the provider routes that carry no piece of their own: health, a room, the owner, the dialect
+//! routes, and the page every list is answered in.
 
 use serde::{Deserialize, Serialize};
 
 use crate::dialect::ChatMarkup;
 use crate::message::RoomKind;
 
-/// Whether a provider is ready, and where it is not, why.
+/// Whether a provider is ready, where it is not, why, and the provider service's own version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatHealth {
   pub ready: bool,
   pub reason: Option<String>,
+  pub version: String,
 }
 
 impl ChatHealth {
-  pub fn ready() -> Self {
+  pub fn ready(version: impl Into<String>) -> Self {
     Self {
       ready: true,
       reason: None,
+      version: version.into(),
     }
   }
 
-  pub fn not_ready(reason: impl Into<String>) -> Self {
+  pub fn not_ready(version: impl Into<String>, reason: impl Into<String>) -> Self {
     Self {
       ready: false,
       reason: Some(reason.into()),
+      version: version.into(),
     }
   }
 }
 
-/// The body of every room route: the room asked about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoomQuery {
-  pub chat_id: i64,
-}
-
-/// The answer of `room/owns`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoomOwns {
-  pub owns: bool,
-}
-
-/// The answer of `room/identity`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoomIdentity {
-  pub identity: Option<i64>,
-}
-
-/// The answer of `room/is-owner`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoomKindAnswer {
-  pub kind: RoomKind,
-}
-
-/// The answer of `room/private-of`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoomPerson {
-  pub person: Option<i64>,
-}
-
-/// The answer of `room/title`.
+/// What a provider knows of one room.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RoomTitle {
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRoom {
+  pub id: i64,
+  /// Whether the room is one of this provider's.
+  pub owns: bool,
+  /// The sender number the account's own words carry in the room.
+  pub identity: Option<i64>,
+  /// `owner` when the room is the owner's private chat on this platform, else `group`.
+  pub kind: RoomKind,
+  /// The sender number of the one person in a one-to-one with the account.
+  pub private_to: Option<i64>,
+  /// What the platform calls the room, or null where it cannot or will not say.
   pub title: Option<String>,
 }
 
-/// The answer of `owner-room`.
+/// The answer of `GET /owner`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OwnerRoom {
-  pub chat_id: Option<i64>,
+pub struct ProviderOwner {
+  /// The room to speak into to reach the owner unprompted, or null.
+  pub room_id: Option<i64>,
 }
 
-/// The body of `dialect/read`: the markdown to read.
+/// The body of `POST /dialect/readings`: the markdown to read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectRead {
   pub text: String,
 }
 
-/// The answer of `dialect/read`.
+/// The answer of `POST /dialect/readings`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectReading {
   #[serde(flatten)]
@@ -90,17 +74,31 @@ pub struct DialectReading {
   pub fold: Option<String>,
 }
 
-/// The body of `dialect/check`: markup the dialect built.
+/// The body of `POST /dialect/checks`: markup the dialect built.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectCheck {
   pub markup: String,
 }
 
-/// The answer of `dialect/check`.
+/// The answer of `POST /dialect/checks`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectChecked {
   /// Null when the markup is sound, else the reason.
   pub fault: Option<String>,
   /// What a reader sees of it.
   pub visible: String,
+}
+
+/// One page of a list: its items, and whether anything stands past the last of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Page<T> {
+  pub items: Vec<T>,
+  pub more: bool,
+}
+
+impl<T> Page<T> {
+  /// A page holding everything there is.
+  pub fn whole(items: Vec<T>) -> Self {
+    Self { items, more: false }
+  }
 }

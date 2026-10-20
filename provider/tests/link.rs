@@ -1,6 +1,7 @@
-//! The receiver link against a receiver listening on the loopback: every receiver route, its token, its
-//! body and its answer, and offering a request again only while the connection is refused. No test waits on the real
-//! clock, and every listener a test starts is taken down before it ends.
+//! The link to the receiving side against a receiving side listening on the loopback: every receiving-side
+//! route, its method, its token, its body and its answer, and offering a request again only while the
+//! connection is refused. No test waits on the real clock, and every listener a test starts is taken down
+//! before it ends.
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,45 +12,88 @@ use async_trait::async_trait;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::Json;
-use axum::routing::post;
+use axum::http::{HeaderMap, Method, StatusCode, Uri};
+use axum::response::{IntoResponse, Json, Response};
+use axum::routing::{any, put};
 use bmo_chat::{
-  AvatarsUpdated, ChatFailure, ChatGathered, ChatHandover, ChatMessage, ChatPatience, ChatReceiver,
-  ChatReceiverLink, ChatVoice, ChatWait, ErrorCode, GatheredOutcome, HistoryRoom, InboundChatContext,
-  LinkFailure, ListenedQuery, MessageFile, RoomsOfQuery, WireError,
+  AvatarChange, ChatFailure, ChatPatience, ChatReceiver, ChatReceiverLink, ChatVoice, ChatWait, ErrorCode,
+  GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, LinkFailure, MessageFile, MessageOrigin,
+  Page, ReceiverRoom, RoomFacts, RoomQuery, RoomsQuery, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-const TOKEN: &str = "the-receiver-token";
+const TOKEN: &str = "the-receiving-token";
+const ROOM: i64 = -100;
 
-/// What the receiver was handed: the route, the authorization header and the body.
-type Handed = Arc<Mutex<Vec<(String, Option<String>, Value)>>>;
+/// One call the receiving side took: its method, its path and query, the authorization header and the body.
+#[derive(Debug, Clone, PartialEq)]
+struct Took {
+  method: String,
+  path: String,
+  authorization: Option<String>,
+  body: Value,
+}
 
-/// A receiver that takes every call under `/receiver` and keeps it, answering `history` as kept,
-/// `rooms/listened` as listened, `rooms/of` with one room and every other route with an empty object.
-fn receiver(handed: Handed) -> Router {
+type Handed = Arc<Mutex<Vec<Took>>>;
+
+/// The room the stand-in holds, as it answers it.
+fn held_room() -> Value {
+  json!({ "id": ROOM, "listened": true, "oldestMessageId": 5, "oldestSentAt": null })
+}
+
+/// A receiving side that takes every call under `/receiving` and keeps it. A hand-over is answered with the
+/// message as handed, 200 for an edit and 201 for any other origin; a gathered patch with the message holding
+/// the patch's files; word of pictures with itself; room `ROOM` as held and any other room as not found; and
+/// the rooms with a page of that one room.
+fn receiving(handed: Handed) -> Router {
   async fn take(
     State(handed): State<Handed>,
     Path(route): Path<String>,
+    method: Method,
+    uri: Uri,
     headers: HeaderMap,
     body: Bytes,
-  ) -> Json<Value> {
+  ) -> Response {
     let authorization = headers.get("authorization").map(|value| value.to_str().unwrap().to_owned());
-    let body = serde_json::from_slice(&body).expect("the link posts JSON");
-    let answer = match route.as_str() {
-      "history" => json!({ "kept": true }),
-      "rooms/listened" => json!({ "listened": true }),
-      "rooms/of" => json!({ "rooms": [{ "chatId": -100, "oldestMessageId": 5, "oldestSentAt": null }] }),
-      _ => json!({}),
+    let body: Value = if body.is_empty() {
+      Value::Null
+    } else {
+      serde_json::from_slice(&body).expect("the link sends JSON")
     };
-    handed.lock().unwrap().push((route, authorization, body));
-    Json(answer)
+    let path = match uri.query() {
+      Some(query) => format!("{route}?{query}"),
+      None => route.clone(),
+    };
+    let answer = match (method.as_str(), route.as_str()) {
+      ("PUT", _) if body["origin"] == "edit" => (StatusCode::OK, Json(body.clone())).into_response(),
+      ("PUT", _) => (StatusCode::CREATED, Json(body.clone())).into_response(),
+      ("PATCH", _) => {
+        let mut message = serde_json::to_value(handed_message(MessageOrigin::Live, "carried")).unwrap();
+        message["files"] = body["files"].clone();
+        message["gathering"] = json!(false);
+        Json(message).into_response()
+      }
+      ("POST", "avatar-changes") => (StatusCode::CREATED, Json(body.clone())).into_response(),
+      ("GET", "rooms") => Json(json!({ "items": [held_room()], "more": true })).into_response(),
+      ("GET", "rooms/-100") => Json(held_room()).into_response(),
+      _ => (
+        StatusCode::NOT_FOUND,
+        Json(WireError::new(ErrorCode::NotFound, "Nothing is held there.")),
+      )
+        .into_response(),
+    };
+    handed.lock().unwrap().push(Took {
+      method: method.to_string(),
+      path,
+      authorization,
+      body,
+    });
+    answer
   }
-  Router::new().nest("/receiver", Router::new().route("/{*route}", post(take)).with_state(handed))
+  Router::new().nest("/receiving", Router::new().route("/{*route}", any(take)).with_state(handed))
 }
 
 /// A server on the loopback, until it is closed.
@@ -83,7 +127,7 @@ impl Listening {
   }
 
   fn base(&self) -> String {
-    format!("http://{}/receiver/", self.address)
+    format!("http://{}/receiving/", self.address)
   }
 
   async fn close(self) {
@@ -125,27 +169,35 @@ fn patience(waiter: Arc<dyn ChatWait>, window: u64, every: u64) -> ChatPatience 
   }
 }
 
-fn handover(text: &str) -> ChatHandover {
-  ChatHandover {
-    message: ChatMessage {
-      chat_id: -100,
-      message_id: 5,
-      sender_id: Some(42),
-      sender_name: "A Person".into(),
-      sent_at: 1_760_000_000_000,
-      text: text.into(),
-      reply_to_message_id: None,
-      via: "stand-in".into(),
-      album: None,
-      mode: ChatVoice::BotAccount,
-    },
-    context: Some(InboundChatContext {
+fn handed_message(origin: MessageOrigin, text: &str) -> HandedMessage {
+  HandedMessage {
+    origin,
+    sender_id: Some(42),
+    sender_name: "A Person".into(),
+    sent_at: 1_760_000_000_000,
+    text: text.into(),
+    reply_to_message_id: None,
+    via: "stand-in".into(),
+    album: None,
+    mode: ChatVoice::BotAccount,
+    context: InboundChatContext {
       carries_file: true,
-      gathering: true,
       ..InboundChatContext::default()
-    }),
-    room: None,
+    },
+    room: RoomFacts::default(),
     files: vec![],
+    gathering: true,
+    gather_failure: None,
+  }
+}
+
+fn file() -> MessageFile {
+  MessageFile {
+    id: "file-1".into(),
+    name: "a.png".into(),
+    mime: "image/png".into(),
+    bytes: vec![137, 80],
+    kind: None,
   }
 }
 
@@ -157,81 +209,93 @@ fn link_failure(failure: ChatFailure) -> LinkFailure {
 }
 
 #[tokio::test]
-async fn every_hand_over_reaches_its_route_with_the_token_and_its_body() {
+async fn every_call_reaches_its_route_with_its_method_the_token_and_its_body() {
   let handed = Handed::default();
-  let listening = Listening::start(receiver(handed.clone())).await;
+  let listening = Listening::start(receiving(handed.clone())).await;
   let waiter = Arc::new(Recording::default());
   let link = ChatReceiverLink::new(listening.base(), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
 
-  let kept = ChatGathered {
-    chat_id: -100,
-    message_id: 5,
-    via: "stand-in".into(),
-    outcome: GatheredOutcome::Kept {
-      files: vec![MessageFile {
-        id: "file-1".into(),
-        name: "a.png".into(),
-        mime: "image/png".into(),
-        bytes: vec![137, 80],
-        kind: None,
-      }],
+  let said = handed_message(MessageOrigin::Live, "said");
+  let changed = handed_message(MessageOrigin::Edit, "said again");
+  assert_eq!(
+    link.hand_over(ROOM, 5, said.clone()).await.expect("the message is taken"),
+    HeldMessage {
+      created: true,
+      message: said.clone()
+    }
+  );
+  assert_eq!(
+    link.hand_over(ROOM, 5, changed.clone()).await.expect("the edit is taken"),
+    HeldMessage {
+      created: false,
+      message: changed.clone()
     },
-  };
-  let not_kept = ChatGathered {
-    outcome: GatheredOutcome::NotKept {
-      reason: "The file was too large to keep.".into(),
-    },
-    ..kept.clone()
-  };
-  link.message(handover("said")).await.expect("the message is taken");
-  link.attachment(handover("carried")).await.expect("the attachment is taken");
-  link.edited(handover("said again")).await.expect("the edit is taken");
-  link.gathered(kept.clone()).await.expect("the kept file is taken");
-  link.gathered(not_kept.clone()).await.expect("the not-kept outcome is taken");
-  assert!(link.history(handover("said long ago")).await.expect("the past message is taken"));
-  let updated = AvatarsUpdated {
+    "a 200 answer says the receiving side held the message before"
+  );
+  let kept = GatheredPatch::kept(vec![file()]);
+  let not_kept = GatheredPatch::not_kept("The file was too large to keep.");
+  let gathered = link.gathered(ROOM, 5, kept.clone()).await.expect("the kept files are taken");
+  assert_eq!((gathered.files, gathered.gathering), (vec![file()], false));
+  link.gathered(ROOM, 5, not_kept.clone()).await.expect("the reason is taken");
+  let change = AvatarChange {
     via: "stand-in".into(),
-    rooms: vec![-100],
-    people: vec![42],
+    room_ids: vec![ROOM],
+    person_ids: vec![42],
   };
-  link.avatars_updated(updated.clone()).await.expect("the word is taken");
-  let listened = ListenedQuery {
-    chat_id: -100,
+  link.avatars_changed(change.clone()).await.expect("the word is taken");
+  let asking = RoomQuery {
     via: "stand-in".into(),
   };
-  assert!(link.listened(listened.clone()).await.expect("the question is answered"));
-  let rooms_of = RoomsOfQuery {
+  let room = ReceiverRoom {
+    id: ROOM,
+    listened: true,
+    oldest_message_id: Some(5),
+    oldest_sent_at: None,
+  };
+  assert_eq!(link.room(ROOM, asking.clone()).await.expect("the room is answered"), Some(room));
+  assert_eq!(
+    link.room(13, asking).await.expect("a room not held is no failure"),
+    None,
+    "a room answered not-found reads as none"
+  );
+  let rooms = RoomsQuery {
     via: "stand-in".into(),
-    after: None,
+    after: Some(-200),
     limit: Some(10),
   };
   assert_eq!(
-    link.rooms_of(rooms_of.clone()).await.expect("the question is answered"),
-    [HistoryRoom {
-      chat_id: -100,
-      oldest_message_id: Some(5),
-      oldest_sent_at: None,
-    }]
+    link.rooms(rooms).await.expect("the rooms are answered"),
+    Page {
+      items: vec![room],
+      more: true
+    }
   );
   drop(link);
   listening.close().await;
 
   let bearer = Some(format!("Bearer {TOKEN}"));
+  let took = |method: &str, path: &str, body: Value| Took {
+    method: method.into(),
+    path: path.into(),
+    authorization: bearer.clone(),
+    body,
+  };
   let expected = [
-    ("message", serde_json::to_value(handover("said")).unwrap()),
-    ("attachment", serde_json::to_value(handover("carried")).unwrap()),
-    ("edited", serde_json::to_value(handover("said again")).unwrap()),
-    ("gathered", serde_json::to_value(&kept).unwrap()),
-    ("gathered", serde_json::to_value(&not_kept).unwrap()),
-    ("history", serde_json::to_value(handover("said long ago")).unwrap()),
-    ("avatars/updated", serde_json::to_value(&updated).unwrap()),
-    ("rooms/listened", serde_json::to_value(&listened).unwrap()),
-    ("rooms/of", serde_json::to_value(&rooms_of).unwrap()),
-  ]
-  .map(|(route, body)| (route.to_owned(), bearer.clone(), body));
+    took("PUT", "rooms/-100/messages/5", serde_json::to_value(&said).unwrap()),
+    took("PUT", "rooms/-100/messages/5", serde_json::to_value(&changed).unwrap()),
+    took("PATCH", "rooms/-100/messages/5", serde_json::to_value(&kept).unwrap()),
+    took("PATCH", "rooms/-100/messages/5", serde_json::to_value(&not_kept).unwrap()),
+    took("POST", "avatar-changes", serde_json::to_value(&change).unwrap()),
+    took("GET", "rooms/-100?via=stand-in", Value::Null),
+    took("GET", "rooms/13?via=stand-in", Value::Null),
+    took("GET", "rooms?after=-200&limit=10&via=stand-in", Value::Null),
+  ];
   assert_eq!(*handed.lock().unwrap(), expected);
-  assert_eq!(handed.lock().unwrap()[3].2["files"][0]["bytes"], "iVA=");
-  assert_eq!(handed.lock().unwrap()[4].2["outcome"], "not-kept");
+  assert_eq!(handed.lock().unwrap()[2].body["files"][0]["bytes"], "iVA=");
+  assert_eq!(
+    handed.lock().unwrap()[3].body,
+    json!({ "files": [], "gatherFailure": "The file was too large to keep." })
+  );
   assert_eq!(waiter.waits(), [], "nothing was refused, so nothing waited");
 }
 
@@ -240,8 +304,8 @@ async fn an_answer_that_is_not_success_is_never_offered_again() {
   let offers = Arc::new(AtomicUsize::new(0));
   let counted = offers.clone();
   let refusing = Router::new().route(
-    "/receiver/message",
-    post(move || {
+    "/receiving/rooms/{room}/messages/{message}",
+    put(move || {
       let counted = counted.clone();
       async move {
         counted.fetch_add(1, Ordering::SeqCst);
@@ -255,8 +319,9 @@ async fn an_answer_that_is_not_success_is_never_offered_again() {
   let listening = Listening::start(refusing).await;
   let waiter = Arc::new(Recording::default());
   let link = ChatReceiverLink::new(listening.base(), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
-  let failure = link_failure(link.message(handover("said")).await.unwrap_err());
-  let url = format!("http://{}/receiver/message", listening.address);
+  let said = handed_message(MessageOrigin::Live, "said");
+  let failure = link_failure(link.hand_over(ROOM, 5, said).await.unwrap_err());
+  let url = format!("http://{}/receiving/rooms/-100/messages/5", listening.address);
   drop(link);
   listening.close().await;
 
@@ -275,16 +340,14 @@ async fn an_answer_that_is_not_success_is_never_offered_again() {
 
 #[tokio::test]
 async fn a_success_not_of_the_routes_answer_is_undecodable() {
-  let answering_nothing =
-    Router::new().route("/receiver/rooms/listened", post(|| async { Json(json!({})) }));
+  let answering_nothing = Router::new().route("/receiving/rooms/{room}", any(|| async { Json(json!({})) }));
   let listening = Listening::start(answering_nothing).await;
   let link = ChatReceiverLink::new(listening.base(), TOKEN);
-  let listened = ListenedQuery {
-    chat_id: -100,
+  let asking = RoomQuery {
     via: "stand-in".into(),
   };
-  let failure = link_failure(link.listened(listened).await.unwrap_err());
-  let url = format!("http://{}/receiver/rooms/listened", listening.address);
+  let failure = link_failure(link.room(ROOM, asking).await.unwrap_err());
+  let url = format!("http://{}/receiving/rooms/-100", listening.address);
   drop(link);
   listening.close().await;
   assert!(
@@ -297,7 +360,12 @@ async fn a_success_not_of_the_routes_answer_is_undecodable() {
 async fn an_unknown_route_answer_is_kept_as_it_came() {
   let listening = Listening::start(Router::new()).await;
   let link = ChatReceiverLink::new(listening.base(), TOKEN);
-  let failure = link_failure(link.edited(handover("said again")).await.unwrap_err());
+  let failure = link_failure(
+    link
+      .hand_over(ROOM, 5, handed_message(MessageOrigin::Edit, "said again"))
+      .await
+      .unwrap_err(),
+  );
   drop(link);
   listening.close().await;
   assert!(
@@ -323,11 +391,12 @@ async fn a_refused_connection_is_offered_again_until_the_window_is_spent() {
       window,
       every,
     ));
-    let failure = link_failure(link.message(handover("said")).await.unwrap_err());
+    let said = handed_message(MessageOrigin::Live, "said");
+    let failure = link_failure(link.hand_over(ROOM, 5, said).await.unwrap_err());
     let waits: Vec<Duration> = waits.into_iter().map(Duration::from_secs).collect();
     match failure {
       LinkFailure::Unreachable { url, waited, why } => {
-        assert_eq!(url, format!("http://{address}/message"));
+        assert_eq!(url, format!("http://{address}/rooms/-100/messages/5"));
         assert_eq!(waited, waits.iter().sum::<Duration>());
         assert!(why.to_lowercase().contains("refused"), "{why}");
       }
@@ -337,7 +406,7 @@ async fn a_refused_connection_is_offered_again_until_the_window_is_spent() {
   }
 }
 
-/// A waiter that, on its second wait, starts the receiver at the address that was refusing.
+/// A waiter that, on its second wait, starts the receiving side at the address that was refusing.
 struct Restarting {
   address: SocketAddr,
   handed: Handed,
@@ -350,14 +419,14 @@ impl ChatWait for Restarting {
   async fn wait(&self, _interval: Duration) {
     if self.waits.fetch_add(1, Ordering::SeqCst) == 1 {
       let listener = TcpListener::bind(self.address).await.expect("the freed address binds again");
-      let listening = Listening::on(listener, receiver(self.handed.clone())).await;
+      let listening = Listening::on(listener, receiving(self.handed.clone())).await;
       *self.started.lock().unwrap() = Some(listening);
     }
   }
 }
 
 #[tokio::test]
-async fn a_receiver_that_comes_back_within_the_window_is_handed_the_request_once() {
+async fn a_receiving_side_that_comes_back_within_the_window_is_handed_the_request_once() {
   let address = closed_address().await;
   let restarting = Arc::new(Restarting {
     address,
@@ -365,22 +434,23 @@ async fn a_receiver_that_comes_back_within_the_window_is_handed_the_request_once
     waits: AtomicUsize::new(0),
     started: Mutex::new(None),
   });
-  let link = ChatReceiverLink::new(format!("http://{address}/receiver"), TOKEN).with_patience(patience(
+  let link = ChatReceiverLink::new(format!("http://{address}/receiving"), TOKEN).with_patience(patience(
     restarting.clone(),
     120,
     2,
   ));
-  let taken = link.message(handover("said")).await;
+  let said = handed_message(MessageOrigin::Live, "said");
+  let taken = link.hand_over(ROOM, 5, said.clone()).await;
   drop(link);
-  let listening = restarting.started.lock().unwrap().take().expect("the receiver was started");
+  let listening = restarting.started.lock().unwrap().take().expect("the receiving side was started");
   listening.close().await;
 
-  taken.expect("the message is taken once the receiver is back");
+  taken.expect("the message is taken once the receiving side is back");
   assert_eq!(restarting.waits.load(Ordering::SeqCst), 2);
   let handed = restarting.handed.lock().unwrap();
   assert_eq!(handed.len(), 1);
-  assert_eq!(handed[0].0, "message");
-  assert_eq!(handed[0].2, serde_json::to_value(handover("said")).unwrap());
+  assert_eq!((handed[0].method.as_str(), handed[0].path.as_str()), ("PUT", "rooms/-100/messages/5"));
+  assert_eq!(handed[0].body, serde_json::to_value(&said).unwrap());
 }
 
 #[tokio::test]
@@ -399,7 +469,8 @@ async fn a_connection_dropped_after_it_was_taken_is_never_offered_again() {
   let waiter = Arc::new(Recording::default());
   let link =
     ChatReceiverLink::new(format!("http://{address}"), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
-  let failure = link_failure(link.attachment(handover("carried")).await.unwrap_err());
+  let carried = handed_message(MessageOrigin::Live, "carried");
+  let failure = link_failure(link.hand_over(ROOM, 5, carried).await.unwrap_err());
   drop(link);
   dropping.abort();
   assert!(dropping.await.unwrap_err().is_cancelled());

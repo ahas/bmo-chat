@@ -17,7 +17,6 @@ strum.workspace = true
 tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
-jsonschema.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
 toml.workspace = true
 tower.workspace = true

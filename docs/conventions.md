@@ -322,7 +322,9 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 
 - **The OpenAPI 3.1 document is the contract,** committed as the service's `docs/openapi.json`. It is generated
   from the service's own types, and a test fails where the committed document differs from what the code
-  generates. The Rust crate and the TypeScript package a service publishes are generated from it.
+  generates. The Rust crate and the TypeScript package a service publishes are generated from it. A library
+  whose routes are served on two sides, as the chat protocol's are, commits one document for each side under
+  `docs/openapi/`, since the two sides may serve paths of the same shape.
 - **The document's version is the service's,** in semver. A removed or renamed route or field, or a field that
   becomes required, is a major version.
 

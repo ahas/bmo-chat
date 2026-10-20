@@ -6,11 +6,12 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use bmo_chat::{
-  AvatarsUpdated, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatGathered, ChatHandover,
-  ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMessage, ChatModeStanding, ChatNumberRange,
-  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
-  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatVerb, ChatVoice, ErrorCode,
-  HistoryRoom, ListenedQuery, PlainDialect, RoomKind, RoomsOfQuery,
+  AvatarChange, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatHealth, ChatMarkup,
+  ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRange, ChatNumberRanges, ChatNumberSpace,
+  ChatNumbering, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend,
+  ChatSendRequest, ChatSendResult, ChatSent, ChatVerb, ChatVoice, ErrorCode, GatheredPatch, HandedMessage,
+  HeldMessage, InboundChatContext, MessageOrigin, Page, PlainDialect, ProviderRoom, ReceiverRoom,
+  RoomFacts, RoomKind, RoomQuery, RoomsQuery,
 };
 
 const ROOM: i64 = -100;
@@ -135,9 +136,8 @@ impl StandIn {
   /// A room speaking: the stand-in hands what was said over the link it was started with.
   async fn hears(&self, text: &str) {
     let receiver = self.receiver.lock().unwrap().clone().expect("the provider was started");
-    let message = ChatMessage {
-      chat_id: ROOM,
-      message_id: 5,
+    let message = HandedMessage {
+      origin: MessageOrigin::Live,
       sender_id: Some(OWNER),
       sender_name: "A Person".into(),
       sent_at: 1_760_000_000_000,
@@ -146,16 +146,13 @@ impl StandIn {
       via: self.key.into(),
       album: None,
       mode: ChatVoice::BotAccount,
+      context: InboundChatContext::default(),
+      room: RoomFacts::default(),
+      files: vec![],
+      gathering: false,
+      gather_failure: None,
     };
-    receiver
-      .message(ChatHandover {
-        message,
-        context: None,
-        room: None,
-        files: vec![],
-      })
-      .await
-      .expect("the receiver took it");
+    receiver.hand_over(ROOM, 5, message).await.expect("the receiving side took it");
   }
 }
 
@@ -166,6 +163,9 @@ impl ChatProvider for StandIn {
   }
   fn label(&self) -> &str {
     self.label
+  }
+  fn version(&self) -> &str {
+    "0.1.0"
   }
   fn configured(&self) -> Option<String> {
     None
@@ -209,26 +209,22 @@ impl ChatProvider for StandIn {
       },
     }
   }
-  async fn owns_room(&self, chat_id: i64) -> Result<bool, ChatFailure> {
-    Ok(chat_id == ROOM || chat_id == OWNER)
-  }
-  async fn identity_of(&self, _chat_id: i64) -> Result<Option<i64>, ChatFailure> {
-    Ok(Some(7))
-  }
-  async fn is_owner_room(&self, chat_id: i64) -> Result<RoomKind, ChatFailure> {
-    Ok(if chat_id == OWNER { RoomKind::Owner } else { RoomKind::Group })
-  }
-  async fn private_room_of(&self, chat_id: i64) -> Result<Option<i64>, ChatFailure> {
-    Ok((chat_id == OWNER).then_some(OWNER))
+  async fn room(&self, room_id: i64) -> Result<Option<ProviderRoom>, ChatFailure> {
+    let owner = room_id == OWNER;
+    Ok((room_id == ROOM || owner).then(|| ProviderRoom {
+      id: room_id,
+      owns: true,
+      identity: Some(7),
+      kind: if owner { RoomKind::Owner } else { RoomKind::Group },
+      private_to: owner.then_some(OWNER),
+      title: (!owner).then(|| "A Room".to_owned()),
+    }))
   }
   async fn owner_room(&self) -> Result<Option<i64>, ChatFailure> {
     Ok(Some(OWNER))
   }
-  async fn room_title(&self, chat_id: i64) -> Result<Option<String>, ChatFailure> {
-    Ok((chat_id == ROOM).then(|| "A Room".to_owned()))
-  }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
-    if let Some(refusal) = self.undeclared(request.send.verb().into()) {
+    if let Some(refusal) = self.undeclared(request.send.kind().into()) {
       return Ok(ChatSendResult::Refused(refusal));
     }
     if let ChatSend::Text { text, fold, .. } = &request.send {
@@ -241,38 +237,42 @@ impl ChatProvider for StandIn {
   }
 }
 
-/// The receiver as the stand-in reaches it: it keeps what it was handed.
+/// The receiving side as the stand-in reaches it: it keeps the words of what it was handed.
 #[derive(Default)]
-struct Receiver {
+struct Receiving {
   handed: Mutex<Vec<String>>,
 }
 
 #[async_trait]
-impl ChatReceiver for Receiver {
-  async fn message(&self, handover: ChatHandover) -> Result<(), ChatFailure> {
-    self.handed.lock().unwrap().push(handover.message.text);
-    Ok(())
+impl ChatReceiver for Receiving {
+  async fn hand_over(
+    &self,
+    _room_id: i64,
+    _message_id: i64,
+    message: HandedMessage,
+  ) -> Result<HeldMessage, ChatFailure> {
+    self.handed.lock().unwrap().push(message.text.clone());
+    Ok(HeldMessage {
+      created: true,
+      message,
+    })
   }
-  async fn attachment(&self, _handover: ChatHandover) -> Result<(), ChatFailure> {
-    Err("the stand-in receiver takes no attachment".into())
+  async fn gathered(
+    &self,
+    _room_id: i64,
+    _message_id: i64,
+    _patch: GatheredPatch,
+  ) -> Result<HandedMessage, ChatFailure> {
+    Err("the stand-in receiving side takes no gathered file".into())
   }
-  async fn edited(&self, _handover: ChatHandover) -> Result<(), ChatFailure> {
-    Err("the stand-in receiver takes no edit".into())
+  async fn avatars_changed(&self, _change: AvatarChange) -> Result<(), ChatFailure> {
+    Err("the stand-in receiving side takes no word of pictures".into())
   }
-  async fn gathered(&self, _gathered: ChatGathered) -> Result<(), ChatFailure> {
-    Err("the stand-in receiver takes no gathered file".into())
+  async fn room(&self, _room_id: i64, _query: RoomQuery) -> Result<Option<ReceiverRoom>, ChatFailure> {
+    Ok(None)
   }
-  async fn history(&self, _handover: ChatHandover) -> Result<bool, ChatFailure> {
-    Err("the stand-in receiver takes no past message".into())
-  }
-  async fn avatars_updated(&self, _updated: AvatarsUpdated) -> Result<(), ChatFailure> {
-    Err("the stand-in receiver takes no word of pictures".into())
-  }
-  async fn listened(&self, _query: ListenedQuery) -> Result<bool, ChatFailure> {
-    Ok(true)
-  }
-  async fn rooms_of(&self, _query: RoomsOfQuery) -> Result<Vec<HistoryRoom>, ChatFailure> {
-    Ok(Vec::new())
+  async fn rooms(&self, _query: RoomsQuery) -> Result<Page<ReceiverRoom>, ChatFailure> {
+    Ok(Page::whole(Vec::new()))
   }
 }
 
@@ -281,7 +281,6 @@ fn text(text: &str, fold: bool) -> ChatSendRequest {
     ROOM,
     ChatSend::Text {
       text: text.into(),
-      reply_to: None,
       silent: false,
       fold,
     },
@@ -298,16 +297,16 @@ async fn the_stand_in_answers_the_whole_contract_as_a_shared_provider() {
   assert_eq!(provider.configured(), None);
   assert_eq!(provider.shows(), None);
   assert!(!provider.speakers());
-  assert!(provider.owns_room(ROOM).await.unwrap());
-  assert!(!provider.owns_room(-777).await.unwrap());
-  assert_eq!(provider.identity_of(ROOM).await.unwrap(), Some(7));
-  assert_eq!(provider.is_owner_room(OWNER).await.unwrap(), RoomKind::Owner);
-  assert_eq!(provider.is_owner_room(ROOM).await.unwrap(), RoomKind::Group);
-  assert_eq!(provider.private_room_of(OWNER).await.unwrap(), Some(OWNER));
-  assert_eq!(provider.private_room_of(ROOM).await.unwrap(), None);
+  assert_eq!(provider.health(), ChatHealth::ready("0.1.0"));
+  let room = provider.room(ROOM).await.unwrap().expect("the stand-in knows its room");
+  assert_eq!(
+    (room.owns, room.identity, room.kind, room.private_to, room.title.as_deref()),
+    (true, Some(7), RoomKind::Group, None, Some("A Room"))
+  );
+  let owner = provider.room(OWNER).await.unwrap().expect("the stand-in knows the owner's room");
+  assert_eq!((owner.kind, owner.private_to, owner.title), (RoomKind::Owner, Some(OWNER), None));
+  assert_eq!(provider.room(-777).await.unwrap(), None);
   assert_eq!(provider.owner_room().await.unwrap(), Some(OWNER));
-  assert_eq!(provider.room_title(ROOM).await.unwrap(), Some("A Room".into()));
-  assert_eq!(provider.room_title(OWNER).await.unwrap(), None);
   assert_eq!(
     provider.send(text("hello", false)).await.unwrap(),
     ChatSendResult::Sent(ChatSent {
@@ -336,9 +335,9 @@ async fn the_declaration_is_gathered_from_the_members_and_crosses_the_wire() {
 }
 
 #[tokio::test]
-async fn start_is_given_only_the_receiver_link_and_starts_only_the_active_modes() {
+async fn start_is_given_only_the_link_to_the_receiving_side_and_starts_only_the_active_modes() {
   let provider = StandIn::new(&[ChatCapability::Text], Box::new(PlainDialect));
-  let receiver = Arc::new(Receiver::default());
+  let receiver = Arc::new(Receiving::default());
 
   provider.start(receiver.clone()).await.unwrap();
   assert_eq!(*provider.started.lock().unwrap(), [ChatVoice::BotAccount]);
@@ -415,7 +414,7 @@ async fn every_verb_a_provider_does_not_declare_is_refused_by_the_one_mechanism(
 async fn a_provider_with_no_fetch_of_its_own_refuses_one() {
   let provider = StandIn::new(&[ChatCapability::Text], Box::new(PlainDialect));
   let request = ChatMediaRequest {
-    chat_id: ROOM,
+    room_id: ROOM,
     message_id: 5,
     sent_at: None,
   };

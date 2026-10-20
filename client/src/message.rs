@@ -1,4 +1,4 @@
-//! A message as it crosses from a provider to the receiver, and what crosses beside it.
+//! A message as it crosses from a provider to the receiving side, and what crosses with it.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -16,26 +16,16 @@ pub enum RoomKind {
   Group,
 }
 
-/// A message a room said. Nothing platform-shaped crosses, and no file path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ChatMessage {
-  pub chat_id: i64,
-  pub message_id: i64,
-  pub sender_id: Option<i64>,
-  /// The name the platform shows for who said it.
-  pub sender_name: String,
-  /// When, in epoch milliseconds.
-  pub sent_at: i64,
-  /// Its words, or a placeholder the provider wrote for what was sent.
-  pub text: String,
-  pub reply_to_message_id: Option<i64>,
-  /// The key of the provider that took it in.
-  pub via: String,
-  /// The number of the first message of the send of several this one came in.
-  pub album: Option<i64>,
-  /// The mode that delivered it.
-  pub mode: ChatVoice,
+/// Where a handed-over message comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageOrigin {
+  /// A message a room said.
+  Live,
+  /// A message already handed over, changed: its words, its sender, or both.
+  Edit,
+  /// A past message read back from a room, kept where the receiving side lacks it and waking nobody.
+  History,
 }
 
 /// What the platform said about a message beyond the message itself.
@@ -56,9 +46,6 @@ pub struct InboundChatContext {
   pub metadata: Option<Value>,
   #[serde(default, skip_serializing_if = "std::ops::Not::not")]
   pub carries_file: bool,
-  /// The provider is still gathering the message's file and hands it over later as `gathered`.
-  #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-  pub gathering: bool,
   /// The opaque tag of the send this message is the platform's echo of.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub tag: Option<String>,
@@ -70,10 +57,10 @@ pub struct InboundChatContext {
 pub struct RoomFacts {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub kind: Option<RoomKind>,
-  /// The sender number the agent's own words carry in the room.
+  /// The sender number the account's own words carry in the room.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub identity: Option<i64>,
-  /// The sender number of the one person in a one-to-one with the agent.
+  /// The sender number of the one person in a one-to-one with the account.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub private_to: Option<i64>,
 }
@@ -123,39 +110,65 @@ pub struct MessageFile {
   pub kind: Option<ChatFileKind>,
 }
 
-/// The body of the `message`, `attachment`, `edited` and `history` hand-overs.
+/// A message as a provider hands it over, under the room and the number the route's path names. Nothing
+/// platform-shaped crosses, and no file path.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ChatHandover {
-  pub message: ChatMessage,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub context: Option<InboundChatContext>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub room: Option<RoomFacts>,
-  /// The files an `attachment` carries when they are already gathered.
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+#[serde(rename_all = "camelCase")]
+pub struct HandedMessage {
+  pub origin: MessageOrigin,
+  pub sender_id: Option<i64>,
+  /// The name the platform shows for who said it.
+  pub sender_name: String,
+  /// When, in epoch milliseconds.
+  pub sent_at: i64,
+  /// Its words, or a placeholder the provider wrote for what was sent.
+  pub text: String,
+  pub reply_to_message_id: Option<i64>,
+  /// The key of the provider that took it in.
+  pub via: String,
+  /// The number of the first message of the send of several this one came in.
+  pub album: Option<i64>,
+  /// The mode that delivered it.
+  pub mode: ChatVoice,
+  #[serde(default)]
+  pub context: InboundChatContext,
+  #[serde(default)]
+  pub room: RoomFacts,
+  /// The files the message carries, where they are already gathered.
+  #[serde(default)]
   pub files: Vec<MessageFile>,
+  /// The provider is still gathering the message's files and sends them later in a `GatheredPatch`.
+  #[serde(default)]
+  pub gathering: bool,
+  /// Why the files gathering promised could not be kept.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub gather_failure: Option<String>,
 }
 
-/// What came of gathering a message's file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
-pub enum GatheredOutcome {
-  Kept {
-    files: Vec<MessageFile>,
-  },
-  /// The reason is an English sentence saying why the file could not be kept.
-  NotKept {
-    reason: String,
-  },
-}
-
-/// The body of the `gathered` hand-over: the file a message's `gathering` promised.
+/// The files a message's gathering promised, or why they could not be kept: a merge patch of the message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatGathered {
-  pub chat_id: i64,
-  pub message_id: i64,
-  pub via: String,
-  #[serde(flatten)]
-  pub outcome: GatheredOutcome,
+pub struct GatheredPatch {
+  pub files: Vec<MessageFile>,
+  /// An English sentence saying why the files could not be kept.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub gather_failure: Option<String>,
+}
+
+impl GatheredPatch {
+  /// The files, kept.
+  pub fn kept(files: Vec<MessageFile>) -> Self {
+    Self {
+      files,
+      gather_failure: None,
+    }
+  }
+
+  /// No files, for this reason.
+  pub fn not_kept(reason: impl Into<String>) -> Self {
+    Self {
+      files: Vec::new(),
+      gather_failure: Some(reason.into()),
+    }
+  }
 }

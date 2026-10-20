@@ -25,10 +25,10 @@ pub enum ChatRefusal {
     label: String,
     missed: Vec<MissedPicture>,
   },
-  /// The provider speaks as the room's own agent alone, so it takes no other speaker.
-  SpeakerNotAllowed { label: String, agent: String },
-  /// The provider has no number in the room for the agent named as speaker.
-  SpeakerUnnumbered { label: String, agent: String },
+  /// The provider speaks as the room's own account alone, so it takes no other speaker.
+  SpeakerNotAllowed { label: String, speaker: String },
+  /// The provider has no number in the room for the speaker the send names.
+  SpeakerUnnumbered { label: String, speaker: String },
   /// The provider is not ready yet.
   NotReady { label: String },
   /// The provider's own English reason.
@@ -79,11 +79,11 @@ impl fmt::Display for ChatRefusal {
         }
         Ok(())
       }
-      Self::SpeakerNotAllowed { label, agent } => {
-        write!(f, "{label} cannot send in the name of agent {agent}.")
+      Self::SpeakerNotAllowed { label, speaker } => {
+        write!(f, "{label} cannot send in the name of {speaker}.")
       }
-      Self::SpeakerUnnumbered { label, agent } => {
-        write!(f, "{label} has no number for agent {agent}, so it cannot send in that agent's name.")
+      Self::SpeakerUnnumbered { label, speaker } => {
+        write!(f, "{label} has no number for {speaker}, so it cannot send in that name.")
       }
       Self::NotReady { label } => write!(f, "{label} is not ready yet."),
       Self::Platform { label, detail } | Self::Gone { label, detail } => write!(f, "{label}: {detail}"),

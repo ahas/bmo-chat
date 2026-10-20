@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The agent's markdown once a dialect has read it.
+/// Markdown once a dialect has read it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChatMarkup {
   /// What goes out.
@@ -39,8 +39,8 @@ pub struct ChatDialectDeclaration {
   pub foldable: bool,
 }
 
-/// What the agent's markdown becomes on a provider's rooms. A dialect names no provider, so one dialect may
-/// serve several.
+/// What markdown written for a provider's rooms becomes on them. A dialect names no provider, so one dialect
+/// may serve several.
 pub trait ChatDialect: Send + Sync {
   fn name(&self) -> &str;
 
