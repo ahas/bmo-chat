@@ -1089,7 +1089,7 @@
   "x-harness": {
     "entry": "The receiving side's routes a provider is tested against; the same plugin as the provider routes.",
     "mcp": "bmo-chat mcp --provider <url>",
-    "plugin": "ahas-chat"
+    "plugin": "bmo-chat"
   },
   "x-layer": "upstream",
   "x-stage": 1,

@@ -8,7 +8,7 @@ harness plugin.
 |---|---|---|---|
 | `bmo-chat` | `provider/` | a chat service | the chat piece types, the provider contract, the server for the provider routes and the link to the receiving side |
 | `bmo-chat-client` | `client/` | the receiving side, and the plugin | one client for every provider, and the server for the routes a provider hands messages to |
-| `bmo-chat-plugin` | `plugin/` | a coding harness | the `bmo-chat` command, whose `mcp` verb serves the harness tools over MCP for any provider, the `ahas-chat` skill, and the OpenAPI documents |
+| `bmo-chat-plugin` | `plugin/` | a coding harness | the `bmo-chat` command, whose `mcp` verb serves the harness tools over MCP for any provider, the `bmo-chat` skill, and the OpenAPI documents |
 
 Neither library depends on the other. Each states the wire shapes on its own, and the root package's tests
 check that the two agree. The plugin depends on bmo-chat-client alone.
@@ -30,7 +30,7 @@ check that the two agree. The plugin depends on bmo-chat-client alone.
 ## The harness plugin
 
 `bmo-chat mcp --provider <url>` starts the MCP server on standard input and output, with the provider's token
-in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/ahas-chat/SKILL.md`.
+in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/bmo-chat/SKILL.md`.
 
 ## Layout
 

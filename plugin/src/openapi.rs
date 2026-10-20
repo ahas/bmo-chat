@@ -22,7 +22,7 @@ use crate::tools::tools;
 const SCHEMAS: &str = "/components/schemas";
 
 /// The plugin a harness takes the protocol in, and the command that starts its MCP server.
-const PLUGIN: &str = "ahas-chat";
+const PLUGIN: &str = "bmo-chat";
 const MCP: &str = "bmo-chat mcp --provider <url>";
 
 /// Which side serves a document's routes.

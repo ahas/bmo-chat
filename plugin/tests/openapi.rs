@@ -800,7 +800,7 @@ fn the_documents_state_the_plugin_and_the_provider_document_its_nine_tools_each_
     assert_eq!(document["x-layer"], "upstream");
     assert_eq!(document["x-stage"], 1);
     assert_eq!(document["x-calls"], json!([]));
-    assert_eq!(document["x-harness"]["plugin"], "ahas-chat");
+    assert_eq!(document["x-harness"]["plugin"], "bmo-chat");
     assert_eq!(document["x-harness"]["mcp"], "bmo-chat mcp --provider <url>");
   }
   assert_eq!(openapi(Side::Receiver)["x-tools"], json!([]));

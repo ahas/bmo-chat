@@ -2,12 +2,12 @@
   {
     "id": "api/harness",
     "title": "Harness plugin API",
-    "what": "The ahas-chat harness plugin: the bmo-chat command, the MCP server's tool entries and the skill telling a harness when and how to drive a provider.",
+    "what": "The bmo-chat harness plugin: the bmo-chat command, the MCP server's tool entries and the skill telling a harness when and how to drive a provider.",
     "files": [
       "plugin/src/main.rs",
       "plugin/src/server.rs",
       "plugin/src/tools.rs",
-      "plugin/skills/ahas-chat/SKILL.md",
+      "plugin/skills/bmo-chat/SKILL.md",
       "docs/protocol.md"
     ],
     "symbols": [
@@ -23,7 +23,7 @@
       "plugin/openapi"
     ],
     "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715848,
+    "changed": 1792529689717,
     "boundary": {
       "side": "exposes"
     }

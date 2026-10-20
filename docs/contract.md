@@ -9,7 +9,7 @@ on, and the protocol's harness plugin.
 - **bmo-chat-client** is what the receiving side imports: whatever unit takes in what providers hand over. With
   it the receiving side reaches every provider the same way, and takes in what every provider hands over the
   same way. There is no per-provider implementation on the receiving side.
-- **bmo-chat-plugin** is the harness plugin, `ahas-chat`: the `bmo-chat` command, whose MCP server drives any
+- **bmo-chat-plugin** is the harness plugin, `bmo-chat`: the `bmo-chat` command, whose MCP server drives any
   provider at a given address through bmo-chat-client, and the skill that tells a harness how to use it
   (`protocol.md`, "The harness plugin"). It also generates the OpenAPI documents.
 

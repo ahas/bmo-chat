@@ -335,7 +335,7 @@ taken.
 
 ## The harness plugin
 
-The protocol's harness plugin is `ahas-chat`: an MCP server and a skill, both in bmo-chat-plugin, which also
+The protocol's harness plugin is `bmo-chat`: an MCP server and a skill, both in bmo-chat-plugin, which also
 builds the `bmo-chat` command.
 
 `bmo-chat mcp --provider <url>` starts the MCP server on standard input and output, driving the provider whose
@@ -361,7 +361,7 @@ the provider answered with, `status` beside it, or the sentence saying why nothi
 each request once, so a provider nothing listens at is answered at once with that sentence, and the harness
 asks again when it chooses. The server sends no notifications: the provider routes publish no events.
 
-The `ahas-chat` skill tells a harness building or testing a chat provider when and how to use the server:
+The `bmo-chat` skill tells a harness building or testing a chat provider when and how to use the server:
 read the declaration first, then send through the provider and check its dialect, all with no receiving side
 running.
 

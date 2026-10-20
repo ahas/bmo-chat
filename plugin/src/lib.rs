@@ -1,4 +1,4 @@
-//! The chat protocol's harness plugin, `ahas-chat`.
+//! The chat protocol's harness plugin, `bmo-chat`.
 //!
 //! The `bmo-chat` command's MCP server drives any chat provider at a given address through bmo-chat-client,
 //! one tool for each provider route a harness needs; the skill beside this crate tells a harness when and how

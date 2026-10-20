@@ -1,9 +1,9 @@
 ---
-name: ahas-chat
+name: bmo-chat
 description: Drive a chat provider through the chat protocol with the bmo-chat MCP server. Use when building, testing or debugging a chat service that serves the chat protocol's provider routes, when sending into one of its rooms by hand, or when checking what its dialect makes of markdown, with no receiving side running.
 ---
 
-# ahas-chat
+# bmo-chat
 
 A chat provider holds one platform's connection and serves the chat protocol's provider routes. The
 `bmo-chat` MCP server drives any provider at a given address through those routes, one tool for each, so a

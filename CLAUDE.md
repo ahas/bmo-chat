@@ -2,7 +2,7 @@
 
 This repository holds the chat protocol: its two base libraries, `bmo-chat` in `provider/`, which a chat
 service imports to be a provider, and `bmo-chat-client` in `client/`, which the receiving side imports; and its
-harness plugin, `bmo-chat-plugin` in `plugin/`, which builds the `bmo-chat` command and holds the `ahas-chat`
+harness plugin, `bmo-chat-plugin` in `plugin/`, which builds the `bmo-chat` command and holds the `bmo-chat`
 skill. It holds chat piece types, the routes that carry them and the tools that drive them, and nothing else:
 no turn templates or their assembly, no jobs, memory, agents, gates or archive.
 

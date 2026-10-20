@@ -24,7 +24,7 @@ is whether it can be offered to a harness as an MCP server and be of use there: 
 | Upstream services | bmo-job (todo), bmo-brain, bmo-graph, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
 | Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-kakaotalk, bmo-discord, bmo-ms-teams, bmo-remote, bmo-cli, bmo-web |
 | Downstream content | bmo-gate-harvest, bmo-persona |
-| Skills | an `ahas-` skill is upstream, a `bmo-` skill is downstream |
+| Skills | a unit's harness plugin carries the `bmo-<unit>` skill, its product name |
 
 The units whose side needs a reason:
 
@@ -54,7 +54,7 @@ The units whose side needs a reason:
   reads them), `<role>Name` for who made or holds a member (`actorName`, `holderName`, `assigneeName`), and
   `labels` for the caller's own metadata.
 - **It publishes its client and its harness plugin.** The plugin is an MCP server the unit's own binary
-  starts (`bmo-<unit> mcp`) and an `ahas-<unit>` skill that tells a harness when and how to use it. Each
+  starts (`bmo-<unit> mcp`) and a `bmo-<unit>` skill that tells a harness when and how to use it. Each
   tool is a thin call of one route, one library function or one of its commands, through the unit's own
   client.
 - **A unit that keeps state is middleware,** in the way Redis is one: it stores members, serves them through
@@ -104,7 +104,7 @@ keeping the work and whatever runs it. For an item of bmo-job:
   registers anything in the other; each answers only the harness that called it, and neither knows which
   harness that is.
 - **In BMO's own setup the harness is the chat agent's session or the runner.** The chat agent's harness
-  carries the ahas-job plugin beside the agency's agent tools and decides on each item it is told of; the
+  carries the bmo-job plugin beside the agency's agent tools and decides on each item it is told of; the
   agency puts the plugin in that session's launch line and calls nothing of the job service itself. The
   runner, a command of bmo-cli kept running as a unit, holds the subscriptions of the queues that progress
   on their own and takes the same steps by each queue's policy. Both are downstream: no upstream route or
@@ -352,7 +352,7 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **A service supplies its own client.** It keeps one OpenAPI document in its repository, and from that one
   document it publishes a Rust crate and a TypeScript package.
 - **An upstream supplies its harness plugin beside its client:** the MCP server its own binary starts and its
-  `ahas-<unit>` skill, both in its repository, built on that client.
+  `bmo-<unit>` skill, both in its repository, built on that client.
 - **A client carries the service's contract and nothing else.** No caller's policy goes into it.
 - **A caller uses the published client.** It writes no client of its own by hand.
 
