@@ -1,5 +1,0 @@
-# How this repository is built and tested. The format is provisional until bmo-testbed defines the
-# convention every repository follows. A library is imported, never deployed, so there is no deploy command.
-kind = "library"
-build = "cargo build --workspace"
-test = "cargo test --workspace"
