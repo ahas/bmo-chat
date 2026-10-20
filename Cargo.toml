@@ -17,6 +17,7 @@ clap = { version = "4.6.7", features = ["derive", "env"] }
 headers = "0.4.1"
 jsonschema = { version = "0.58.6", default-features = false }
 pulldown-cmark = { version = "0.13.0", default-features = false }
+regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["query"] }
 rmcp = { version = "3.5.0", default-features = false, features = ["server", "transport-io"] }
 schemars = "1.0.4"
@@ -41,6 +42,7 @@ axum.workspace = true
 bmo-chat = { path = "provider" }
 bmo-chat-client = { path = "client" }
 bmo-chat-plugin = { path = "plugin" }
+regex.workspace = true
 reqwest.workspace = true
 rmcp.workspace = true
 serde.workspace = true

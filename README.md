@@ -24,6 +24,8 @@ check that the two agree. The plugin depends on bmo-chat-client alone.
   carries the harness tools under `x-tools`.
 - `docs/conventions.md`: the common wire format, the API design and the upstream and downstream rules every
   bmo-next repository follows.
+- `docs/PERSONAL-DATA.md`: what personal data never goes into the repository, and the check that reads every
+  file for it.
 
 ## The harness plugin
 
