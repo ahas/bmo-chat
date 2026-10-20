@@ -18,8 +18,8 @@
       "contract/route-bodies",
       "contract/receiver-bodies"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715798
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530535946
   },
   {
     "id": "client/provider-client",
@@ -44,8 +44,8 @@
       "contract/messages",
       "contract/sends"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715792
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530535965
   },
   {
     "id": "client/retry",
@@ -62,7 +62,7 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715787
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530535983
   }
 ]

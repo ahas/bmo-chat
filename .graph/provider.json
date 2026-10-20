@@ -27,8 +27,8 @@
       "contract/refusals",
       "contract/sends"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715765
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536333
   },
   {
     "id": "provider/receiver-link",
@@ -53,8 +53,8 @@
       "contract/route-bodies",
       "contract/receiver-bodies"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715781
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536352
   },
   {
     "id": "provider/routes",
@@ -81,7 +81,7 @@
       "contract/refusals",
       "contract/sends"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715774
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536369
   }
 ]

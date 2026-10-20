@@ -14,8 +14,8 @@
       "client/provider-client",
       "client/retry"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715821
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536257
   },
   {
     "id": "plugin/mcp-server",
@@ -33,8 +33,8 @@
       "plugin/tools",
       "client/provider-client"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715815
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536279
   },
   {
     "id": "plugin/openapi",
@@ -63,8 +63,8 @@
       "contract/sends",
       "plugin/tools"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715828
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536298
   },
   {
     "id": "plugin/tools",
@@ -88,7 +88,7 @@
       "contract/route-bodies",
       "contract/sends"
     ],
-    "base": "dca6982e37f6a6c8250187a9bf90fd88f24e633c",
-    "changed": 1792497715809
+    "base": "f0de3bf72df5fff233f0c75e047a77eebe9c5bb5",
+    "changed": 1792530536315
   }
 ]
