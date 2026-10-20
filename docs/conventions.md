@@ -58,10 +58,12 @@ The units whose side needs a reason:
   client.
 - **A unit that keeps state is middleware,** in the way Redis is one: it stores members, serves them through
   its API and publishes its own events, and never executes. It launches no run, opens no agent session,
-  sends nothing to a room and calls no downstream. What happens at a time is an event a client acts on
-  (`reminder.due`, `watch.fired`, `lease.expired`). Work is taken by a lease: `POST /leases` takes the next
-  member of a queue for a holder for a span, `PATCH` renews it, `DELETE` gives it back, and a lease that runs
-  out gives its member back. bmo-job, bmo-brain and bmo-graph are middleware.
+  sends nothing to a room and calls no unit: the only calls it makes are deliveries to the addresses its
+  subscribers registered. What happens at a time is an event a client acts on (`reminder.due`,
+  `watch.fired`, `lease.expired`). Work reaches whoever does it two ways, side by side: pushed, as the
+  events of a subscription the one doing it registered, and pulled, by a lease. `POST /leases` takes the next
+  member of a queue, or the member it names, for a holder for a span, `PATCH` renews it, `DELETE` gives it
+  back, and a lease that runs out gives its member back. bmo-job, bmo-brain and bmo-graph are middleware.
 - **It calls only upstreams,** by their clients, and imports no downstream's crate or package.
 
 ### What a downstream is
@@ -72,6 +74,35 @@ The units whose side needs a reason:
   no copy of what the upstream serves. What it wrote into an upstream under its own scopes it lets go of
   itself, when the room or agent behind them goes.
 - **It calls upstreams and earlier downstreams,** in the order below, and no later one.
+
+### A harness, its work and what runs it
+
+Work kept in middleware is done by a harness, and the harness is the only one that calls both the middleware
+keeping the work and whatever runs it. For an item of bmo-job:
+
+- **The job service tells a harness of work, and a harness takes work from it.** The two ways stand side by
+  side. Push: the harness registers a subscription on the queues it serves, and each item opened there, or
+  each other change it asked for, reaches it as a webhook to its URL or, through `bmo-job mcp`, as an MCP
+  notification in its session. Pull: the harness takes an item with a lease, whether a push woke it or it
+  asked on its own. A push hands nothing over: harnesses told of one item race for its lease, and the one
+  that loses is answered 409.
+- **With no agency, the harness runs the item itself,** in its own session and environment: it reads the
+  brief, notes and work order, reports and closes the item. This is the base case, and it needs no unit
+  but bmo-job, which is why bmo-job is upstream.
+- **With an agency, the harness holding the item calls the agency.** It asks for a worker to be assigned,
+  then hands the agency the item's content and its lease to run on that worker. The run's progress, its
+  questions and its outcome come back to the harness from the agency; the harness renews the lease while
+  the run lasts, passes words appended to the item into the run, and reports and closes in the job service
+  itself.
+- **The job service and the agency never call each other.** Neither imports the other's client or
+  registers anything in the other; each answers only the harness that called it, and neither knows which
+  harness that is.
+- **In BMO's own setup the harness is the chat agent's session or the runner.** The chat agent's harness
+  carries the ahas-job plugin beside the agency's agent tools and decides on each item it is told of; the
+  agency puts the plugin in that session's launch line and calls nothing of the job service itself. The
+  runner, a command of bmo-cli kept running as a unit, holds the subscriptions of the queues that progress
+  on their own and takes the same steps by each queue's policy. Both are downstream: no upstream route or
+  field names either.
 
 ### Generic and specific
 
@@ -246,8 +277,20 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **A service that needs an answer from its caller at a point of its work calls a hook.** The caller
   registers it in the service's `/hooks` collection (`point`, `url`), or with the member the hook is for, and
   serves it at `POST /hooks/{point}`; the service's OpenAPI document states each point's body and answer under
-  `webhooks`. The service names no caller: what it calls is what was registered. Only a caller registers a
-  hook in what it calls, so an upstream registers none in a downstream.
+  `webhooks`. The service names no caller: what it calls is what was registered.
+- **A service tells a caller of its changes through a subscription the caller registers.** `POST
+  /subscriptions` names the subscriber (`holderName`), the event kinds and filters it wants (a queue, a
+  scope, some members), a `url` for webhook delivery or none for the stream form, and a `ttlMs` that
+  `PATCH` renews; a subscription that runs out goes. Each matching event is delivered in its stream shape,
+  `{"id", "kind", "at", "data"}`: posted to the `url` as the webhook the OpenAPI document states under
+  `webhooks`, at least once and in event order, and acknowledged by a 2xx; or, in the stream form, read on
+  `GET /events` narrowed by `subscriptionId`. A unit's MCP server takes the stream form and turns each
+  event into an MCP notification to its harness. A webhook that keeps failing moves the subscription to
+  `failing`, and delivery starts again from the event it stopped at once the subscriber sets its `state`
+  back. A hook asks the caller for an answer at a point of the work; a subscription tells the caller and
+  waits for nothing.
+- **Only a caller registers a hook or a subscription in what it calls,** so an upstream registers none in
+  a downstream.
 - **A byte stream** is a member's content route. A WebSocket is used only where both sides speak in one
   connection, as a terminal does.
 
@@ -260,7 +303,8 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **A tool's input and output are JSON Schemas** in the service's OpenAPI document, under `x-tools`, written in
   this wire format. An upstream's `x-tools` are its MCP server's tools, named `<unit>_<what>` in snake_case,
   each naming the route, the library function or the command it calls; `x-harness` names its plugin, the
-  command that starts its MCP server and what a harness does first with it.
+  command that starts its MCP server, what a harness does first with it, and the MCP notifications the
+  server sends where the unit serves subscriptions.
 
 ### The OpenAPI document
 
@@ -317,13 +361,15 @@ flowchart TD
   calls bmo-job and bmo-graph.
 - **Stage 4.** bmo-voice and bmo-song take card turns through bmo-arbiter, and bmo-song reaches its node
   through bmo-node; bmo-news calls bmo-explorer, bmo-stock-index and bmo-artifact.
-- **Stage 5.** bmo-agency calls upstreams only: it runs a job by leasing an item from bmo-job, and runs digests
-  and research that write through bmo-brain and bmo-artifact. bmo-remote calls nothing.
+- **Stage 5.** bmo-agency calls upstreams only, and never bmo-job: it assigns a worker to an item and runs it
+  there when the harness holding the item asks, taking the item's content and lease from that harness, and
+  runs digests and research that write through bmo-brain and bmo-artifact. bmo-remote calls nothing.
 - **Stage 6.** bmo-gate registers at the agency's hook points.
 - **Stage 7.** bmo-receiver calls the chat protocol, the agency, the gate and the upstreams whose events it
   brings into rooms.
 - **Stage 8.** The chat providers and bmo-briefing call the receiver.
-- **Stage 9.** bmo-cli and bmo-web gather every unit, so they come last. bmo-web attaches every bundle by
+- **Stage 9.** bmo-cli and bmo-web gather every unit, so they come last. bmo-cli's runner is the harness of
+  the queues that progress on their own, calling bmo-job and bmo-agency. bmo-web attaches every bundle by
   bmo-ui's plugin contract rather than code of its own per bundle.
 - **Once its stage is fixed,** each unit replaces its hand-written clients with the generated ones, moves its
   copies of base code into the base, and meets in itself the specific needs kept out of what it calls.
