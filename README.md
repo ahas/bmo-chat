@@ -35,6 +35,8 @@ in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/bmo-chat/SKILL.md`
 ## Layout
 
 - `provider/`, `client/`, `plugin/`: the three crates, each with its own `src/` and `tests/`.
+- `.graph/`: the code dependency graph. Its area files are generated in the checkout and untracked, so a
+  fresh checkout builds them again, while `settings.toml` is the repository's configuration and stays tracked.
 - `tests/`: checks that span the repository, run as the root package's tests.
 - `deploy.toml`: the build and test commands. Its format is provisional until bmo-testbed defines the
   convention; the repository holds libraries and a command run by a harness, and has no deploy command.
