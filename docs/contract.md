@@ -339,10 +339,10 @@ A provider asks whether a room is listened to where it must decide by itself wha
 keeps no switch of its own for it. Being listened to is no request to read a room: the receiving side may
 listen to every room it can hold, added or not.
 
-`read`, false unless the receiving side says otherwise, is whether the receiving side asked for the room to be
-read through the account of the provider asking: true for a room it chose to take from that provider, whatever
-it answers there. It is the one opt-in a room needs for a provider to read the people's words of a room it sees
-only through a person's account (a read-only room, its `modes` holding `human-reader` alone): a provider reads
+`read`, false unless the receiving side says otherwise, is whether the receiving side asked for the people's
+words of the room to be read through the account of the provider asking; which rooms it asks for is its own. It
+is the one opt-in a room needs for a provider to read the people's words of a room it sees only through a
+person's account (a read-only room, its `modes` holding `human-reader` alone): a provider reads
 them only where `read` is true, and hands them over as `live` in the `human-reader` voice. Where `read` is false
 it reads in such a room only what it would read anyway, the person's own words. A receiving side that does not
 say answers false, so no room is opened to reading by a side that never asked for it.
