@@ -25,7 +25,8 @@ mod send;
 
 pub use avatar::{AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
 pub use bodies::{
-  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page, ProviderOwner, ProviderRoom,
+  AccountRoomsQuery, ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page,
+  ProviderOwner, ProviderRoom,
 };
 pub use capability::{ChatCapability, ChatVerb};
 pub use declaration::ChatDeclaration;

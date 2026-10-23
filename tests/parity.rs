@@ -438,6 +438,38 @@ macro_rules! fixtures {
         ]
       }
 
+      /// The queries for the rooms of the account, and below, the page answering each in the same order.
+      pub fn account_room_queries() -> Vec<AccountRoomsQuery> {
+        vec![
+          AccountRoomsQuery::default(),
+          AccountRoomsQuery {
+            after: Some(-100),
+            limit: None,
+          },
+          AccountRoomsQuery {
+            after: None,
+            limit: Some(1),
+          },
+        ]
+      }
+
+      pub fn account_room_pages() -> Vec<Page<ProviderRoom>> {
+        vec![
+          Page {
+            items: provider_rooms(),
+            more: false,
+          },
+          Page {
+            items: provider_rooms().split_off(1),
+            more: false,
+          },
+          Page {
+            items: provider_rooms()[..1].to_vec(),
+            more: true,
+          },
+        ]
+      }
+
       pub fn provider_owners() -> Vec<ProviderOwner> {
         vec![ProviderOwner { room_id: Some(7) }, ProviderOwner { room_id: None }]
       }
@@ -790,6 +822,12 @@ fn every_declaration_health_and_picture_page_crosses_both_ways() {
 #[test]
 fn every_room_owner_and_dialect_body_crosses_both_ways() {
   crosses("provider room", on_provider::provider_rooms(), on_client::provider_rooms());
+  crosses(
+    "account rooms query",
+    on_provider::account_room_queries(),
+    on_client::account_room_queries(),
+  );
+  crosses("account rooms page", on_provider::account_room_pages(), on_client::account_room_pages());
   crosses("owner", on_provider::provider_owners(), on_client::provider_owners());
   crosses("dialect reading asked", on_provider::dialect_reads(), on_client::dialect_reads());
   crosses("dialect reading", on_provider::dialect_readings(), on_client::dialect_readings());
@@ -905,6 +943,7 @@ fn the_fixtures_hold_every_member_of_every_set() {
   for pages in [
     on_provider::avatar_pages().iter().map(|page| page.more).collect::<BTreeSet<_>>(),
     on_provider::room_pages().iter().map(|page| page.more).collect(),
+    on_provider::account_room_pages().iter().map(|page| page.more).collect(),
   ] {
     assert_eq!(pages, BTreeSet::from([false, true]), "a page with more and one without");
   }
@@ -1214,6 +1253,12 @@ impl bmo_chat::ChatProvider for Stand {
     Ok(on_provider::provider_rooms().into_iter().find(|room| room.id == room_id))
   }
 
+  async fn account_rooms(&self) -> Result<Vec<bmo_chat::ProviderRoom>, bmo_chat::ChatFailure> {
+    let mut listed = on_provider::provider_rooms();
+    listed.reverse();
+    Ok(listed)
+  }
+
   async fn owner_room(&self) -> Result<Option<i64>, bmo_chat::ChatFailure> {
     let owners = on_provider::provider_owners();
     Ok(owners[self.owners.fetch_add(1, Ordering::SeqCst) % owners.len()].room_id)
@@ -1329,6 +1374,9 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
   assert_eq!(*stand.rooms.lock().unwrap(), asked);
   for owner in on_client::provider_owners() {
     assert_eq!(client.owner().await.unwrap(), owner);
+  }
+  for (query, page) in on_client::account_room_queries().iter().zip(on_client::account_room_pages()) {
+    assert_eq!(client.account_rooms(query).await.unwrap(), page, "{query:?}");
   }
 
   for (read, reading) in on_client::dialect_reads().into_iter().zip(on_client::dialect_readings()) {

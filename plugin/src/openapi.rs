@@ -6,10 +6,10 @@
 use std::collections::BTreeMap;
 
 use bmo_chat_client::{
-  AvatarChange, AvatarsQuery, ChatAvatar, ChatDeclaration, ChatHealth, ChatSendRequest, ChatSent,
-  DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FilesQuery, GatheredPatch,
-  HandedMessage, MessageFile, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomQuery, RoomsQuery,
-  WireError,
+  AccountRoomsQuery, AvatarChange, AvatarsQuery, ChatAvatar, ChatDeclaration, ChatHealth, ChatSendRequest,
+  ChatSent, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FilesQuery,
+  GatheredPatch, HandedMessage, MessageFile, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomQuery,
+  RoomsQuery, WireError,
 };
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
@@ -366,6 +366,19 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       body: Some(generator.subschema_for::<ChatSendRequest>()),
       answers: vec![(201, json_answer::<ChatSent>(generator))],
       codes: codes(true, SEND_REFUSALS),
+    },
+    Route {
+      method: "get",
+      path: "/rooms",
+      id: "listAccountRooms",
+      tag: "rooms",
+      summary: "A page of the rooms the provider's account is in, in ascending order of room number and only \
+        those after `after`, at most `limit`, each as `GET /rooms/{roomId}` answers it; refused \
+        `unsupported-capability` where the provider does not declare `roomList`.",
+      parameters: query::<AccountRoomsQuery>(generator),
+      body: None,
+      answers: vec![(200, json_answer::<Page<ProviderRoom>>(generator))],
+      codes: codes(true, &[ErrorCode::UnsupportedCapability, ErrorCode::NotReady, ErrorCode::Failed]),
     },
     Route {
       method: "get",

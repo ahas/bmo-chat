@@ -174,6 +174,18 @@ impl ChatProvider for Desk {
     self.ask("owner".to_owned())?;
     Ok(Some(ROOM))
   }
+  async fn account_rooms(&self) -> Result<Vec<ProviderRoom>, ChatFailure> {
+    self.ask("rooms".to_owned())?;
+    let room = |id, title: &str| ProviderRoom {
+      id,
+      owns: true,
+      identity: Some(7),
+      kind: RoomKind::Group,
+      private_to: None,
+      title: Some(title.into()),
+    };
+    Ok(vec![room(5, "Five"), room(ROOM, "A Room"), room(-7, "Seven"), room(ROOM, "A Room")])
+  }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
     let what = match &request.send {
       ChatSend::Document { bytes, .. } => format!("send a document of {} bytes", bytes.len()),
@@ -300,6 +312,7 @@ fn routes() -> Vec<(&'static str, String, Option<Value>)> {
     ("GET", "/declaration".into(), None),
     ("GET", "/health".into(), None),
     ("POST", "/sends".into(), text()),
+    ("GET", "/rooms".into(), None),
     ("GET", format!("/rooms/{ROOM}"), None),
     ("GET", "/owner".into(), None),
     ("GET", files(5), None),
@@ -480,7 +493,7 @@ async fn a_refusal_the_provider_answers_crosses_with_its_code_and_status() {
 
 #[tokio::test]
 async fn a_provider_that_fails_answers_failed() {
-  let desk = Desk::new(&[ChatCapability::Text, ChatCapability::FetchMedia]);
+  let desk = Desk::new(&[ChatCapability::Text, ChatCapability::FetchMedia, ChatCapability::RoomList]);
   desk.fails();
   let router = router(&desk);
   let failed = json!({ "code": "failed", "error": "The platform connection dropped." });
@@ -523,6 +536,48 @@ async fn files_are_refused_where_undeclared_and_fetched_as_one_page_where_declar
     (404, json!({ "code": "unavailable", "error": "The platform no longer has it." }))
   );
   assert_eq!(declared.asked(), ["files -100 5 Some(1760000000000)", "files -100 6 None"]);
+}
+
+#[tokio::test]
+async fn the_rooms_of_the_account_are_refused_where_undeclared_and_paged_by_number_where_declared() {
+  let undeclared = Desk::new(&[ChatCapability::Text]);
+  assert_eq!(
+    call(&router(&undeclared), "GET", "/rooms", None).await,
+    (
+      422,
+      json!({ "code": "unsupported-capability", "error": "Platform cannot list the rooms of its account." })
+    )
+  );
+  assert_eq!(undeclared.asked(), Vec::<String>::new());
+  let declared = Desk::new(&[ChatCapability::RoomList]);
+  let router = router(&declared);
+  let listed = async |query: &str| {
+    let (status, answer) = call(&router, "GET", &format!("/rooms{query}"), None).await;
+    assert_eq!(status, 200, "{query}: {answer}");
+    let ids: Vec<i64> = answer["items"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|room| room["id"].as_i64().unwrap())
+      .collect();
+    (ids, answer["more"].as_bool().unwrap())
+  };
+  assert_eq!(listed("").await, (vec![ROOM, -7, 5], false));
+  assert_eq!(listed("?after=-100").await, (vec![-7, 5], false));
+  assert_eq!(listed("?after=-100&limit=1").await, (vec![-7], true));
+  assert_eq!(listed("?limit=3").await, (vec![ROOM, -7, 5], false));
+  assert_eq!(listed("?after=5").await, (Vec::new(), false));
+  let (status, answer) = call(&router, "GET", "/rooms", None).await;
+  assert_eq!(
+    answer["items"][0],
+    json!({
+      "id": ROOM, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room",
+    }),
+    "{status}"
+  );
+  let (status, answer) = call(&router, "GET", "/rooms?after=first", None).await;
+  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+  assert_eq!(declared.asked().len(), 6);
 }
 
 #[tokio::test]

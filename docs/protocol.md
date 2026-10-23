@@ -16,7 +16,7 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 0.1.0-rev.5 of the libraries and the plugin; a caller pins that version or a
+This document states version 0.1.0-rev.6 of the libraries and the plugin; a caller pins that version or a
 later one for every route and field below. The version is numbered by the revision rule of `conventions.md`.
 Each older number the crates carry in their history stands for one revision:
 
@@ -118,6 +118,7 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `GET` | `/declaration` | 200, the provider's declaration |
 | `GET` | `/health` | 200, whether the provider is ready |
 | `POST` | `/sends` | 201, what the send came to |
+| `GET` | `/rooms` | 200, a page of the rooms the provider's account is in |
 | `GET` | `/rooms/{roomId}` | 200, what the provider knows of a room |
 | `GET` | `/owner` | 200, the room to reach the account's owner in |
 | `GET` | `/rooms/{roomId}/messages/{messageId}/files` | 200, a page of the files a message carried |
@@ -128,8 +129,8 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `GET` | `/people/{personId}/avatar` | 200, a person's kept picture as its bytes |
 
 The declaration, health, dialect and avatar routes answer whatever state the provider is in. The others
-(sends, a room, the owner and a message's files) answer 503 `not-ready` while the provider's health is not
-ready, without asking the provider.
+(sends, the rooms, a room, the owner and a message's files) answer 503 `not-ready` while the provider's
+health is not ready, without asking the provider.
 
 ### `GET /declaration`
 
@@ -180,6 +181,14 @@ missed picture's `reason` is an object with `code`, `message` (the English sente
 A send the provider does not perform is answered with a refusal (see Refusals). A send of a kind the provider
 does not declare is refused `unsupported-capability` by the base before the provider is asked. A provider that
 fails while sending answers 500 `failed`.
+
+### `GET /rooms`
+
+The rooms the provider's account is in (`contract.md`, "The rooms of the account"). The query takes `after` (a
+room number) and `limit`, each optional. The answer is a page whose `items` are rooms in ascending order of
+`id`, only those after `after`, each as `GET /rooms/{roomId}` answers it, and at most `limit` of them; `more`
+says whether rooms stand past the last one, and the next page is asked with its `id` as `after`. A provider
+that does not declare `roomList` is refused `unsupported-capability` by the base before the provider is asked.
 
 ### `GET /rooms/{roomId}`
 
@@ -348,6 +357,7 @@ through the client:
 | `chat_declaration` | `GET /declaration` | none |
 | `chat_health` | `GET /health` | none |
 | `chat_send` | `POST /sends` | `body`: a send |
+| `chat_rooms` | `GET /rooms` | optional `after` and `limit` |
 | `chat_room` | `GET /rooms/{roomId}` | `roomId` |
 | `chat_owner` | `GET /owner` | none |
 | `chat_message_files` | `GET /rooms/{roomId}/messages/{messageId}/files` | `roomId`, `messageId`, optional `sentAt` |

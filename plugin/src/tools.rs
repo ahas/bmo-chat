@@ -6,8 +6,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 use bmo_chat_client::{
-  AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ClientFailure, DialectCheck,
-  DialectRead,
+  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ClientFailure,
+  DialectCheck, DialectRead,
 };
 use schemars::generate::SchemaGenerator;
 use schemars::{JsonSchema, Schema};
@@ -142,7 +142,7 @@ struct Files {
   sent_at: Option<i64>,
 }
 
-/// The nine tools, in the order the protocol lists their routes.
+/// The ten tools, in the order the protocol lists their routes.
 pub fn tools() -> Vec<ChatTool> {
   vec![
     tool(
@@ -163,6 +163,13 @@ pub fn tools() -> Vec<ChatTool> {
        provider does not perform answers with its refusal.",
       "POST /sends",
       |client, Body { body }: Body<ChatSendRequest>| async move { client.send(&body).await },
+    ),
+    tool(
+      "chat_rooms",
+      "A page of the rooms the provider's account is in, in ascending order of room number, only those after \
+       `after`; refused where the provider does not declare roomList.",
+      "GET /rooms",
+      |client, query: AccountRoomsQuery| async move { client.account_rooms(&query).await },
     ),
     tool(
       "chat_room",

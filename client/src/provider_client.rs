@@ -12,7 +12,8 @@ use serde::de::DeserializeOwned;
 
 use crate::avatar::{AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::{
-  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page, ProviderOwner, ProviderRoom,
+  AccountRoomsQuery, ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page,
+  ProviderOwner, ProviderRoom,
 };
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
@@ -129,6 +130,16 @@ impl ChatProviderClient {
   /// refusal's code.
   pub async fn send(&self, request: &ChatSendRequest) -> Result<ChatSent, ClientFailure> {
     self.post("sends", request).await
+  }
+
+  /// `GET /rooms`: a page of the rooms the provider's account is in, in ascending order of room number. A
+  /// provider that does not declare `roomList` comes back as `ClientFailure::Answered` with
+  /// `unsupported-capability`.
+  pub async fn account_rooms(
+    &self,
+    query: &AccountRoomsQuery,
+  ) -> Result<Page<ProviderRoom>, ClientFailure> {
+    self.get_with("rooms", query).await
   }
 
   /// `GET /rooms/{roomId}`. A room the provider knows nothing of comes back as `ClientFailure::Answered` with

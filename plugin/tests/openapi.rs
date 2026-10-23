@@ -1,7 +1,7 @@
 //! The OpenAPI documents: each committed document is what the code generates, the provider document lists
 //! exactly the routes the client calls and the receiving-side document exactly those the router serves,
 //! every body the client crate writes is valid against the schema of its route, and the tools stated under
-//! `x-tools` are the nine the MCP server lists, each on a route of the document.
+//! `x-tools` are the ten the MCP server lists, each on a route of the document.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,7 @@ use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use bmo_chat_client::{
-  AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatDeclaration,
+  AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatDeclaration,
   ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding,
   ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode,
   ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatVoice, DialectCheck, DialectChecked, DialectRead,
@@ -30,11 +30,12 @@ use tower::ServiceExt;
 
 const TOKEN: &str = "the-token";
 
-/// The nine tools the protocol's harness plugin serves, in the order the protocol lists their routes.
-const TOOLS: [&str; 9] = [
+/// The ten tools the protocol's harness plugin serves, in the order the protocol lists their routes.
+const TOOLS: [&str; 10] = [
   "chat_declaration",
   "chat_health",
   "chat_send",
+  "chat_rooms",
   "chat_room",
   "chat_owner",
   "chat_message_files",
@@ -117,6 +118,7 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
     client.declaration().await.err(),
     client.health().await.err(),
     client.send(&send).await.err(),
+    client.account_rooms(&AccountRoomsQuery::default()).await.err(),
     client.room(-100).await.err(),
     client.owner().await.err(),
     client.message_files(&media).await.err(),
@@ -445,6 +447,11 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
       title: title.map(str::to_owned),
     };
     bodies.valid("get", "/rooms/{roomId}", Answer(200), &room);
+    let listed = Page {
+      items: vec![room],
+      more: true,
+    };
+    bodies.valid("get", "/rooms", Answer(200), &listed);
   }
   for room_id in [None, Some(7)] {
     bodies.valid("get", "/owner", Answer(200), &ProviderOwner { room_id });
@@ -638,6 +645,10 @@ fn the_queries_and_keys_state_their_parameters() {
     [owned("after", "query", false), owned("limit", "query", false)]
   );
   assert_eq!(
+    names(&provider, "/rooms"),
+    [owned("after", "query", false), owned("limit", "query", false)]
+  );
+  assert_eq!(
     names(&provider, "/rooms/{roomId}/messages/{messageId}/files"),
     [
       owned("messageId", "path", true),
@@ -792,7 +803,7 @@ fn every_reference_points_at_what_it_holds_and_every_schema_is_a_json_schema() {
 }
 
 #[test]
-fn the_documents_state_the_plugin_and_the_provider_document_its_nine_tools_each_on_a_route() {
+fn the_documents_state_the_plugin_and_the_provider_document_its_ten_tools_each_on_a_route() {
   for side in [Side::Provider, Side::Receiver] {
     let document = openapi(side);
     assert_eq!(document["openapi"], "3.1.0");

@@ -1,4 +1,4 @@
-//! The harness plugin's MCP server over the real provider router: each of the nine tools, called as a harness
+//! The harness plugin's MCP server over the real provider router: each of the ten tools, called as a harness
 //! calls it, answers exactly what the client answers for its route, from a stand-in provider served by
 //! bmo-chat. The server is spoken to over an in-process pipe, and every listener is taken down before the
 //! test ends.
@@ -85,6 +85,17 @@ impl bmo_chat::ChatProvider for Stand {
   async fn owner_room(&self) -> Result<Option<i64>, bmo_chat::ChatFailure> {
     self.asked("owner");
     Ok(Some(42))
+  }
+  async fn account_rooms(&self) -> Result<Vec<bmo_chat::ProviderRoom>, bmo_chat::ChatFailure> {
+    self.asked("rooms");
+    Ok(vec![bmo_chat::ProviderRoom {
+      id: -100,
+      owns: true,
+      identity: Some(7),
+      kind: bmo_chat::RoomKind::Group,
+      private_to: None,
+      title: Some("The garden".into()),
+    }])
   }
   async fn send(
     &self,
@@ -219,10 +230,19 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
     after: Some(1_000),
     limit: Some(10),
   };
+  let rooms = bmo_chat_client::AccountRoomsQuery {
+    after: Some(-200),
+    limit: Some(5),
+  };
   let calls = [
     ("chat_declaration", json!({}), as_json(client.declaration().await.unwrap())),
     ("chat_health", json!({}), as_json(client.health().await.unwrap())),
     ("chat_send", json!({ "body": send }), as_json(client.send(&send_request).await.unwrap())),
+    (
+      "chat_rooms",
+      json!({ "after": -200, "limit": 5 }),
+      as_json(client.account_rooms(&rooms).await.unwrap()),
+    ),
     ("chat_room", json!({ "roomId": -100 }), as_json(client.room(-100).await.unwrap())),
     ("chat_owner", json!({}), as_json(client.owner().await.unwrap())),
     (
@@ -262,7 +282,7 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   assert_eq!(by_tools, by_client, "each tool asked the provider what its route asks");
   assert_eq!(
     by_tools,
-    ["send Text to -100", "room -100", "owner", "files -100 5 Some(1000)", "avatars"],
+    ["send Text to -100", "rooms", "room -100", "owner", "files -100 5 Some(1000)", "avatars"],
   );
 }
 

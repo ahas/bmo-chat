@@ -1,5 +1,5 @@
-//! The bodies of the provider routes that carry no piece of their own: health, a room, the owner, the dialect
-//! routes, and the page every list is answered in.
+//! The bodies of the provider routes that carry no piece of their own: health, a room, the rooms of the
+//! account, the owner, the dialect routes, and the page every list is answered in.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,16 @@ pub struct ProviderRoom {
   pub private_to: Option<i64>,
   /// What the platform calls the room, or null where it cannot or will not say.
   pub title: Option<String>,
+}
+
+/// The query of `GET /rooms`: only the rooms numbered after `after`, and at most `limit` of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct AccountRoomsQuery {
+  /// A room number.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub after: Option<i64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub limit: Option<u32>,
 }
 
 /// The answer of `GET /owner`.

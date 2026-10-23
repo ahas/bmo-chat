@@ -17,12 +17,12 @@ use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use bmo_chat_client::{
-  AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration, ChatDialectDeclaration,
-  ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding, ChatNumberRanges,
-  ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient, ChatReach, ChatReadMode,
-  ChatSend, ChatSendRequest, ChatSent, ChatVoice, ChatWait, ClientFailure, DialectChecked, DialectReading,
-  ErrorCode, MessageFile, MissedPicture, MissedPictureReason, Page, ProviderOwner, ProviderRoom, RoomKind,
-  WireError,
+  AccountRoomsQuery, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
+  ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding,
+  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatPatience, ChatPicture, ChatProviderClient,
+  ChatReach, ChatReadMode, ChatSend, ChatSendRequest, ChatSent, ChatVoice, ChatWait, ClientFailure,
+  DialectChecked, DialectReading, ErrorCode, MessageFile, MissedPicture, MissedPictureReason, Page,
+  ProviderOwner, ProviderRoom, RoomKind, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -767,4 +767,57 @@ async fn the_list_query_carries_only_what_was_given() {
     *asked.lock().unwrap(),
     [Some("after=1759000000000&limit=20".to_owned()), None, Some("limit=5".to_owned())]
   );
+}
+
+#[tokio::test]
+async fn the_rooms_of_the_account_come_as_a_page_and_their_refusal_with_its_code() {
+  let asked = Arc::new(Mutex::new(Vec::new()));
+  let kept = asked.clone();
+  let router = Router::new().route(
+    "/provider/rooms",
+    get(move |RawQuery(query): RawQuery| {
+      let kept = kept.clone();
+      async move {
+        kept.lock().unwrap().push(query.clone());
+        if query.is_none() {
+          let refused = WireError::new(
+            ErrorCode::UnsupportedCapability,
+            "Platform cannot list the rooms of its account.",
+          );
+          return (StatusCode::UNPROCESSABLE_ENTITY, Json(refused)).into_response();
+        }
+        let room = json!({
+          "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room",
+        });
+        Json(json!({ "items": [room], "more": true })).into_response()
+      }
+    }),
+  );
+  let listening = Listening::start(router).await;
+  let client = ChatProviderClient::new(listening.base(), TOKEN);
+  let query = AccountRoomsQuery {
+    after: Some(-200),
+    limit: Some(1),
+  };
+  let listed = client.account_rooms(&query).await.unwrap();
+  let refused = client.account_rooms(&AccountRoomsQuery::default()).await.unwrap_err();
+  drop(client);
+  listening.close().await;
+
+  assert_eq!(
+    listed,
+    Page {
+      items: vec![ProviderRoom {
+        id: -100,
+        owns: true,
+        identity: Some(7),
+        kind: RoomKind::Group,
+        private_to: None,
+        title: Some("A Room".into()),
+      }],
+      more: true,
+    }
+  );
+  assert_eq!(refused.code(), Some(ErrorCode::UnsupportedCapability), "{refused:?}");
+  assert_eq!(*asked.lock().unwrap(), [Some("after=-200&limit=1".to_owned()), None]);
 }

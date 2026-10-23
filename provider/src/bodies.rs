@@ -1,5 +1,5 @@
-//! The bodies of the provider routes that carry no piece of their own: health, a room, the owner, the dialect
-//! routes, and the page every list is answered in.
+//! The bodies of the provider routes that carry no piece of their own: health, a room, the rooms of the
+//! account, the owner, the dialect routes, and the page every list is answered in.
 
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +47,39 @@ pub struct ProviderRoom {
   pub private_to: Option<i64>,
   /// What the platform calls the room, or null where it cannot or will not say.
   pub title: Option<String>,
+}
+
+/// The query of `GET /rooms`: only the rooms numbered after `after`, and at most `limit` of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AccountRoomsQuery {
+  /// A room number.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub after: Option<i64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub limit: Option<u32>,
+}
+
+impl AccountRoomsQuery {
+  /// The page of `listed` this query asks for: in ascending order of room number, each room once, only those
+  /// after the cursor, and at most `limit`. `more` says whether rooms stand past the page's last.
+  pub fn page(&self, mut listed: Vec<ProviderRoom>) -> Page<ProviderRoom> {
+    listed.sort_by_key(|room| room.id);
+    listed.dedup_by_key(|room| room.id);
+    if let Some(after) = self.after {
+      listed.retain(|room| room.id > after);
+    }
+    let mut more = false;
+    if let Some(limit) = self.limit.and_then(|limit| usize::try_from(limit).ok())
+      && limit < listed.len()
+    {
+      more = true;
+      listed.truncate(limit);
+    }
+    Page {
+      items: listed,
+      more,
+    }
+  }
 }
 
 /// The answer of `GET /owner`.

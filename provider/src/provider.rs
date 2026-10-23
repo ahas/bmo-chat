@@ -112,6 +112,12 @@ pub trait ChatProvider: Send + Sync {
   /// The room to speak into to reach the owner unprompted, or null.
   async fn owner_room(&self) -> Result<Option<i64>, ChatFailure>;
 
+  /// Every room the provider's account is in, each as the provider answers it on its own. The base pages the
+  /// list and asks only a provider that declares `roomList`; one that supplies no list of its own lists none.
+  async fn account_rooms(&self) -> Result<Vec<ProviderRoom>, ChatFailure> {
+    Ok(Vec::new())
+  }
+
   /// One send. A send the provider does not perform is answered as refused; a failure while performing it
   /// is the error.
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure>;

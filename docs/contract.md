@@ -99,6 +99,11 @@ platform's own words for an unsupported one; null for an active one) and `canRep
 be pinned to a message this mode delivered). A provider may have several modes active at once. A mode that is
 not active is never started.
 
+Whether a provider can answer as the person whose account it reads is its `human-avatar` mode, and nothing
+else says it: the mode standing `active` is a provider that sends in that person's account now. A platform
+whose terms forbid automating a person's account declares the mode `unsupported`, with its terms' words as the
+reason, so a provider checks its platform's terms before it declares the mode any other way.
+
 `modeOf` finds a provider's mode by voice. It is how the mode a message came in on is found, and with it
 whether an answer to that message can be pinned to it.
 
@@ -107,7 +112,7 @@ whether an answer to that message can be pinned to it.
 `ChatVerb` names the twelve kinds of send: `text`, `photo`, `album`, `document`, `audio`, `voice`, `sticker`,
 `reaction`, `pin`, `typing`, `edit`, `delete`.
 
-`ChatCapability` is the twelve kinds plus four answers that are not sends:
+`ChatCapability` is the twelve kinds plus five answers that are not sends:
 
 | Capability | Meaning |
 |---|---|
@@ -115,8 +120,9 @@ whether an answer to that message can be pinned to it.
 | `fetchMedia` | a picture or a file can still be fetched after its message arrived |
 | `avatars` | the provider supplies profile pictures |
 | `history` | the provider can read a room's past messages back |
+| `roomList` | the provider can list the rooms its account is in |
 
-The full capability set is all sixteen, taken from the type itself, so a reader handed a capability's name
+The full capability set is all seventeen, taken from the type itself, so a reader handed a capability's name
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a kind it does not declare is refused (see Refusals).
 
@@ -202,6 +208,13 @@ A provider answers what it knows of any room number as one `ProviderRoom`:
 A provider that knows nothing of a room answers none, and the route answers `not-found`. Apart from any room,
 it answers the room to speak into to reach the owner unprompted, or null. Whether a person behind a private
 room is a user is the receiving side's question, not the provider's.
+
+### The rooms of the account
+
+A provider that declares `roomList` lists the rooms its account is in, each as the `ProviderRoom` it answers
+for that room on its own, so a person can choose among them. Which of its accounts it lists, and how it learns
+their rooms, is the provider's own. The base pages the list in ascending order of room number and asks only a
+provider that declares `roomList`; one that does not is refused `unsupported-capability` without being asked.
 
 ### Fetching files again
 
@@ -413,6 +426,7 @@ The capability words:
 | `fetchMedia` | fetch a picture or a file later |
 | `avatars` | fetch profile pictures |
 | `history` | read past messages back |
+| `roomList` | list the rooms of its account |
 
 `MissedPictureReason`, the `reason` of a missed picture:
 

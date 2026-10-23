@@ -18,7 +18,8 @@ use serde::de::DeserializeOwned;
 
 use crate::avatar::{AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::{
-  ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page, ProviderOwner, ProviderRoom,
+  AccountRoomsQuery, ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page,
+  ProviderOwner, ProviderRoom,
 };
 use crate::capability::ChatCapability;
 use crate::declaration::ChatDeclaration;
@@ -40,6 +41,7 @@ pub fn provider_router(provider: Arc<dyn ChatProvider>, token: impl Into<String>
     .route("/declaration", get(declaration))
     .route("/health", get(health))
     .route("/sends", post(send))
+    .route("/rooms", get(account_rooms))
     .route("/rooms/{room_id}", get(room))
     .route("/owner", get(owner))
     .route("/rooms/{room_id}/messages/{message_id}/files", get(files))
@@ -147,6 +149,19 @@ async fn send(
     ChatSendResult::Sent(sent) => Ok((StatusCode::CREATED, Json(sent))),
     ChatSendResult::Refused(refusal) => Err(refusal.into()),
   }
+}
+
+/// The rooms of the provider's account as one page; refused where the provider does not declare `roomList`.
+async fn account_rooms(
+  State(served): State<Served>,
+  asked: Result<Query<AccountRoomsQuery>, QueryRejection>,
+) -> Answered<Page<ProviderRoom>> {
+  let asked = query(asked)?;
+  let provider = ready(&served)?;
+  if let Some(refusal) = provider.undeclared(ChatCapability::RoomList) {
+    return Err(refusal.into());
+  }
+  Ok(Json(asked.page(provider.account_rooms().await?)))
 }
 
 async fn room(

@@ -1,5 +1,5 @@
 //! The `bmo-chat` command: `bmo-chat mcp --provider <url>` starts an MCP server on standard input and output
-//! that lists exactly the protocol's nine tools, and each call reaches the provider at the address through
+//! that lists exactly the protocol's ten tools, and each call reaches the provider at the address through
 //! the client, behind the token. The command runs as its own process, spoken to over its pipes, and is taken
 //! down before each test ends.
 
@@ -215,7 +215,7 @@ fn text_of(result: &Value) -> Value {
 }
 
 #[tokio::test]
-async fn the_server_starts_and_lists_exactly_the_nine_tools_each_standing_alone() {
+async fn the_server_starts_and_lists_exactly_the_ten_tools_each_standing_alone() {
   let mut server = Server::initialized(&["mcp", "--provider", "http://127.0.0.1:9"], None).await;
   let listed = server.ask("tools/list", json!({})).await;
   server.stop().await;
@@ -228,6 +228,7 @@ async fn the_server_starts_and_lists_exactly_the_nine_tools_each_standing_alone(
       "chat_declaration",
       "chat_health",
       "chat_send",
+      "chat_rooms",
       "chat_room",
       "chat_owner",
       "chat_message_files",
