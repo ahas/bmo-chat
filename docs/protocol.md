@@ -16,7 +16,7 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 0.1.0-rev.7 of the libraries and the plugin; a caller pins that version or a
+This document states version 0.1.0-rev.8 of the libraries and the plugin; a caller pins that version or a
 later one for every route and field below. The version is numbered by the revision rule of `conventions.md`.
 Each older number the crates carry in their history stands for one revision:
 
@@ -74,7 +74,7 @@ its refusals:
 | 400 | `bad-request` | the body is not JSON, or the body or the query is not the shape the route takes; the sentence names what is wrong |
 | 401 | `unauthorized` | the token is missing or wrong |
 | 404 | `no-route` | no route answers this method and path, a path key that is not a number among them |
-| 404 | `not-found` | the route is right, but nothing stands at the key the path names (a room the provider knows nothing of, a profile picture it has not kept, a message the receiving side does not hold) |
+| 404 | `not-found` | the route is right, but nothing stands at the key the path or the body names (a room the provider knows nothing of, a contact a start names that it does not know, a profile picture it has not kept, a message the receiving side does not hold) |
 | 409 | `conflict` | the receiving side holds the member, and its state does not allow the change |
 | 500 | `failed` | the service failed while answering; the sentence is the failure |
 | 503 | `not-ready` | the service is up but cannot answer yet (a provider whose platform connection is not open yet); `Retry-After` says when to ask again |
@@ -119,6 +119,8 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `GET` | `/health` | 200, whether the provider is ready |
 | `POST` | `/sends` | 201, what the send came to |
 | `GET` | `/rooms` | 200, a page of the rooms the provider's account is in |
+| `POST` | `/rooms` | 201, the room a conversation started came to |
+| `GET` | `/contacts` | 200, a page of the contacts of the provider's account |
 | `GET` | `/rooms/{roomId}` | 200, what the provider knows of a room |
 | `GET` | `/owner` | 200, the room to reach the account's owner in |
 | `GET` | `/rooms/{roomId}/messages/{messageId}/files` | 200, a page of the files a message carried |
@@ -129,8 +131,8 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `GET` | `/people/{personId}/avatar` | 200, a person's kept picture as its bytes |
 
 The declaration, health, dialect and avatar routes answer whatever state the provider is in. The others
-(sends, the rooms, a room, the owner and a message's files) answer 503 `not-ready` while the provider's
-health is not ready, without asking the provider.
+(sends, the rooms, a start, the contacts, a room, the owner and a message's files) answer 503 `not-ready`
+while the provider's health is not ready, without asking the provider.
 
 ### `GET /declaration`
 
@@ -189,6 +191,43 @@ room number) and `limit`, each optional. The answer is a page whose `items` are 
 `id`, only those after `after`, each as `GET /rooms/{roomId}` answers it, and at most `limit` of them; `more`
 says whether rooms stand past the last one, and the next page is asked with its `id` as `after`. A provider
 that does not declare `roomList` is refused `unsupported-capability` by the base before the provider is asked.
+
+Nothing in the page says whether the receiving side holds a room; a receiving side marks that itself
+(`contract.md`, "The rooms of the account").
+
+### `POST /rooms`
+
+A conversation started on the platform (`contract.md`, "Starting a conversation"). The body is one of two
+shapes, and nothing else:
+
+| Shape | Fields |
+|---|---|
+| one-to-one | `contactId` (number) |
+| group | `title` (string, not blank) and `contactIds` (list of numbers, at least one, each once) |
+
+The answer is 201 with the room as `GET /rooms/{roomId}` answers it: the room started, or the one-to-one the
+account already had with the contact. A body of neither shape, and a group with no contact, a contact named
+twice or a blank title, is answered 400 `bad-request`; a one-to-one from a provider that does not declare
+`startChat`, or a group from one that does not declare `startGroup`, is refused `unsupported-capability` by the
+base before the provider is asked. A contact the provider does not know is answered 404 `not-found`, and what
+the platform will not do is refused `platform`.
+
+### `GET /contacts`
+
+The contacts of the provider's account (`contract.md`, "The contacts of the account"). The query takes `after`
+(a contact number) and `limit`, each optional. The answer is a page whose `items` are contacts in ascending
+order of `id`, only those after `after`, and at most `limit` of them, each:
+
+| Field | Type |
+|---|---|
+| `id` | number: the contact, in the provider's `people` space |
+| `name` | string: what the account calls the contact |
+| `kind` | `person` or `bot` |
+| `roomId` | number or null: the one-to-one the account already has with the contact |
+
+`more` says whether contacts stand past the last one, and the next page is asked with its `id` as `after`. A
+provider that does not declare `contactList` is refused `unsupported-capability` by the base before the provider
+is asked.
 
 ### `GET /rooms/{roomId}`
 
@@ -360,6 +399,8 @@ through the client:
 | `chat_health` | `GET /health` | none |
 | `chat_send` | `POST /sends` | `body`: a send |
 | `chat_rooms` | `GET /rooms` | optional `after` and `limit` |
+| `chat_start` | `POST /rooms` | `body`: a start |
+| `chat_contacts` | `GET /contacts` | optional `after` and `limit` |
 | `chat_room` | `GET /rooms/{roomId}` | `roomId` |
 | `chat_owner` | `GET /owner` | none |
 | `chat_message_files` | `GET /rooms/{roomId}/messages/{messageId}/files` | `roomId`, `messageId`, optional `sentAt` |

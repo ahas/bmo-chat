@@ -25,14 +25,20 @@ and a wrong one answers every tool with a 401 `unauthorized` error.
 
 1. `chat_declaration`: read what the provider says of itself. `configured` is null when it can run, else why
    not. `can` lists the kinds of send it takes and the answers it gives (`replyTo`, `fetchMedia`, `avatars`,
-   `history`, `roomList`); a send of a kind it does not list is refused. `dialect` says what markdown becomes in its rooms
+   `history`, `roomList`, `contactList`, `startChat`, `startGroup`); a send of a kind it does not list is refused. `dialect` says what markdown becomes in its rooms
    and how long a message may be. `modes` says which accounts it reads by and whether each is running.
-2. `chat_health`: whether it is ready now. While it is not, the send, rooms, room, owner and file tools answer
-   `not-ready`.
+2. `chat_health`: whether it is ready now. While it is not, the send, rooms, start, contacts, room, owner and file tools
+   answer `not-ready`.
 3. `chat_owner`, then `chat_room` on the room it names, to see what the provider knows of a room: whether it
    owns it, the account's own sender number there, whether it is the owner's private chat, and its title.
    Where it declares `roomList`, `chat_rooms` pages the rooms its account is in, each answered the same way;
-   pass the last one's `id` as `after` for the next page while `more` is true.
+   pass the last one's `id` as `after` for the next page while `more` is true. Where it declares
+   `contactList`, `chat_contacts` pages the contacts of its account the same way, each with the one-to-one the
+   account already has with it, or null.
+
+`chat_start` starts a conversation on the platform, `{ "body": { "contactId": 5 } }` for a one-to-one or
+`{ "body": { "title": "…", "contactIds": [5, 6] } }` for a group. It is as real as a send: a group is made on the
+platform and its people see it, so start one only with contacts set aside for testing.
 
 ## Sending
 

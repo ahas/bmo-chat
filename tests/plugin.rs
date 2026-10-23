@@ -1,4 +1,4 @@
-//! The harness plugin's MCP server over the real provider router: each of the ten tools, called as a harness
+//! The harness plugin's MCP server over the real provider router: each of the twelve tools, called as a harness
 //! calls it, answers exactly what the client answers for its route, from a stand-in provider served by
 //! bmo-chat. The server is spoken to over an in-process pipe, and every listener is taken down before the
 //! test ends.
@@ -98,6 +98,30 @@ impl bmo_chat::ChatProvider for Stand {
       title: Some("The garden".into()),
       modes: None,
     }])
+  }
+  async fn contacts(&self) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
+    self.asked("contacts");
+    Ok(vec![bmo_chat::ChatContact {
+      id: 42,
+      name: "A person".into(),
+      kind: bmo_chat::ChatContactKind::Person,
+      room_id: None,
+    }])
+  }
+  async fn start_chat(
+    &self,
+    start: bmo_chat::ChatStart,
+  ) -> Result<bmo_chat::ChatStartResult, bmo_chat::ChatFailure> {
+    self.asked(format!("start {start:?}"));
+    Ok(bmo_chat::ChatStartResult::Started(bmo_chat::ProviderRoom {
+      id: 42,
+      owns: true,
+      identity: None,
+      kind: bmo_chat::RoomKind::Group,
+      private_to: Some(42),
+      title: Some("A person".into()),
+      modes: Some(vec![bmo_chat::ChatVoice::HumanReader]),
+    }))
   }
   async fn send(
     &self,
@@ -236,6 +260,11 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
     after: Some(-200),
     limit: Some(5),
   };
+  let contacts = bmo_chat_client::ContactsQuery {
+    after: Some(7),
+    limit: Some(5),
+  };
+  let start = bmo_chat_client::ChatStart::OneToOne { contact_id: 42 };
   let calls = [
     ("chat_declaration", json!({}), as_json(client.declaration().await.unwrap())),
     ("chat_health", json!({}), as_json(client.health().await.unwrap())),
@@ -244,6 +273,16 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
       "chat_rooms",
       json!({ "after": -200, "limit": 5 }),
       as_json(client.account_rooms(&rooms).await.unwrap()),
+    ),
+    (
+      "chat_start",
+      json!({ "body": { "contactId": 42 } }),
+      as_json(client.start_chat(&start).await.unwrap()),
+    ),
+    (
+      "chat_contacts",
+      json!({ "after": 7, "limit": 5 }),
+      as_json(client.contacts(&contacts).await.unwrap()),
     ),
     ("chat_room", json!({ "roomId": -100 }), as_json(client.room(-100).await.unwrap())),
     ("chat_owner", json!({}), as_json(client.owner().await.unwrap())),
@@ -284,7 +323,16 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   assert_eq!(by_tools, by_client, "each tool asked the provider what its route asks");
   assert_eq!(
     by_tools,
-    ["send Text to -100", "rooms", "room -100", "owner", "files -100 5 Some(1000)", "avatars"],
+    [
+      "send Text to -100",
+      "rooms",
+      "start OneToOne { contact_id: 42 }",
+      "contacts",
+      "room -100",
+      "owner",
+      "files -100 5 Some(1000)",
+      "avatars"
+    ],
   );
 }
 

@@ -22,6 +22,7 @@ use crate::bodies::{
   ProviderOwner, ProviderRoom,
 };
 use crate::capability::ChatCapability;
+use crate::contacts::{ChatContact, ChatStart, ChatStartResult, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
@@ -41,7 +42,8 @@ pub fn provider_router(provider: Arc<dyn ChatProvider>, token: impl Into<String>
     .route("/declaration", get(declaration))
     .route("/health", get(health))
     .route("/sends", post(send))
-    .route("/rooms", get(account_rooms))
+    .route("/rooms", get(account_rooms).post(start_chat))
+    .route("/contacts", get(contacts))
     .route("/rooms/{room_id}", get(room))
     .route("/owner", get(owner))
     .route("/rooms/{room_id}/messages/{message_id}/files", get(files))
@@ -162,6 +164,44 @@ async fn account_rooms(
     return Err(refusal.into());
   }
   Ok(Json(asked.page(provider.account_rooms().await?)))
+}
+
+/// A conversation started, answered 201 with its room; a start of no sound shape is a bad request, and no
+/// contact and a refusal are answered in the error shape.
+async fn start_chat(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<ProviderRoom>), WireError> {
+  let start: ChatStart = read(&body)?;
+  if let Some(fault) = start.fault() {
+    return Err(WireError::new(ErrorCode::BadRequest, fault));
+  }
+  let provider = ready(&served)?;
+  if let Some(refusal) = provider.undeclared(start.capability()) {
+    return Err(refusal.into());
+  }
+  match provider.start_chat(start).await? {
+    ChatStartResult::Started(room) => Ok((StatusCode::CREATED, Json(room))),
+    ChatStartResult::NoContact { contact_id } => Err(WireError::new(
+      ErrorCode::NotFound,
+      format!("{} knows no contact {contact_id}.", provider.label()),
+    )),
+    ChatStartResult::Refused(refusal) => Err(refusal.into()),
+  }
+}
+
+/// The contacts of the provider's account as one page; refused where the provider does not declare
+/// `contactList`.
+async fn contacts(
+  State(served): State<Served>,
+  asked: Result<Query<ContactsQuery>, QueryRejection>,
+) -> Answered<Page<ChatContact>> {
+  let asked = query(asked)?;
+  let provider = ready(&served)?;
+  if let Some(refusal) = provider.undeclared(ChatCapability::ContactList) {
+    return Err(refusal.into());
+  }
+  Ok(Json(asked.page(provider.contacts().await?)))
 }
 
 async fn room(

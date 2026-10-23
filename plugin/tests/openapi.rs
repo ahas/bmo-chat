@@ -1,7 +1,7 @@
 //! The OpenAPI documents: each committed document is what the code generates, the provider document lists
 //! exactly the routes the client calls and the receiving-side document exactly those the router serves,
 //! every body the client crate writes is valid against the schema of its route, and the tools stated under
-//! `x-tools` are the ten the MCP server lists, each on a route of the document.
+//! `x-tools` are the twelve the MCP server lists, each on a route of the document.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -13,13 +13,14 @@ use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use bmo_chat_client::{
-  AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatDeclaration,
-  ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup, ChatMediaRequest, ChatModeStanding,
-  ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode,
-  ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatVoice, DialectCheck, DialectChecked, DialectRead,
-  DialectReading, ErrorCode, FileItem, GatheredPatch, HandedMessage, HeldMessage, InboundChatContext,
-  MessageFile, MessageOrigin, MissedPicture, MissedPictureReason, Page, ProviderOwner, ProviderRoom,
-  ReceiverRoom, RoomFacts, RoomKind, RoomQuery, RoomsQuery, WireError, receiver_router,
+  AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatContact,
+  ChatContactKind, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
+  ChatMediaRequest, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient,
+  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatVoice,
+  ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
+  GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, MessageFile, MessageOrigin, MissedPicture,
+  MissedPictureReason, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
+  RoomsQuery, WireError, receiver_router,
 };
 use bmo_chat_plugin::{Side, openapi, openapi_json, tools};
 use serde::Serialize;
@@ -30,12 +31,14 @@ use tower::ServiceExt;
 
 const TOKEN: &str = "the-token";
 
-/// The ten tools the protocol's harness plugin serves, in the order the protocol lists their routes.
-const TOOLS: [&str; 10] = [
+/// The twelve tools the protocol's harness plugin serves, in the order the protocol lists their routes.
+const TOOLS: [&str; 12] = [
   "chat_declaration",
   "chat_health",
   "chat_send",
   "chat_rooms",
+  "chat_start",
+  "chat_contacts",
   "chat_room",
   "chat_owner",
   "chat_message_files",
@@ -119,6 +122,8 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
     client.health().await.err(),
     client.send(&send).await.err(),
     client.account_rooms(&AccountRoomsQuery::default()).await.err(),
+    client.start_chat(&ChatStart::OneToOne { contact_id: 42 }).await.err(),
+    client.contacts(&ContactsQuery::default()).await.err(),
     client.room(-100).await.err(),
     client.owner().await.err(),
     client.message_files(&media).await.err(),
@@ -454,6 +459,28 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
       more: true,
     };
     bodies.valid("get", "/rooms", Answer(200), &listed);
+    bodies.valid("post", "/rooms", Answer(201), &listed.items[0]);
+  }
+  for start in [
+    ChatStart::OneToOne { contact_id: 42 },
+    ChatStart::Group {
+      title: "A room".into(),
+      contact_ids: vec![42, 77],
+    },
+  ] {
+    bodies.valid("post", "/rooms", Request, &start);
+  }
+  for (kind, room_id) in [(ChatContactKind::Person, Some(7)), (ChatContactKind::Bot, None)] {
+    let contacts = Page {
+      items: vec![ChatContact {
+        id: 42,
+        name: "A person".into(),
+        kind,
+        room_id,
+      }],
+      more: true,
+    };
+    bodies.valid("get", "/contacts", Answer(200), &contacts);
   }
   for room_id in [None, Some(7)] {
     bodies.valid("get", "/owner", Answer(200), &ProviderOwner { room_id });
@@ -597,6 +624,15 @@ fn a_body_not_of_its_route_shape_is_not_valid() {
     json!({ "items": [{ "name": "a.png", "mime": "image/png", "bytes": "iVA=" }], "more": false }),
   );
   provider.invalid("get", files, Answer(200), json!({ "items": [] }));
+  provider.invalid("post", "/rooms", Request, json!({ "contactId": "someone" }));
+  provider.invalid("post", "/rooms", Request, json!({ "contactId": 42, "title": "A room" }));
+  provider.invalid("post", "/rooms", Request, json!({ "title": "A room" }));
+  provider.invalid(
+    "get",
+    "/contacts",
+    Answer(200),
+    json!({ "items": [{ "id": 42, "name": "A person", "kind": "group", "roomId": null }], "more": false }),
+  );
   provider.invalid("get", "/declaration", Answer(200), json!({ "key": "stand-in" }));
   provider.invalid("get", "/health", Answer(200), json!({ "ready": true, "reason": null }));
   provider.invalid(
@@ -649,6 +685,10 @@ fn the_queries_and_keys_state_their_parameters() {
   );
   assert_eq!(
     names(&provider, "/rooms"),
+    [owned("after", "query", false), owned("limit", "query", false)]
+  );
+  assert_eq!(
+    names(&provider, "/contacts"),
     [owned("after", "query", false), owned("limit", "query", false)]
   );
   assert_eq!(
@@ -713,6 +753,16 @@ fn every_refusal_and_the_wait_are_answered_at_their_status_in_the_error_shape() 
         ("503", &["not-ready"]),
       ],
     ),
+    (
+      "post",
+      "/rooms",
+      &[
+        ("404", &["not-found"]),
+        ("422", &["unsupported-capability", "platform"]),
+        ("503", &["not-ready"]),
+      ],
+    ),
+    ("get", "/contacts", &[("422", &["unsupported-capability"]), ("503", &["not-ready"])]),
     (
       "get",
       "/rooms/{roomId}/messages/{messageId}/files",
@@ -806,7 +856,7 @@ fn every_reference_points_at_what_it_holds_and_every_schema_is_a_json_schema() {
 }
 
 #[test]
-fn the_documents_state_the_plugin_and_the_provider_document_its_ten_tools_each_on_a_route() {
+fn the_documents_state_the_plugin_and_the_provider_document_its_twelve_tools_each_on_a_route() {
   for side in [Side::Provider, Side::Receiver] {
     let document = openapi(side);
     assert_eq!(document["openapi"], "3.1.0");

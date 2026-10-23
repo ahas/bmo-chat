@@ -12,11 +12,11 @@ use axum::http::Request;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bmo_chat::{
-  ChatAvatar, ChatAvatarKind, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatMarkup,
-  ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering,
-  ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest,
-  ChatSendResult, ChatSent, ChatVoice, MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind,
-  provider_router,
+  ChatAvatar, ChatAvatarKind, ChatCapability, ChatContact, ChatContactKind, ChatDialect, ChatDialectLimits,
+  ChatFailure, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges,
+  ChatNumberSpace, ChatNumbering, ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
+  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatStart, ChatStartResult, ChatVoice,
+  MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind, provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -189,6 +189,47 @@ impl ChatProvider for Desk {
     };
     Ok(vec![room(5, "Five"), room(ROOM, "A Room"), room(-7, "Seven"), room(ROOM, "A Room")])
   }
+  async fn contacts(&self) -> Result<Vec<ChatContact>, ChatFailure> {
+    self.ask("contacts".to_owned())?;
+    let contact = |id, name: &str, kind, room_id| ChatContact {
+      id,
+      name: name.into(),
+      kind,
+      room_id,
+    };
+    Ok(vec![
+      contact(30, "Thirty", ChatContactKind::Bot, None),
+      contact(OWNER, "The owner", ChatContactKind::Person, Some(ROOM)),
+      contact(5, "Five", ChatContactKind::Person, None),
+      contact(30, "Thirty", ChatContactKind::Bot, None),
+    ])
+  }
+  /// A one-to-one with contact 5 is started as room 5; one with the owner comes to the room it already has;
+  /// contact 66 is one the platform will not start with, and any other is unknown. A group is room -300.
+  async fn start_chat(&self, start: ChatStart) -> Result<ChatStartResult, ChatFailure> {
+    self.ask(format!("start {start:?}"))?;
+    let room = |id, title: &str, private_to| ProviderRoom {
+      id,
+      owns: true,
+      identity: None,
+      kind: RoomKind::Group,
+      private_to,
+      title: Some(title.into()),
+      modes: Some(vec![ChatVoice::HumanReader]),
+    };
+    Ok(match start {
+      ChatStart::OneToOne { contact_id: 5 } => ChatStartResult::Started(room(5, "Five", Some(5))),
+      ChatStart::OneToOne { contact_id: OWNER } => {
+        ChatStartResult::Started(room(ROOM, "A Room", Some(OWNER)))
+      }
+      ChatStart::OneToOne { contact_id: 66 } => ChatStartResult::Refused(ChatRefusal::Platform {
+        label: self.label().to_owned(),
+        detail: "That person takes no new conversations.".to_owned(),
+      }),
+      ChatStart::OneToOne { contact_id } => ChatStartResult::NoContact { contact_id },
+      ChatStart::Group { title, .. } => ChatStartResult::Started(room(-300, &title, None)),
+    })
+  }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
     let what = match &request.send {
       ChatSend::Document { bytes, .. } => format!("send a document of {} bytes", bytes.len()),
@@ -316,6 +357,8 @@ fn routes() -> Vec<(&'static str, String, Option<Value>)> {
     ("GET", "/health".into(), None),
     ("POST", "/sends".into(), text()),
     ("GET", "/rooms".into(), None),
+    ("POST", "/rooms".into(), Some(json!({ "contactId": 5 }))),
+    ("GET", "/contacts".into(), None),
     ("GET", format!("/rooms/{ROOM}"), None),
     ("GET", "/owner".into(), None),
     ("GET", files(5), None),
@@ -496,7 +539,13 @@ async fn a_refusal_the_provider_answers_crosses_with_its_code_and_status() {
 
 #[tokio::test]
 async fn a_provider_that_fails_answers_failed() {
-  let desk = Desk::new(&[ChatCapability::Text, ChatCapability::FetchMedia, ChatCapability::RoomList]);
+  let desk = Desk::new(&[
+    ChatCapability::Text,
+    ChatCapability::FetchMedia,
+    ChatCapability::RoomList,
+    ChatCapability::ContactList,
+    ChatCapability::StartChat,
+  ]);
   desk.fails();
   let router = router(&desk);
   let failed = json!({ "code": "failed", "error": "The platform connection dropped." });
@@ -582,6 +631,139 @@ async fn the_rooms_of_the_account_are_refused_where_undeclared_and_paged_by_numb
   let (status, answer) = call(&router, "GET", "/rooms?after=first", None).await;
   assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
   assert_eq!(declared.asked().len(), 6);
+}
+
+#[tokio::test]
+async fn the_contacts_of_the_account_are_refused_where_undeclared_and_paged_by_number_where_declared() {
+  let undeclared = Desk::new(&[ChatCapability::RoomList]);
+  assert_eq!(
+    call(&router(&undeclared), "GET", "/contacts", None).await,
+    (
+      422,
+      json!({ "code": "unsupported-capability", "error": "Platform cannot list the contacts of its account." })
+    )
+  );
+  assert_eq!(undeclared.asked(), Vec::<String>::new());
+  let declared = Desk::new(&[ChatCapability::ContactList]);
+  let router = router(&declared);
+  let listed = async |query: &str| {
+    let (status, answer) = call(&router, "GET", &format!("/contacts{query}"), None).await;
+    assert_eq!(status, 200, "{query}: {answer}");
+    let ids: Vec<i64> = answer["items"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|contact| contact["id"].as_i64().unwrap())
+      .collect();
+    (ids, answer["more"].as_bool().unwrap())
+  };
+  assert_eq!(listed("").await, (vec![5, 30, OWNER], false));
+  assert_eq!(listed("?after=5").await, (vec![30, OWNER], false));
+  assert_eq!(listed("?after=5&limit=1").await, (vec![30], true));
+  assert_eq!(listed("?after=42").await, (Vec::new(), false));
+  let (status, answer) = call(&router, "GET", "/contacts", None).await;
+  assert_eq!(
+    answer["items"],
+    json!([
+      { "id": 5, "name": "Five", "kind": "person", "roomId": null },
+      { "id": 30, "name": "Thirty", "kind": "bot", "roomId": null },
+      { "id": OWNER, "name": "The owner", "kind": "person", "roomId": ROOM },
+    ]),
+    "{status}"
+  );
+  let (status, answer) = call(&router, "GET", "/contacts?limit=many", None).await;
+  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+  assert_eq!(declared.asked().len(), 5);
+}
+
+#[tokio::test]
+async fn a_start_of_an_undeclared_shape_is_refused_before_the_provider_is_asked() {
+  let one_to_one = Desk::new(&[ChatCapability::StartGroup]);
+  assert_eq!(
+    call(&router(&one_to_one), "POST", "/rooms", Some(json!({ "contactId": 5 }))).await,
+    (
+      422,
+      json!({ "code": "unsupported-capability", "error": "Platform cannot start a conversation with a contact." })
+    )
+  );
+  assert_eq!(one_to_one.asked(), Vec::<String>::new());
+  let group = Desk::new(&[ChatCapability::StartChat]);
+  assert_eq!(
+    call(&router(&group), "POST", "/rooms", Some(json!({ "title": "Plans", "contactIds": [5] }))).await,
+    (
+      422,
+      json!({ "code": "unsupported-capability", "error": "Platform cannot start a group conversation." })
+    )
+  );
+  assert_eq!(group.asked(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn a_start_of_no_sound_shape_is_a_bad_request() {
+  let desk = Desk::new(&[ChatCapability::StartChat, ChatCapability::StartGroup]);
+  let router = router(&desk);
+  for (body, said) in [
+    (json!({ "title": " ", "contactIds": [5] }), Some("A group's title is blank.")),
+    (json!({ "title": "Plans", "contactIds": [] }), Some("A group names no contact.")),
+    (
+      json!({ "title": "Plans", "contactIds": [5, 6, 5] }),
+      Some("A group names contact 5 twice."),
+    ),
+    (json!({ "contactId": 5, "title": "Plans" }), None),
+    (json!({ "contactId": 5, "contactIds": [5] }), None),
+    (json!({ "contactIds": [5] }), None),
+    (json!({}), None),
+  ] {
+    let (status, answer) = call(&router, "POST", "/rooms", Some(body.clone())).await;
+    assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{body}: {answer}");
+    if let Some(said) = said {
+      assert_eq!(answer["error"], said, "{body}");
+    }
+  }
+  assert_eq!(desk.asked(), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn a_declared_start_is_answered_with_its_room_or_why_not() {
+  let desk = Desk::new(&[ChatCapability::StartChat, ChatCapability::StartGroup]);
+  let router = router(&desk);
+  let (status, room) = call(&router, "POST", "/rooms", Some(json!({ "contactId": 5 }))).await;
+  assert_eq!(
+    (status, room),
+    (
+      201,
+      json!({
+        "id": 5, "owns": true, "identity": null, "kind": "group", "privateTo": 5, "title": "Five",
+        "modes": ["human-reader"],
+      })
+    )
+  );
+  let (status, room) = call(&router, "POST", "/rooms", Some(json!({ "contactId": OWNER }))).await;
+  assert_eq!((status, &room["id"]), (201, &json!(ROOM)), "the one-to-one that stood");
+  let (status, room) =
+    call(&router, "POST", "/rooms", Some(json!({ "title": "Plans", "contactIds": [5, 30] }))).await;
+  assert_eq!((status, &room["id"], &room["title"]), (201, &json!(-300), &json!("Plans")));
+  assert_eq!(
+    call(&router, "POST", "/rooms", Some(json!({ "contactId": UNKNOWN }))).await,
+    (404, json!({ "code": "not-found", "error": "Platform knows no contact 13." }))
+  );
+  assert_eq!(
+    call(&router, "POST", "/rooms", Some(json!({ "contactId": 66 }))).await,
+    (
+      422,
+      json!({ "code": "platform", "error": "Platform: That person takes no new conversations." })
+    )
+  );
+  assert_eq!(
+    desk.asked(),
+    [
+      "start OneToOne { contact_id: 5 }",
+      "start OneToOne { contact_id: 42 }",
+      "start Group { title: \"Plans\", contact_ids: [5, 30] }",
+      "start OneToOne { contact_id: 13 }",
+      "start OneToOne { contact_id: 66 }",
+    ]
+  );
 }
 
 #[tokio::test]

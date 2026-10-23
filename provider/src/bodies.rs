@@ -68,23 +68,8 @@ pub struct AccountRoomsQuery {
 impl AccountRoomsQuery {
   /// The page of `listed` this query asks for: in ascending order of room number, each room once, only those
   /// after the cursor, and at most `limit`. `more` says whether rooms stand past the page's last.
-  pub fn page(&self, mut listed: Vec<ProviderRoom>) -> Page<ProviderRoom> {
-    listed.sort_by_key(|room| room.id);
-    listed.dedup_by_key(|room| room.id);
-    if let Some(after) = self.after {
-      listed.retain(|room| room.id > after);
-    }
-    let mut more = false;
-    if let Some(limit) = self.limit.and_then(|limit| usize::try_from(limit).ok())
-      && limit < listed.len()
-    {
-      more = true;
-      listed.truncate(limit);
-    }
-    Page {
-      items: listed,
-      more,
-    }
+  pub fn page(&self, listed: Vec<ProviderRoom>) -> Page<ProviderRoom> {
+    Page::numbered(listed, |room| room.id, self.after, self.limit)
   }
 }
 
@@ -139,5 +124,31 @@ impl<T> Page<T> {
   /// A page holding everything there is.
   pub fn whole(items: Vec<T>) -> Self {
     Self { items, more: false }
+  }
+
+  /// The page of `listed` a list numbered by `number` is asked for: in ascending order of number, each number
+  /// once, only those after `after`, and at most `limit`. `more` says whether items stand past the page's last.
+  pub fn numbered(
+    mut listed: Vec<T>,
+    number: impl Fn(&T) -> i64,
+    after: Option<i64>,
+    limit: Option<u32>,
+  ) -> Self {
+    listed.sort_by_key(&number);
+    listed.dedup_by_key(|item| number(item));
+    if let Some(after) = after {
+      listed.retain(|item| number(item) > after);
+    }
+    let mut more = false;
+    if let Some(limit) = limit.and_then(|limit| usize::try_from(limit).ok())
+      && limit < listed.len()
+    {
+      more = true;
+      listed.truncate(limit);
+    }
+    Self {
+      items: listed,
+      more,
+    }
   }
 }

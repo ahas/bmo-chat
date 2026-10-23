@@ -472,6 +472,67 @@ macro_rules! fixtures {
         ]
       }
 
+      /// The contacts of the stand-in provider's account, one of each kind, one with a room and one without.
+      pub fn contacts() -> Vec<ChatContact> {
+        vec![
+          ChatContact {
+            id: 42,
+            name: "A person".into(),
+            kind: ChatContactKind::Person,
+            room_id: Some(7),
+          },
+          ChatContact {
+            id: 77,
+            name: "A helper".into(),
+            kind: ChatContactKind::Bot,
+            room_id: None,
+          },
+        ]
+      }
+
+      /// The queries for the contacts of the account, and below, the page answering each in the same order.
+      pub fn contact_queries() -> Vec<ContactsQuery> {
+        vec![
+          ContactsQuery::default(),
+          ContactsQuery {
+            after: Some(42),
+            limit: None,
+          },
+          ContactsQuery {
+            after: None,
+            limit: Some(1),
+          },
+        ]
+      }
+
+      pub fn contact_pages() -> Vec<Page<ChatContact>> {
+        vec![
+          Page {
+            items: contacts(),
+            more: false,
+          },
+          Page {
+            items: contacts().split_off(1),
+            more: false,
+          },
+          Page {
+            items: contacts()[..1].to_vec(),
+            more: true,
+          },
+        ]
+      }
+
+      /// One start of each shape; each comes to the provider room at the same place.
+      pub fn starts() -> Vec<ChatStart> {
+        vec![
+          ChatStart::OneToOne { contact_id: 42 },
+          ChatStart::Group {
+            title: "The garden".into(),
+            contact_ids: vec![42, 77],
+          },
+        ]
+      }
+
       pub fn provider_owners() -> Vec<ProviderOwner> {
         vec![ProviderOwner { room_id: Some(7) }, ProviderOwner { room_id: None }]
       }
@@ -832,6 +893,10 @@ fn every_room_owner_and_dialect_body_crosses_both_ways() {
     on_client::account_room_queries(),
   );
   crosses("account rooms page", on_provider::account_room_pages(), on_client::account_room_pages());
+  crosses("contact", on_provider::contacts(), on_client::contacts());
+  crosses("contacts query", on_provider::contact_queries(), on_client::contact_queries());
+  crosses("contacts page", on_provider::contact_pages(), on_client::contact_pages());
+  crosses("start", on_provider::starts(), on_client::starts());
   crosses("owner", on_provider::provider_owners(), on_client::provider_owners());
   crosses("dialect reading asked", on_provider::dialect_reads(), on_client::dialect_reads());
   crosses("dialect reading", on_provider::dialect_readings(), on_client::dialect_readings());
@@ -911,6 +976,14 @@ fn the_fixtures_hold_every_member_of_every_set() {
     );
   }
   assert_eq!(declarations[0].can, ChatCapability::ALL.iter().copied().collect());
+  for kind in [bmo_chat::ChatContactKind::Person, bmo_chat::ChatContactKind::Bot] {
+    assert!(
+      on_provider::contacts().iter().any(|contact| contact.kind == kind),
+      "a contact is {kind:?}"
+    );
+  }
+  let shapes: BTreeSet<_> = on_provider::starts().iter().map(bmo_chat::ChatStart::capability).collect();
+  assert_eq!(shapes, BTreeSet::from([ChatCapability::StartChat, ChatCapability::StartGroup]));
 
   let handed = on_provider::handed_messages();
   assert_eq!(handed.len(), KEYS.len(), "every handed-over message has its key");
@@ -948,6 +1021,7 @@ fn the_fixtures_hold_every_member_of_every_set() {
     on_provider::avatar_pages().iter().map(|page| page.more).collect::<BTreeSet<_>>(),
     on_provider::room_pages().iter().map(|page| page.more).collect(),
     on_provider::account_room_pages().iter().map(|page| page.more).collect(),
+    on_provider::contact_pages().iter().map(|page| page.more).collect(),
   ] {
     assert_eq!(pages, BTreeSet::from([false, true]), "a page with more and one without");
   }
@@ -1263,6 +1337,23 @@ impl bmo_chat::ChatProvider for Stand {
     Ok(listed)
   }
 
+  async fn contacts(&self) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
+    let mut listed = on_provider::contacts();
+    listed.reverse();
+    Ok(listed)
+  }
+
+  async fn start_chat(
+    &self,
+    start: bmo_chat::ChatStart,
+  ) -> Result<bmo_chat::ChatStartResult, bmo_chat::ChatFailure> {
+    let at = on_provider::starts()
+      .iter()
+      .position(|one| *one == start)
+      .expect("a start of the fixtures");
+    Ok(bmo_chat::ChatStartResult::Started(on_provider::provider_rooms().swap_remove(at)))
+  }
+
   async fn owner_room(&self) -> Result<Option<i64>, bmo_chat::ChatFailure> {
     let owners = on_provider::provider_owners();
     Ok(owners[self.owners.fetch_add(1, Ordering::SeqCst) % owners.len()].room_id)
@@ -1381,6 +1472,12 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
   }
   for (query, page) in on_client::account_room_queries().iter().zip(on_client::account_room_pages()) {
     assert_eq!(client.account_rooms(query).await.unwrap(), page, "{query:?}");
+  }
+  for (query, page) in on_client::contact_queries().iter().zip(on_client::contact_pages()) {
+    assert_eq!(client.contacts(query).await.unwrap(), page, "{query:?}");
+  }
+  for (start, room) in on_client::starts().iter().zip(on_client::provider_rooms()) {
+    assert_eq!(client.start_chat(start).await.unwrap(), room, "{start:?}");
   }
 
   for (read, reading) in on_client::dialect_reads().into_iter().zip(on_client::dialect_readings()) {

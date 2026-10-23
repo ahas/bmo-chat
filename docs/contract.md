@@ -112,7 +112,7 @@ whether an answer to that message can be pinned to it.
 `ChatVerb` names the twelve kinds of send: `text`, `photo`, `album`, `document`, `audio`, `voice`, `sticker`,
 `reaction`, `pin`, `typing`, `edit`, `delete`.
 
-`ChatCapability` is the twelve kinds plus five answers that are not sends:
+`ChatCapability` is the twelve kinds plus eight answers that are not sends:
 
 | Capability | Meaning |
 |---|---|
@@ -121,8 +121,11 @@ whether an answer to that message can be pinned to it.
 | `avatars` | the provider supplies profile pictures |
 | `history` | the provider can read a room's past messages back |
 | `roomList` | the provider can list the rooms its account is in |
+| `contactList` | the provider can list the contacts of its account |
+| `startChat` | the provider can start a one-to-one with a contact of its account |
+| `startGroup` | the provider can start a room of several contacts of its account, under a title |
 
-The full capability set is all seventeen, taken from the type itself, so a reader handed a capability's name
+The full capability set is all twenty, taken from the type itself, so a reader handed a capability's name
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a kind it does not declare is refused (see Refusals).
 
@@ -227,6 +230,66 @@ A provider that declares `roomList` lists the rooms its account is in, each as t
 for that room on its own, so a person can choose among them. Which of its accounts it lists, and how it learns
 their rooms, is the provider's own. The base pages the list in ascending order of room number and asks only a
 provider that declares `roomList`; one that does not is refused `unsupported-capability` without being asked.
+
+A listed room is the provider's account's alone, and says nothing of the receiving side: no `ProviderRoom`
+carries whether the receiving side holds the room, and no provider is asked it. A receiving side that shows the
+listing to a person marks each room it already holds itself, from its own record and beside the provider's
+answer, by the room's number, which is the same number on both sides.
+
+### The contacts of the account
+
+A provider that declares `contactList` lists the contacts of its account, the people it could start a
+conversation with, so a person can choose among them. Which of its accounts it lists, and what its platform
+counts as a contact, is the provider's own. Each is a `ChatContact`:
+
+| Member | What it is |
+|---|---|
+| `id` | the contact, as a number of the provider's `people` space |
+| `name` | what the account calls the contact |
+| `kind` | `ChatContactKind`: `person` for a person's account, `bot` for a platform's bot account |
+| `roomId` | the one-to-one the account already has with the contact, as a number of the provider's `rooms` space, or null where it has none |
+
+The base pages the list in ascending order of contact number and asks only a provider that declares
+`contactList`; one that does not is refused `unsupported-capability` without being asked. As with a listed room,
+whether the receiving side holds a contact's `roomId` is the receiving side's to mark, never the provider's.
+
+### Starting a conversation
+
+A provider that declares `startChat` or `startGroup` starts a conversation on its platform when asked. A
+`ChatStart` is one of two shapes:
+
+| Shape | Members | Capability |
+|---|---|---|
+| one-to-one | `contactId`: one contact of the account | `startChat` |
+| group | `title`: the room's name, not blank; `contactIds`: the contacts to bring in, at least one, each once | `startGroup` |
+
+A start comes to one of:
+
+- **started**: the room, as the `ProviderRoom` the provider answers for it from then on. A one-to-one with a
+  contact the account already has one with comes to that room, and nothing new is made. The room's `modes`
+  say whose account it stands in, as any room's do: a provider that can start a one-to-one only through a
+  person's account answers it read-only where its own account is not in it.
+- **no contact**: a contact the start names is none the provider knows, answered `not-found`.
+- **refused**: a `ChatRefusal`. A shape whose capability the provider does not declare is refused
+  `unsupported-capability` by the base before the provider is asked; what the platform will not do is refused
+  `platform` with the provider's own reason.
+
+A group naming no contact, naming one twice or carrying a blank title is no start of either shape, and the base
+answers it `bad-request` without asking the provider.
+
+Starting a conversation sends nothing into it. Where a platform makes a one-to-one stand only once a message is
+in it, the provider answers the room the first message will make, under the number it will carry.
+
+### Contacts and starts on the platforms that do not declare them
+
+What a provider of each platform below needs before it can declare `contactList`, `startChat` or `startGroup`;
+until then it declares none of them, and the receiving side offers only the rooms it lists:
+
+| Platform | What it needs |
+|---|---|
+| KakaoTalk | its friends list, read through the desktop automation that reads the owner's account; a start opens the friend's chat on the desktop. Its account-safety rules forbid adding a friend automatically, so a contact is only a friend the owner already has, and a group start is declared only where the desktop can make one without adding anyone |
+| Discord | a contact is a user who shares a server with the bot; a one-to-one is the bot's direct-message channel with that user, which the bot account opens itself. The bot cannot start a group of several users, so `startGroup` stays undeclared |
+| Microsoft Teams | contacts from Microsoft Graph's people or users of the organization, and a start through Graph's chat creation, a one-to-one or a group chat with a topic, which needs the permission to create chats on the account it reads |
 
 ### Fetching files again
 
@@ -449,6 +512,9 @@ The capability words:
 | `avatars` | fetch profile pictures |
 | `history` | read past messages back |
 | `roomList` | list the rooms of its account |
+| `contactList` | list the contacts of its account |
+| `startChat` | start a conversation with a contact |
+| `startGroup` | start a group conversation |
 
 `MissedPictureReason`, the `reason` of a missed picture:
 

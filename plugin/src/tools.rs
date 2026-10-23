@@ -6,8 +6,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 use bmo_chat_client::{
-  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ClientFailure,
-  DialectCheck, DialectRead,
+  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ChatStart,
+  ClientFailure, ContactsQuery, DialectCheck, DialectRead,
 };
 use schemars::generate::SchemaGenerator;
 use schemars::{JsonSchema, Schema};
@@ -142,7 +142,7 @@ struct Files {
   sent_at: Option<i64>,
 }
 
-/// The ten tools, in the order the protocol lists their routes.
+/// The twelve tools, in the order the protocol lists their routes.
 pub fn tools() -> Vec<ChatTool> {
   vec![
     tool(
@@ -170,6 +170,21 @@ pub fn tools() -> Vec<ChatTool> {
        `after`; refused where the provider does not declare roomList.",
       "GET /rooms",
       |client, query: AccountRoomsQuery| async move { client.account_rooms(&query).await },
+    ),
+    tool(
+      "chat_start",
+      "Starts a conversation on the platform, a one-to-one with `contactId` or a group of `contactIds` under \
+       `title`, and answers its room; refused where the provider does not declare startChat or startGroup.",
+      "POST /rooms",
+      |client, Body { body }: Body<ChatStart>| async move { client.start_chat(&body).await },
+    ),
+    tool(
+      "chat_contacts",
+      "A page of the contacts of the provider's account, in ascending order of contact number, only those \
+       after `after`, each with the one-to-one the account already has with it; refused where the provider \
+       does not declare contactList.",
+      "GET /contacts",
+      |client, query: ContactsQuery| async move { client.contacts(&query).await },
     ),
     tool(
       "chat_room",

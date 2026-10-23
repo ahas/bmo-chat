@@ -23,7 +23,7 @@ pub enum ChatVerb {
   Delete,
 }
 
-/// What a provider can do: the twelve verbs, and five answers that are not verbs.
+/// What a provider can do: the twelve verbs, and eight answers that are not verbs.
 #[derive(
   Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, VariantArray,
 )]
@@ -51,6 +51,12 @@ pub enum ChatCapability {
   History,
   /// The provider can list the rooms its account is in.
   RoomList,
+  /// The provider can list the contacts of its account.
+  ContactList,
+  /// The provider can start a one-to-one with a contact of its account.
+  StartChat,
+  /// The provider can start a room of several contacts of its account, under a title.
+  StartGroup,
 }
 
 impl ChatVerb {
@@ -82,6 +88,9 @@ impl ChatCapability {
       Self::Avatars => "fetch profile pictures",
       Self::History => "read past messages back",
       Self::RoomList => "list the rooms of its account",
+      Self::ContactList => "list the contacts of its account",
+      Self::StartChat => "start a conversation with a contact",
+      Self::StartGroup => "start a group conversation",
     }
   }
 }
