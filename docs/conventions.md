@@ -1,6 +1,6 @@
-# bmo-next conventions
+# bmo conventions
 
-This document is the one source of two things every bmo-next repository follows: the common wire format a
+This document is the one source of two things every bmo repository follows: the common wire format a
 service answers in, and the rules between an upstream and its downstreams. A service's own documents state its
 routes and the pieces they carry, and take the format from here rather than restating it.
 
