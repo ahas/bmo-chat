@@ -68,6 +68,7 @@ impl Desk {
       .map(|id| ReceiverRoom {
         id,
         listened: id == ROOM,
+        read: id == ROOM,
         oldest_message_id: Some(5),
         oldest_sent_at: Some(1_760_000_000_000),
       })
@@ -328,7 +329,10 @@ async fn a_room_is_answered_as_held_and_one_not_held_is_not_found() {
     call(&router, "GET", "/rooms/-100?via=stand-in", None).await,
     (
       200,
-      json!({ "id": -100, "listened": true, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 })
+      json!({
+        "id": -100, "listened": true, "read": true, "oldestMessageId": 5,
+        "oldestSentAt": 1_760_000_000_000_i64,
+      })
     )
   );
   assert_eq!(

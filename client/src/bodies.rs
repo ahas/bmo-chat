@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dialect::ChatMarkup;
 use crate::message::RoomKind;
+use crate::modes::ChatVoice;
 
 /// Whether a provider is ready, where it is not, why, and the provider service's own version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -48,6 +49,11 @@ pub struct ProviderRoom {
   pub private_to: Option<i64>,
   /// What the platform calls the room, or null where it cannot or will not say.
   pub title: Option<String>,
+  /// The voices the room is read by and may be sent in, each one of the declaration's modes; null where the
+  /// provider does not say, which stands for every mode the declaration lists. `human-reader` alone makes the
+  /// room read-only.
+  #[serde(default)]
+  pub modes: Option<Vec<ChatVoice>>,
 }
 
 /// The query of `GET /rooms`: only the rooms numbered after `after`, and at most `limit` of them.

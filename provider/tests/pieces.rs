@@ -336,8 +336,27 @@ fn health_room_and_owner() {
       kind: RoomKind::Group,
       private_to: None,
       title: Some("A Room".into()),
+      modes: None,
     },
-    json!({ "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room" }),
+    json!({
+      "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room",
+      "modes": null,
+    }),
+  );
+  crosses(
+    &ProviderRoom {
+      id: -200,
+      owns: true,
+      identity: None,
+      kind: RoomKind::Group,
+      private_to: None,
+      title: None,
+      modes: Some(vec![ChatVoice::HumanReader]),
+    },
+    json!({
+      "id": -200, "owns": true, "identity": null, "kind": "group", "privateTo": null, "title": null,
+      "modes": ["human-reader"],
+    }),
   );
   crosses(&ProviderOwner { room_id: Some(42) }, json!({ "roomId": 42 }));
   crosses(&ProviderOwner { room_id: None }, json!({ "roomId": null }));
@@ -462,12 +481,14 @@ fn the_receiving_side_rooms_queries_and_word_of_pictures() {
         ReceiverRoom {
           id: -100,
           listened: true,
+          read: true,
           oldest_message_id: Some(5),
           oldest_sent_at: Some(1_760_000_000_000),
         },
         ReceiverRoom {
           id: 7,
           listened: false,
+          read: false,
           oldest_message_id: None,
           oldest_sent_at: None,
         },
@@ -476,8 +497,8 @@ fn the_receiving_side_rooms_queries_and_word_of_pictures() {
     },
     json!({
       "items": [
-        { "id": -100, "listened": true, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 },
-        { "id": 7, "listened": false, "oldestMessageId": null, "oldestSentAt": null },
+        { "id": -100, "listened": true, "read": true, "oldestMessageId": 5, "oldestSentAt": 1_760_000_000_000_i64 },
+        { "id": 7, "listened": false, "read": false, "oldestMessageId": null, "oldestSentAt": null },
       ],
       "more": false,
     }),
@@ -519,4 +540,18 @@ fn assigned_numbers_carry_their_ranges() {
       },
     }),
   );
+}
+
+#[test]
+fn a_room_from_a_side_that_does_not_say_takes_every_mode_and_is_not_asked_to_be_read() {
+  let room: ProviderRoom = serde_json::from_value(json!({
+    "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": null,
+  }))
+  .expect("a room without modes decodes");
+  assert_eq!(room.modes, None);
+  let held: ReceiverRoom = serde_json::from_value(json!({
+    "id": -100, "listened": true, "oldestMessageId": null, "oldestSentAt": null,
+  }))
+  .expect("a held room without read decodes");
+  assert!(!held.read);
 }

@@ -41,7 +41,7 @@ type Handed = Arc<Mutex<Vec<Took>>>;
 
 /// The room the stand-in holds, as it answers it.
 fn held_room() -> Value {
-  json!({ "id": ROOM, "listened": true, "oldestMessageId": 5, "oldestSentAt": null })
+  json!({ "id": ROOM, "listened": true, "read": true, "oldestMessageId": 5, "oldestSentAt": null })
 }
 
 /// A receiving side that takes every call under `/receiving` and keeps it. A hand-over is answered with the
@@ -249,6 +249,7 @@ async fn every_call_reaches_its_route_with_its_method_the_token_and_its_body() {
   let room = ReceiverRoom {
     id: ROOM,
     listened: true,
+    read: true,
     oldest_message_id: Some(5),
     oldest_sent_at: None,
   };

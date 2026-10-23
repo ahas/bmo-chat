@@ -435,9 +435,10 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
       },
     );
   }
-  for (kind, private_to, title) in
-    [(RoomKind::Owner, Some(42), None), (RoomKind::Group, None, Some("A room"))]
-  {
+  for (kind, private_to, title, modes) in [
+    (RoomKind::Owner, Some(42), None, None),
+    (RoomKind::Group, None, Some("A room"), Some(vec![ChatVoice::HumanReader])),
+  ] {
     let room = ProviderRoom {
       id: -100,
       owns: true,
@@ -445,6 +446,7 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
       kind,
       private_to,
       title: title.map(str::to_owned),
+      modes,
     };
     bodies.valid("get", "/rooms/{roomId}", Answer(200), &room);
     let listed = Page {
@@ -515,6 +517,7 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_receivi
   let room = |id, oldest: Option<i64>| ReceiverRoom {
     id,
     listened: oldest.is_some(),
+    read: oldest.is_some(),
     oldest_message_id: oldest,
     oldest_sent_at: oldest.map(|_| 1_760_000_000_000),
   };

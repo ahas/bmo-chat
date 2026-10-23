@@ -386,7 +386,8 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       id: "getRoom",
       tag: "rooms",
       summary: "What the provider knows of a room: whether it owns it, the account's identity in it, owner or \
-        group, the one person of a one-to-one, and its title; `not-found` where it knows nothing of it.",
+        group, the one person of a one-to-one, its title, and the voices it is read by and may be sent in; \
+        `not-found` where it knows nothing of it.",
       parameters: vec![room.clone()],
       body: None,
       answers: vec![(200, json_answer::<ProviderRoom>(generator))],
@@ -505,8 +506,8 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       path: "/rooms/{roomId}",
       id: "getRoom",
       tag: "rooms",
-      summary: "One room as the receiving side holds it: whether it is listened to, and the oldest message \
-        held; `not-found` where nothing is held of it.",
+      summary: "One room as the receiving side holds it: whether it is listened to, whether the receiving side \
+        asked for it to be read, and the oldest message held; `not-found` where nothing is held of it.",
       parameters: [vec![room.clone()], query::<RoomQuery>(generator)].concat(),
       body: None,
       answers: vec![(200, json_answer::<ReceiverRoom>(generator))],

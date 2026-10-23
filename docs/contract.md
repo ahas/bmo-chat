@@ -204,6 +204,18 @@ A provider answers what it knows of any room number as one `ProviderRoom`:
 | `kind` | `RoomKind`: `owner` when the room is the owner's private chat on this platform, else `group` |
 | `privateTo` | the sender number of the one person in a one-to-one with the account, or null for a room of several, a room answered in the avatar voice, or one the platform has not said is a one-to-one |
 | `title` | what the platform calls the room, or null where it cannot or will not say |
+| `modes` | the voices the room is read by and may be sent in, each one of the declaration's modes; null where the provider does not say, which stands for every mode the declaration lists |
+
+A room's `modes` are the provider's own account of the room: a provider whose rooms all take the same modes
+lists its declared ones for every room, and one whose platform reads some rooms through another account lists
+each room's own. A send naming a voice the room's `modes` do not hold, or naming none in a room whose `modes` do
+not hold the voice the provider answers rooms by, is refused `platform`, with the provider's own reason.
+
+A room whose `modes` hold `human-reader` alone is **read-only**: it is read through a person's account, and only
+that person's own words go into it. Nothing answers there, so the receiving side wakes no answerer in it and
+offers it no mode that answers. Whether the people's words in such a room are read at all is the receiving
+side's to ask for (see "The receiving side, as a provider sees it"); `identity` keeps its meaning there, and is
+null where no words of the provider's own account stand in the room.
 
 A provider that knows nothing of a room answers none, and the route answers `not-found`. Apart from any room,
 it answers the room to speak into to reach the owner unprompted, or null. Whether a person behind a private
@@ -313,7 +325,7 @@ hands the bytes over:
 | hand over | a message under its room and number, whatever its origin; the answer is the message as held, and whether the receiving side held it before |
 | gathered | the files a message's `gathering` promised, or why they were not kept |
 | avatars changed | the rooms and people whose kept profile picture changed, as an `AvatarChange` |
-| room | one room as the receiving side holds it, a `ReceiverRoom`: whether it listens to the room, and the oldest message it holds of it; none where it holds nothing of the room |
+| room | one room as the receiving side holds it, a `ReceiverRoom`: whether it listens to the room, whether it asked for the room to be read, and the oldest message it holds of it; none where it holds nothing of the room |
 | rooms | a page of the provider's rooms whose past it may read back, each a `ReceiverRoom` |
 
 The receiving side keeps what it is handed whatever its origin. A provider never hands a message over as
@@ -324,10 +336,20 @@ the hand-over, so a provider that learns a message's sender was another (an acco
 example) hands the message over again as an `edit`, under the right sender.
 
 A provider asks whether a room is listened to where it must decide by itself what to read or gather there; it
-keeps no switch of its own for it. A provider that reads rooms' past back, one that declares `history`, asks
-which rooms it may read back and from where, and hands each past message over as `history`, never as `live`,
-so nothing is woken for words said long ago. Its provider key, `via`, names the provider in every call that is
-not about a message it carries.
+keeps no switch of its own for it. Being listened to is no request to read a room: the receiving side may
+listen to every room it can hold, added or not.
+
+`read`, false unless the receiving side says otherwise, is whether the receiving side asked for the room to be
+read through the account of the provider asking: true for a room it chose to take from that provider, whatever
+it answers there. It is the one opt-in a room needs for a provider to read the people's words of a room it sees
+only through a person's account (a read-only room, its `modes` holding `human-reader` alone): a provider reads
+them only where `read` is true, and hands them over as `live` in the `human-reader` voice. Where `read` is false
+it reads in such a room only what it would read anyway, the person's own words. A receiving side that does not
+say answers false, so no room is opened to reading by a side that never asked for it.
+
+A provider that reads rooms' past back, one that declares `history`, asks which rooms it may read back and
+from where, and hands each past message over as `history`, never as `live`, so nothing is woken for words said
+long ago. Its provider key, `via`, names the provider in every call that is not about a message it carries.
 
 ## Sends
 

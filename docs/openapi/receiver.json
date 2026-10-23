@@ -613,11 +613,17 @@
               "integer",
               "null"
             ]
+          },
+          "read": {
+            "default": false,
+            "description": "Whether the receiving side asked for the room to be read through the asking provider's account; false\nwhere it does not say.",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "listened",
+          "read",
           "oldestMessageId",
           "oldestSentAt"
         ],
@@ -717,7 +723,7 @@
   "info": {
     "description": "The routes the receiving side serves and a provider calls, as the chat protocol defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the files a gathering message promised, the rooms a provider may read back and whether one is listened to, and word that kept pictures changed. Paths are relative to the base address the provider is configured with, and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of epoch milliseconds. Every failure is answered in the error shape with its status.",
     "title": "bmo-chat receiving-side routes",
-    "version": "0.1.0-rev.6"
+    "version": "0.1.0-rev.7"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -894,7 +900,7 @@
             "$ref": "#/components/responses/NotReady"
           }
         },
-        "summary": "One room as the receiving side holds it: whether it is listened to, and the oldest message held; `not-found` where nothing is held of it.",
+        "summary": "One room as the receiving side holds it: whether it is listened to, whether the receiving side asked for it to be read, and the oldest message held; `not-found` where nothing is held of it.",
         "tags": [
           "rooms"
         ],

@@ -281,6 +281,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
       kind: RoomKind::Owner,
       private_to: None,
       title: Some("A Room".into()),
+      modes: None,
     }
   );
   assert_eq!(
@@ -788,6 +789,7 @@ async fn the_rooms_of_the_account_come_as_a_page_and_their_refusal_with_its_code
         }
         let room = json!({
           "id": -100, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room",
+          "modes": ["bot-account"],
         });
         Json(json!({ "items": [room], "more": true })).into_response()
       }
@@ -814,6 +816,7 @@ async fn the_rooms_of_the_account_come_as_a_page_and_their_refusal_with_its_code
         kind: RoomKind::Group,
         private_to: None,
         title: Some("A Room".into()),
+        modes: Some(vec![ChatVoice::BotAccount]),
       }],
       more: true,
     }

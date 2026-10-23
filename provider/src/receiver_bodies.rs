@@ -13,6 +13,10 @@ pub struct ReceiverRoom {
   pub id: i64,
   /// Whether the receiving side listens to the room.
   pub listened: bool,
+  /// Whether the receiving side asked for the room to be read through the asking provider's account; false
+  /// where it does not say.
+  #[serde(default)]
+  pub read: bool,
   /// Null where the receiving side holds no message of the room.
   pub oldest_message_id: Option<i64>,
   /// In epoch milliseconds; null where the receiving side holds no message of the room.

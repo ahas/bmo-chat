@@ -16,7 +16,7 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 0.1.0-rev.6 of the libraries and the plugin; a caller pins that version or a
+This document states version 0.1.0-rev.7 of the libraries and the plugin; a caller pins that version or a
 later one for every route and field below. The version is numbered by the revision rule of `conventions.md`.
 Each older number the crates carry in their history stands for one revision:
 
@@ -202,6 +202,7 @@ What the provider knows of a room (`contract.md`, "A room as a provider knows it
 | `kind` | `owner` or `group` |
 | `privateTo` | number or null: the one person in a one-to-one with the account |
 | `title` | string or null: what the platform calls the room |
+| `modes` | array of `ChatVoice`, or null: the voices the room is read by and may be sent in; null where the provider does not say, standing for every mode the declaration lists, and read as null where a provider leaves it out |
 
 A room the provider knows nothing of is answered 404 `not-found`.
 
@@ -283,11 +284,12 @@ The answer:
 |---|---|
 | `id` | number: the room |
 | `listened` | boolean: whether the receiving side listens to the room |
+| `read` | boolean: whether the receiving side asked for the room to be read through the asking provider's account; read as false where a receiving side leaves it out |
 | `oldestMessageId` | number or null: the oldest message held of the room, null where none is |
 | `oldestSentAt` | number or null: when that message was sent, null where none is |
 
 A room the receiving side holds nothing of is answered 404 `not-found`, which a provider reads as a room not
-listened to.
+listened to and not asked to be read.
 
 ### `PUT /rooms/{roomId}/messages/{messageId}`
 

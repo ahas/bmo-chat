@@ -158,6 +158,7 @@ impl ChatProvider for Desk {
         kind: RoomKind::Owner,
         private_to: Some(OWNER),
         title: Some("A Room".into()),
+        modes: None,
       }),
       ELSEWHERE => Some(ProviderRoom {
         id: ELSEWHERE,
@@ -166,6 +167,7 @@ impl ChatProvider for Desk {
         kind: RoomKind::Group,
         private_to: None,
         title: None,
+        modes: Some(vec![ChatVoice::HumanReader]),
       }),
       _ => None,
     })
@@ -183,6 +185,7 @@ impl ChatProvider for Desk {
       kind: RoomKind::Group,
       private_to: None,
       title: Some(title.into()),
+      modes: None,
     };
     Ok(vec![room(5, "Five"), room(ROOM, "A Room"), room(-7, "Seven"), room(ROOM, "A Room")])
   }
@@ -572,6 +575,7 @@ async fn the_rooms_of_the_account_are_refused_where_undeclared_and_paged_by_numb
     answer["items"][0],
     json!({
       "id": ROOM, "owns": true, "identity": 7, "kind": "group", "privateTo": null, "title": "A Room",
+      "modes": null,
     }),
     "{status}"
   );
@@ -620,6 +624,7 @@ async fn a_room_and_the_owner_are_answered_from_the_provider_and_an_unknown_room
       200,
       json!({
         "id": ROOM, "owns": true, "identity": 7, "kind": "owner", "privateTo": OWNER, "title": "A Room",
+        "modes": null,
       })
     )
   );
@@ -629,6 +634,7 @@ async fn a_room_and_the_owner_are_answered_from_the_provider_and_an_unknown_room
       200,
       json!({
         "id": ELSEWHERE, "owns": false, "identity": null, "kind": "group", "privateTo": null, "title": null,
+        "modes": ["human-reader"],
       })
     )
   );

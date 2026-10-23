@@ -218,6 +218,7 @@ impl ChatProvider for StandIn {
       kind: if owner { RoomKind::Owner } else { RoomKind::Group },
       private_to: owner.then_some(OWNER),
       title: (!owner).then(|| "A Room".to_owned()),
+      modes: None,
     }))
   }
   async fn owner_room(&self) -> Result<Option<i64>, ChatFailure> {

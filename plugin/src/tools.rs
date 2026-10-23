@@ -174,7 +174,8 @@ pub fn tools() -> Vec<ChatTool> {
     tool(
       "chat_room",
       "What the provider knows of a room: whether it owns it, the account's identity in it, whether it is the \
-       owner's private chat, the one person of a one-to-one, and its title.",
+       owner's private chat, the one person of a one-to-one, its title, and the voices it is read by and may \
+       be sent in.",
       "GET /rooms/{roomId}",
       |client, Room { room_id }| async move { client.room(room_id).await },
     ),

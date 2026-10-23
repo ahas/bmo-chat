@@ -80,6 +80,7 @@ impl bmo_chat::ChatProvider for Stand {
       kind: bmo_chat::RoomKind::Group,
       private_to: None,
       title: Some("The garden".into()),
+      modes: None,
     }))
   }
   async fn owner_room(&self) -> Result<Option<i64>, bmo_chat::ChatFailure> {
@@ -95,6 +96,7 @@ impl bmo_chat::ChatProvider for Stand {
       kind: bmo_chat::RoomKind::Group,
       private_to: None,
       title: Some("The garden".into()),
+      modes: None,
     }])
   }
   async fn send(

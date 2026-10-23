@@ -426,6 +426,7 @@ macro_rules! fixtures {
             kind: RoomKind::Group,
             private_to: None,
             title: Some("The garden".into()),
+            modes: None,
           },
           ProviderRoom {
             id: 7,
@@ -434,6 +435,7 @@ macro_rules! fixtures {
             kind: RoomKind::Owner,
             private_to: Some(42),
             title: None,
+            modes: Some(vec![ChatVoice::HumanReader]),
           },
         ]
       }
@@ -678,12 +680,14 @@ macro_rules! fixtures {
           ReceiverRoom {
             id: -100,
             listened: true,
+            read: true,
             oldest_message_id: Some(1),
             oldest_sent_at: Some(1_760_000_000_000),
           },
           ReceiverRoom {
             id: 7,
             listened: false,
+            read: false,
             oldest_message_id: None,
             oldest_sent_at: None,
           },
