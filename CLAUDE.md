@@ -35,6 +35,17 @@ no turn templates or their assembly, no jobs, memory, agents, gates or archive.
   anywhere at the root.
 - **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
 
+## A change from a repository below
+
+A repository below that needs a change this repository does not serve sends it as a pull request against
+this repository's GitHub repository, from a branch made from this repository's main. Its job never commits
+to this main and keeps no copy of the change. The change is the general case that `docs/conventions.md`
+states, with this repository's own tests; before it is opened and again in review it is held to that rule.
+
+Whoever holds this repository's work reviews the pull request and merges it or sends it back with the reason
+on it; `bmo-review` may assist. A merge raises this repository's version in semver, and the repository that
+asked pins that version and resumes the part it stopped.
+
 ## Checks
 
 - Static: `cargo check --workspace --all-targets`, then `cargo clippy --workspace --all-targets` and
