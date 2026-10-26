@@ -43,8 +43,7 @@ to this main and keeps no copy of the change. The change is the general case tha
 states, with this repository's own tests; before it is opened and again in review it is held to that rule.
 
 Whoever holds this repository's work reviews the pull request and merges it or sends it back with the reason
-on it; `bmo-review` may assist. A merge raises this repository's version in semver, and the repository that
-asked pins that version and resumes the part it stopped.
+on it; `bmo-review` may assist. A merge moves no version (`docs/conventions.md` in bmo-chat, 「Versions」: a version moves only at a release the owner declares); the repository that asked builds against the merged main through its path dependency and resumes the part it stopped.
 
 ## Checks
 
