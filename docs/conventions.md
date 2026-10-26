@@ -330,15 +330,29 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 ### Versions
 
 - **A unit has one version,** in semver, shared by every crate and package it publishes, and its health, its
-  OpenAPI document and its plugin all answer it.
+  OpenAPI document and its plugin all answer it, beside the commit that runs.
+- **A version moves only at a release, and a release is the owner's word.** A commit, a deploy, a fix, a
+  document change or a contract change moves no version by itself: the deployment is told apart by its
+  commit, which the deployment record, `GET /health` and the deployment briefing all name. When the owner
+  declares a release of a unit, or of the set with the units named, each named unit takes its next version in
+  the commit that releases it, and its documents' "Fixed at" line names that version.
 - **Before its first release a unit is `0.1.0` and counts revisions.** Its first version, `0.1.0`, is the
-  base and is no revision. Every later version bump is one revision, written `0.1.0-rev.<n>` with `n`
-  counting the bumps since the base from 1: the second version is `0.1.0-rev.1`, the sixth `0.1.0-rev.5`.
-  Major, minor and patch never move before the first release, whatever the change, a breaking one included.
-- **The first release drops the suffix,** and the unit is `0.1.0`. Semver orders every revision before it,
-  and the revisions by their number.
-- **From the first release on, the version moves by semver.** A removed or renamed route or field, or a field
-  that becomes required, is a major version.
+  base and is no revision. Every release before the first is one revision, written `0.1.0-rev.<n>` with `n`
+  counting the releases since the base from 1. Major, minor and patch never move before the first release,
+  whatever the change, a breaking one included; a unit that moved them anyway is brought back to the revision
+  form at its next release.
+- **The first release drops the suffix,** and the unit is `0.1.0`. It is the owner's own decision, taken for
+  the unit by name, never a side effect of a change. Semver orders every revision before it, and the revisions
+  by their number.
+- **From the first release on, the version moves by semver,** still only at a release: a removed or renamed
+  route or field, or a field that becomes required, makes the next release a major one.
+- **A consumer never pins a sibling's version.** A dependency on another unit of the set is by path (a path
+  dependency, a workspace member, a client package taken from its checkout), with no exact version
+  requirement, so a release of one unit forces no commit in another; the testbed builds each unit against the
+  sibling checkouts and that build is the compatibility check. A client pack a consumer vendors is named by
+  the commit it was packed from, not by a version.
+- **What a version says** is therefore only which release a running unit stands at; which change is live is
+  the commit, everywhere a person reads it.
 
 ## Service documents
 
