@@ -1,8 +1,9 @@
 # bmo conventions
 
-This document is the one source of two things every bmo repository follows: the common wire format a
-service answers in, and the rules between an upstream and its downstreams. A service's own documents state its
-routes and the pieces they carry, and take the format from here rather than restating it.
+This document is the one source of three things every bmo repository follows: the common wire format a
+service answers in, the rules between an upstream and its downstreams, and how a Rust unit builds and lays out
+its tests. A service's own documents state its routes and the pieces they carry, and take the format from here
+rather than restating it.
 
 ## Upstream and downstream
 
@@ -369,6 +370,37 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   `bmo-<unit>` skill, both in its repository, built on that client.
 - **A client carries the service's contract and nothing else.** No caller's policy goes into it.
 - **A caller uses the published client.** It writes no client of its own by hand.
+
+## Rust builds
+
+Every checkout of every unit builds in the one shared Cargo build directory the testbed keeps (bmo-testbed's
+`docs/deploy.md`, 「The Cargo build directory」), so what one unit's build leaves there is disk every unit
+pays for. Every unit that builds with Cargo meets the rules below in its workspace manifest and its crates.
+
+- **A test binary carries no debug information.** The workspace manifest's `[profile.test]` sets
+  `debug = "line-tables-only"`, `strip = "debuginfo"` and `incremental = false`. A failing test still
+  names the file, line and column it panicked at, since the panic's location is compiled into the code; a
+  backtrace names the functions it passed through, without their lines.
+- **No build keeps incremental state.** `[profile.dev]` sets `incremental = false` as `[profile.test]`
+  does, and the debug information a development build keeps is line tables beside the objects:
+  `debug = "line-tables-only"` and `split-debuginfo = "unpacked"`. A one-line change recompiles its crate
+  whole.
+- **A release carries no debug information.** `[profile.release]` sets `debug = false` and
+  `strip = "debuginfo"`.
+- **The testbed holds these settings** by its `cargo-profile` quick check, which a unit enables in its
+  `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
+- **A crate's integration tests are one test target,** `tests/main.rs`, named `main`. Each file of tests is a
+  module of it, `tests/<name>.rs` declared by `mod <name>;` in `tests/main.rs`, and a helper the modules share
+  is a module beside them. Cargo builds every file directly under `tests/` as a binary of its own, each
+  linking the crate and all its dependencies again, so the crate's manifest sets `autotests = false` in
+  `[package]` and names its one target with a `[[test]]` table: `name = "main"`, `path = "tests/main.rs"`.
+- **A test that must have its process to itself,** one that has to be the first to do something in its
+  process, stands in a target of its own, `tests/<name>/main.rs`, named by a `[[test]]` table of its own,
+  with the reason in its first lines. It reaches a module of the main target by a `#[path]` attribute.
+- **A test is run by its name filter.** A module's tests are `<name>::<test>`, so
+  `cargo test -p <crate> --test main <name>::` runs one file's tests and `<name>::<test>` one test; through
+  the testbed, `bmo-testbed cargo test -p <crate> --test main <name>::`. The testbed's change check maps a
+  changed module to the same filter (bmo-testbed's `docs/checks.md`, 「The change check」).
 
 ## The order units are fixed in
 
