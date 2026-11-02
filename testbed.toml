@@ -9,7 +9,7 @@ languages = ["cargo"]
 [check]
 # Korean in the code and the dependencies the manifests name. The repository lists its crates in the
 # README's own table, so the folder-table sweep does not apply.
-quick = ["korean", "dependencies"]
+quick = ["korean", "dependencies", "cargo-profile"]
 korean_ledger = "korean-ledger.json"
 # A base library stands on registry crates and packages alone.
 base_libraries = []
