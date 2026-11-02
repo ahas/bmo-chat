@@ -4,6 +4,8 @@ description = "The chat protocol's harness plugin: the bmo-chat command, whose M
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
 
 [[bin]]
 name = "bmo-chat"
@@ -26,3 +28,7 @@ jsonschema.workspace = true
 tokio = { workspace = true, features = ["io-util", "net", "process", "sync", "time"] }
 toml.workspace = true
 tower.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

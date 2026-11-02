@@ -1,0 +1,11 @@
+//! The crate's one test harness (bmo-chat's docs/conventions.md, 「Rust builds」): each file of tests a
+//! module of it, sharing the process.
+
+mod contract;
+mod dependencies;
+mod link;
+mod pieces;
+mod plain;
+mod refusal;
+mod send;
+mod server;
