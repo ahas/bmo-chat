@@ -1,9 +1,9 @@
 # bmo conventions
 
 This document is the one source of three things every bmo repository follows: the common wire format a
-service answers in, the rules between an upstream and its downstreams, and how a Rust unit builds and lays out
-its tests. A service's own documents state its routes and the pieces they carry, and take the format from here
-rather than restating it.
+service answers in, the rules between an upstream and its downstreams, and how a Rust unit builds, lays out
+its tests and takes its shared registry crates. A service's own documents state its routes and the pieces they
+carry, and take the format from here rather than restating it.
 
 ## Upstream and downstream
 
@@ -401,6 +401,41 @@ pays for. Every unit that builds with Cargo meets the rules below in its workspa
   `cargo test -p <crate> --test main <name>::` runs one file's tests and `<name>::<test>` one test; through
   the testbed, `bmo-testbed cargo test -p <crate> --test main <name>::`. The testbed's change check maps a
   changed module to the same filter (bmo-testbed's `docs/checks.md`, 「The change check」).
+
+## Shared versions
+
+A crate compiled into the shared build directory (「Rust builds」) is reused only by a build that asks for the
+same crate at the same version with the same features, standing on the same versions below it. A unit that
+asks for one feature more, or whose lock holds one patch version more of a crate far below, compiles the crate
+and everything above it again. `shared-versions.toml` at the root of this repository is the one list of the
+registry crates every unit takes alike, and every unit that builds with Cargo meets it.
+
+- **What the file holds.** Its `[dependencies]` table holds the line a unit writes for each listed crate: the
+  version requirement, which is the snapshot's version of the crate, and the features, sorted. The features
+  are the union of what the units need, the ones only a test build uses included, since Cargo unifies a
+  dev-dependency's features into the build it tests. Its `[snapshot]` table holds the version that every
+  registry crate the listed crates build on for x86_64-unknown-linux-gnu resolves to, the listed crates
+  included: one version for each semver line, and a list where the closure holds a crate on more than one
+  line. The file names crates and versions only, never a unit.
+- **A unit's manifests carry the listed lines byte for byte.** A unit with a workspace writes each listed
+  crate it uses in `[workspace.dependencies]` exactly as the file's line, and its crates take it with
+  `workspace = true`, adding nothing but `optional`. A unit that is one package writes the file's line in
+  every dependency table that names the crate. A crate the unit does not use it does not write.
+- **A unit's lock holds the snapshot.** Every registry crate of the unit's `Cargo.lock` whose name the
+  snapshot lists, on a semver line the snapshot names, stands at the snapshot's version. A version on a line
+  the snapshot does not name is another crate, and the unit's own. A unit moves its lock with
+  `cargo update --precise`, through the testbed's Cargo verb.
+- **A unit that genuinely needs another version or feature declares the exception in its own
+  `testbed.toml`, with the reason:** the line it writes for the crate instead, or the versions its lock holds
+  instead, under `[check.shared_versions.exceptions]` (bmo-testbed's `docs/declaration.md`). The variation
+  stays with the unit that needs it and costs that unit a compile of its own; the file never learns which
+  unit differs, so adding a unit changes no file outside it.
+- **An exception a second unit needs as well goes into the shared line.** The union is this repository's
+  decision, made by a change to the file, and the exception then leaves both units.
+- **The file changes here alone,** every line and the snapshot together, the snapshot taken from one
+  resolution of the lines; the units then copy the lines and move their locks.
+- **The testbed holds the rule** by its `shared-versions` quick check, which a unit enables in its
+  `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
 
 ## The order units are fixed in
 
