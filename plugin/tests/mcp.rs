@@ -216,7 +216,7 @@ fn text_of(result: &Value) -> Value {
 
 #[tokio::test]
 async fn the_server_starts_and_lists_exactly_the_twelve_tools_each_standing_alone() {
-  let mut server = Server::initialized(&["mcp", "--provider", "http://127.0.0.1:9"], None).await;
+  let mut server = Server::initialized(&["mcp", "--provider", "http://[::1]:9"], None).await;
   let listed = server.ask("tools/list", json!({})).await;
   server.stop().await;
 
