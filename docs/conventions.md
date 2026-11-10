@@ -387,6 +387,11 @@ pays for. Every unit that builds with Cargo meets the rules below in its workspa
   whole.
 - **A release carries no debug information.** `[profile.release]` sets `debug = false` and
   `strip = "debuginfo"`.
+- **A dependency carries no debug information in any build.** `[profile.dev.package."*"]` and
+  `[profile.test.package."*"]` set `debug = false`, which reaches every crate that is not a member of the
+  workspace. A dependency's line tables are a tenth to near half of its compiled bytes, so they are disk every
+  unit pays for and input every link reads, and a panic's location and the unit's own lines stand whole without
+  them.
 - **The testbed holds these settings** by its `cargo-profile` quick check, which a unit enables in its
   `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
 - **A crate's integration tests are one test target,** `tests/main.rs`, named `main`. Each file of tests is a
