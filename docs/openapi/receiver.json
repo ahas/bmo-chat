@@ -292,6 +292,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "stamps": {
+            "description": "The messages by who sent them and when, where the account knows them by no number the receiving side holds.",
+            "items": {
+              "$ref": "#/components/schemas/MessageStamp"
+            },
+            "type": "array"
+          },
           "via": {
             "type": "string"
           }
@@ -612,6 +619,25 @@
           }
         ]
       },
+      "MessageStamp": {
+        "description": "A message named by who sent it and the moment it was sent, as the hand-over carried them, where the account\nthat names it knows it by no number the receiving side holds.",
+        "properties": {
+          "senderId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sentAt": {
+            "description": "Epoch milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "senderId",
+          "sentAt"
+        ],
+        "type": "object"
+      },
       "PersonReactions": {
         "description": "One person's reactions on a message: their number, or none for the account itself, and their emoji, empty\nwhere they took theirs off.",
         "properties": {
@@ -652,6 +678,17 @@
           "roomId": {
             "format": "int64",
             "type": "integer"
+          },
+          "stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageStamp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The message by who sent it and when, where the account knows it by no number the receiving side holds."
           },
           "via": {
             "type": "string"
