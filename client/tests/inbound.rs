@@ -27,6 +27,8 @@ enum Taken {
   HandOver(i64, i64, Box<HandedMessage>),
   Gathered(i64, i64, GatheredPatch),
   AvatarsChanged(AvatarChange),
+  ReactionsChanged(bmo_chat_client::ReactionChange),
+  Deleted(bmo_chat_client::Deletion),
   Room(i64, RoomQuery),
   Rooms(RoomsQuery),
 }
@@ -131,6 +133,12 @@ impl ChatReceiver for Desk {
   }
   async fn avatars_changed(&self, change: AvatarChange) -> Result<(), WireError> {
     self.take(Taken::AvatarsChanged(change))
+  }
+  async fn reactions_changed(&self, change: bmo_chat_client::ReactionChange) -> Result<(), WireError> {
+    self.take(Taken::ReactionsChanged(change))
+  }
+  async fn deleted(&self, deletion: bmo_chat_client::Deletion) -> Result<(), WireError> {
+    self.take(Taken::Deleted(deletion))
   }
   async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError> {
     self.take(Taken::Room(room_id, query))?;

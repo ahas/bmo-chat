@@ -278,6 +278,31 @@
           }
         ]
       },
+      "Deletion": {
+        "description": "The body of `POST /deletions`: messages of one room deleted on the platform.",
+        "properties": {
+          "messageIds": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "roomId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "via": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "via",
+          "roomId",
+          "messageIds"
+        ],
+        "type": "object"
+      },
       "ErrorCode": {
         "description": "Why a request was not answered with success: it could not be answered at all, or it was refused. Every\ncode of the common wire format is here, beside the protocol's own.",
         "oneOf": [
@@ -587,6 +612,65 @@
           }
         ]
       },
+      "PersonReactions": {
+        "description": "One person's reactions on a message: their number, or none for the account itself, and their emoji, empty\nwhere they took theirs off.",
+        "properties": {
+          "emojis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "personId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "personId",
+          "emojis"
+        ],
+        "type": "object"
+      },
+      "ReactionChange": {
+        "description": "The body of `POST /reaction-changes`: one message's reactions as the platform shows them now.",
+        "properties": {
+          "messageId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reactions": {
+            "description": "Each person listed with every emoji they have on the message now.",
+            "items": {
+              "$ref": "#/components/schemas/PersonReactions"
+            },
+            "type": "array"
+          },
+          "roomId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "via": {
+            "type": "string"
+          },
+          "whole": {
+            "default": false,
+            "description": "Whether the list is every reaction the message carries, so a person not listed has none.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "via",
+          "roomId",
+          "messageId",
+          "reactions",
+          "whole"
+        ],
+        "type": "object"
+      },
       "ReceiverRoom": {
         "description": "One room as the receiving side holds it.",
         "properties": {
@@ -771,6 +855,108 @@
         "x-codes": [
           "bad-request",
           "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/deletions": {
+      "post": {
+        "operationId": "createDeletions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Deletion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deletion"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "Messages of one room deleted on the platform.",
+        "tags": [
+          "deletions"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/reaction-changes": {
+      "post": {
+        "operationId": "createReactionChanges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionChange"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "One message's reactions as the platform shows them now.",
+        "tags": [
+          "reaction-changes"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-found",
           "not-ready",
           "failed"
         ]
@@ -1089,6 +1275,12 @@
     },
     {
       "name": "avatar-changes"
+    },
+    {
+      "name": "reaction-changes"
+    },
+    {
+      "name": "deletions"
     }
   ],
   "x-calls": [],

@@ -45,5 +45,7 @@ pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering};
 pub use patience::{ChatPatience, ChatWait, RealClock};
 pub use provider_client::{ChatProviderClient, ClientFailure};
-pub use receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
+pub use receiver_bodies::{
+  AvatarChange, Deletion, HeldMessage, PersonReactions, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
+};
 pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSent};

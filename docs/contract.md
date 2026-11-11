@@ -388,6 +388,8 @@ hands the bytes over:
 | hand over | a message under its room and number, whatever its origin; the answer is the message as held, and whether the receiving side held it before |
 | gathered | the files a message's `gathering` promised, or why they were not kept |
 | avatars changed | the rooms and people whose kept profile picture changed, as an `AvatarChange` |
+| reactions changed | the reactions on one message as the platform shows them now, as a `ReactionChange` |
+| deleted | messages of one room deleted on the platform, as a `Deletion` |
 | room | one room as the receiving side holds it, a `ReceiverRoom`: whether it listens to the room, whether it asked for the room to be read, and the oldest message it holds of it; none where it holds nothing of the room |
 | rooms | a page of the provider's rooms whose past it may read back, each a `ReceiverRoom` |
 
@@ -397,6 +399,15 @@ already kept.
 An edited message is held as the hand-over carries it: the receiving side takes its words and its sender from
 the hand-over, so a provider that learns a message's sender was another (an account the owner took over, for
 example) hands the message over again as an `edit`, under the right sender.
+
+A message's reactions are handed over as the platform shows them: for each person listed, the emoji that person
+has on the message now, none where they took theirs off; a person not listed keeps what the receiving side holds,
+unless the change says it is the message's `whole` set, when a person not listed has none. A person is named by
+their number, and the account itself by none.
+
+A message deleted on the platform is handed over as deleted: the receiving side marks it so and keeps what it
+held of it, its words included, so whoever reads the room can still open them. A provider hands over only a
+deletion it learned from the platform, never one it made itself on the receiving side's word.
 
 A provider asks whether a room is listened to where it must decide by itself what to read or gather there; it
 keeps no switch of its own for it. Being listened to is no request to read a room: the receiving side may

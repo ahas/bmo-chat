@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 
 use bmo_chat_client::{
   AccountRoomsQuery, AvatarChange, AvatarsQuery, ChatAvatar, ChatContact, ChatDeclaration, ChatHealth,
-  ChatSendRequest, ChatSent, ChatStart, ContactsQuery, DialectCheck, DialectChecked, DialectRead,
+  ChatSendRequest, ChatSent, ChatStart, ContactsQuery, Deletion, DialectCheck, DialectChecked, DialectRead,
   DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, MessageFile, Page, ProviderOwner,
-  ProviderRoom, ReceiverRoom, RoomQuery, RoomsQuery, WireError,
+  ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery, WireError,
 };
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
@@ -588,6 +588,28 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<AvatarChange>()),
       answers: vec![(201, json_answer::<AvatarChange>(generator))],
+      codes: codes(true, &waits),
+    },
+    Route {
+      method: "post",
+      path: "/reaction-changes",
+      id: "createReactionChanges",
+      tag: "reaction-changes",
+      summary: "One message's reactions as the platform shows them now.",
+      parameters: Vec::new(),
+      body: Some(generator.subschema_for::<ReactionChange>()),
+      answers: vec![(201, json_answer::<ReactionChange>(generator))],
+      codes: codes(true, &[ErrorCode::NotFound, ErrorCode::NotReady, ErrorCode::Failed]),
+    },
+    Route {
+      method: "post",
+      path: "/deletions",
+      id: "createDeletions",
+      tag: "deletions",
+      summary: "Messages of one room deleted on the platform.",
+      parameters: Vec::new(),
+      body: Some(generator.subschema_for::<Deletion>()),
+      answers: vec![(201, json_answer::<Deletion>(generator))],
       codes: codes(true, &waits),
     },
   ]

@@ -303,6 +303,8 @@ its type as `Content-Type`. Where none is kept, or the provider does not declare
 | `PUT` | `/rooms/{roomId}/messages/{messageId}` | 201 or 200, the message handed over, as held |
 | `PATCH` | `/rooms/{roomId}/messages/{messageId}` | 200, the message with the files its gathering promised |
 | `POST` | `/avatar-changes` | 201, word that kept pictures changed |
+| `POST` | `/reaction-changes` | 201, a message's reactions as the platform shows them now |
+| `POST` | `/deletions` | 201, messages deleted on the platform |
 
 Every receiving-side route can answer 503 `not-ready` where the receiving side cannot take or answer it yet,
 and 500 `failed` where it failed while doing so, beside the codes each route names.
@@ -382,6 +384,20 @@ Word that kept profile pictures changed: taken for the first time, taken again, 
 `roomIds` and `personIds`, each a list of numbers whose picture changed. The word is for whatever shows the
 pictures, which fetches them again through the provider's avatar routes. The answer is 201 with the word as
 taken.
+
+### `POST /reaction-changes`
+
+A message's reactions as the platform shows them now. The body is `via`, `roomId`, `messageId`, `reactions`, a
+list of `{personId, emojis}` — `personId` the person's number, or null for the account itself, and `emojis` every
+emoji that person has on the message now, empty where they took theirs off — and `whole`, true where the list is
+every reaction the message carries. The answer is 201 with the change as taken; a message the receiving side does
+not hold is answered 404 `not-found`.
+
+### `POST /deletions`
+
+Messages of one room deleted on the platform. The body is `via`, `roomId` and `messageIds`. The receiving side
+marks each message it holds as deleted, keeping its words, and passes over one it does not hold. The answer is
+201 with the deletion as taken.
 
 ## The harness plugin
 

@@ -269,6 +269,12 @@ impl ChatReceiver for Receiving {
   async fn avatars_changed(&self, _change: AvatarChange) -> Result<(), ChatFailure> {
     Err("the stand-in receiving side takes no word of pictures".into())
   }
+  async fn reactions_changed(&self, _change: bmo_chat::ReactionChange) -> Result<(), ChatFailure> {
+    Err("the stand-in receiving side takes no word of reactions".into())
+  }
+  async fn deleted(&self, _deletion: bmo_chat::Deletion) -> Result<(), ChatFailure> {
+    Err("the stand-in receiving side takes no word of deletions".into())
+  }
   async fn room(&self, _room_id: i64, _query: RoomQuery) -> Result<Option<ReceiverRoom>, ChatFailure> {
     Ok(None)
   }
