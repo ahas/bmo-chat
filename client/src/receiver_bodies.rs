@@ -57,3 +57,35 @@ pub struct AvatarChange {
   pub room_ids: Vec<i64>,
   pub person_ids: Vec<i64>,
 }
+
+/// The body of `POST /reaction-changes`: one message's reactions as the platform shows them now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactionChange {
+  pub via: String,
+  pub room_id: i64,
+  pub message_id: i64,
+  /// Each person listed with every emoji they have on the message now.
+  pub reactions: Vec<PersonReactions>,
+  /// Whether the list is every reaction the message carries, so a person not listed has none.
+  #[serde(default)]
+  pub whole: bool,
+}
+
+/// One person's reactions on a message: their number, or none for the account itself, and their emoji, empty
+/// where they took theirs off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonReactions {
+  pub person_id: Option<i64>,
+  pub emojis: Vec<String>,
+}
+
+/// The body of `POST /deletions`: messages of one room deleted on the platform.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Deletion {
+  pub via: String,
+  pub room_id: i64,
+  pub message_ids: Vec<i64>,
+}

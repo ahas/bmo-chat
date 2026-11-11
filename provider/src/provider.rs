@@ -16,7 +16,9 @@ use crate::media::{ChatMediaRequest, ChatMediaResult};
 use crate::message::{GatheredPatch, HandedMessage};
 use crate::modes::{ChatModeStanding, ChatReadMode, ChatVoice};
 use crate::numbering::ChatNumbering;
-use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
+use crate::receiver_bodies::{
+  AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
+};
 use crate::refusal::ChatRefusal;
 use crate::send::{ChatSendRequest, ChatSendResult};
 
@@ -47,6 +49,12 @@ pub trait ChatReceiver: Send + Sync {
 
   /// Word that the kept profile pictures of these rooms and people changed.
   async fn avatars_changed(&self, change: AvatarChange) -> Result<(), ChatFailure>;
+
+  /// One message's reactions as the platform shows them now.
+  async fn reactions_changed(&self, change: ReactionChange) -> Result<(), ChatFailure>;
+
+  /// Messages of one room deleted on the platform.
+  async fn deleted(&self, deletion: Deletion) -> Result<(), ChatFailure>;
 
   /// The room as the receiving side holds it, or null where it holds nothing of it, which reads as a room
   /// not listened to.

@@ -20,7 +20,9 @@ use serde::de::DeserializeOwned;
 use crate::bodies::Page;
 use crate::error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
 use crate::message::{GatheredPatch, HandedMessage};
-use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
+use crate::receiver_bodies::{
+  AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
+};
 
 /// What the receiving side does with what a provider hands over, and how it answers what a provider asks.
 /// The consuming service implements it. A call it could not take or answer is answered with the error it
@@ -50,6 +52,13 @@ pub trait ChatReceiver: Send + Sync {
   /// Word that the kept profile pictures of these rooms and people changed.
   async fn avatars_changed(&self, change: AvatarChange) -> Result<(), WireError>;
 
+  /// One message's reactions as the platform shows them now: each person listed takes the emoji listed for them,
+  /// and where the change is `whole`, a person not listed has none. `not-found` where it does not hold the message.
+  async fn reactions_changed(&self, change: ReactionChange) -> Result<(), WireError>;
+
+  /// Messages of one room deleted on the platform: each one held marked deleted, its words kept.
+  async fn deleted(&self, deletion: Deletion) -> Result<(), WireError>;
+
   /// The room as the receiving side holds it for the provider `via`, or null where it holds nothing of it.
   async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError>;
 
@@ -72,6 +81,8 @@ pub fn receiver_router(receiver: Arc<dyn ChatReceiver>, token: impl Into<String>
     .route("/rooms/{room_id}", get(room))
     .route("/rooms/{room_id}/messages/{message_id}", put(hand_over).patch(gathered))
     .route("/avatar-changes", post(avatars_changed))
+    .route("/reaction-changes", post(reactions_changed))
+    .route("/deletions", post(deleted))
     .fallback(no_route)
     .method_not_allowed_fallback(no_route)
     .layer(DefaultBodyLimit::disable())
@@ -221,4 +232,22 @@ async fn avatars_changed(
   let change: AvatarChange = read(&body)?;
   served.receiver.avatars_changed(change.clone()).await?;
   Ok((StatusCode::CREATED, Json(change)))
+}
+
+async fn reactions_changed(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<ReactionChange>), Answer> {
+  let change: ReactionChange = read(&body)?;
+  served.receiver.reactions_changed(change.clone()).await?;
+  Ok((StatusCode::CREATED, Json(change)))
+}
+
+async fn deleted(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<Deletion>), Answer> {
+  let deletion: Deletion = read(&body)?;
+  served.receiver.deleted(deletion.clone()).await?;
+  Ok((StatusCode::CREATED, Json(deletion)))
 }

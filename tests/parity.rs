@@ -729,6 +729,33 @@ macro_rules! fixtures {
         }]
       }
 
+      pub fn reaction_changes() -> Vec<ReactionChange> {
+        vec![ReactionChange {
+          via: "stand-in".into(),
+          room_id: -100,
+          message_id: 7,
+          reactions: vec![
+            PersonReactions {
+              person_id: Some(42),
+              emojis: vec!["\u{1F44D}".into()],
+            },
+            PersonReactions {
+              person_id: None,
+              emojis: vec![],
+            },
+          ],
+          whole: true,
+        }]
+      }
+
+      pub fn deletions() -> Vec<Deletion> {
+        vec![Deletion {
+          via: "stand-in".into(),
+          room_id: -100,
+          message_ids: vec![7, 8],
+        }]
+      }
+
       pub fn room_queries() -> Vec<RoomQuery> {
         vec![RoomQuery {
           via: "stand-in".into(),
@@ -1591,6 +1618,8 @@ enum Took {
   HandOver(i64, i64, Box<bmo_chat_client::HandedMessage>),
   Gathered(i64, i64, bmo_chat_client::GatheredPatch),
   AvatarsChanged(bmo_chat_client::AvatarChange),
+  ReactionsChanged(bmo_chat_client::ReactionChange),
+  Deleted(bmo_chat_client::Deletion),
   Room(i64, bmo_chat_client::RoomQuery),
   Rooms(bmo_chat_client::RoomsQuery),
 }
@@ -1662,6 +1691,17 @@ impl bmo_chat_client::ChatReceiver for Taker {
     change: bmo_chat_client::AvatarChange,
   ) -> Result<(), bmo_chat_client::WireError> {
     self.take(Took::AvatarsChanged(change))
+  }
+
+  async fn reactions_changed(
+    &self,
+    change: bmo_chat_client::ReactionChange,
+  ) -> Result<(), bmo_chat_client::WireError> {
+    self.take(Took::ReactionsChanged(change))
+  }
+
+  async fn deleted(&self, deletion: bmo_chat_client::Deletion) -> Result<(), bmo_chat_client::WireError> {
+    self.take(Took::Deleted(deletion))
   }
 
   async fn room(
@@ -1736,6 +1776,12 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
   for change in on_provider::avatar_changes() {
     link.avatars_changed(change).await.unwrap();
   }
+  for change in on_provider::reaction_changes() {
+    link.reactions_changed(change).await.unwrap();
+  }
+  for deletion in on_provider::deletions() {
+    link.deleted(deletion).await.unwrap();
+  }
   let asking = on_provider::room_queries().swap_remove(0);
   for room in on_provider::receiver_rooms() {
     assert_eq!(link.room(room.id, asking.clone()).await.unwrap(), Some(room));
@@ -1762,6 +1808,8 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
       .map(|patch| Took::Gathered(room_id, message_id, patch)),
   );
   expected.extend(on_client::avatar_changes().into_iter().map(Took::AvatarsChanged));
+  expected.extend(on_client::reaction_changes().into_iter().map(Took::ReactionsChanged));
+  expected.extend(on_client::deletions().into_iter().map(Took::Deleted));
   let asked = on_client::room_queries().swap_remove(0);
   expected.extend(on_client::receiver_rooms().iter().map(|room| Took::Room(room.id, asked.clone())));
   expected.push(Took::Room(13, asked));

@@ -17,7 +17,9 @@ use crate::bodies::Page;
 use crate::error::{ErrorCode, WireError};
 use crate::message::{GatheredPatch, HandedMessage};
 use crate::provider::{ChatFailure, ChatReceiver};
-use crate::receiver_bodies::{AvatarChange, HeldMessage, ReceiverRoom, RoomQuery, RoomsQuery};
+use crate::receiver_bodies::{
+  AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
+};
 
 /// How a wait between two offers of a request is spent. The link counts the time it has waited by the
 /// intervals it asked for, never by reading a clock, so a waiter that returns at once makes a whole window
@@ -284,6 +286,18 @@ impl ChatReceiver for ChatReceiverLink {
   async fn avatars_changed(&self, change: AvatarChange) -> Result<(), ChatFailure> {
     let call = Call::body(&change);
     let (_, IgnoredAny) = self.call(Method::POST, "avatar-changes", call).await?;
+    Ok(())
+  }
+
+  async fn reactions_changed(&self, change: ReactionChange) -> Result<(), ChatFailure> {
+    let call = Call::body(&change);
+    let (_, IgnoredAny) = self.call(Method::POST, "reaction-changes", call).await?;
+    Ok(())
+  }
+
+  async fn deleted(&self, deletion: Deletion) -> Result<(), ChatFailure> {
+    let call = Call::body(&deletion);
+    let (_, IgnoredAny) = self.call(Method::POST, "deletions", call).await?;
     Ok(())
   }
 

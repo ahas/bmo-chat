@@ -183,6 +183,12 @@ impl ChatReceiver for Takes {
   async fn avatars_changed(&self, _: AvatarChange) -> Result<(), WireError> {
     Ok(())
   }
+  async fn reactions_changed(&self, _: bmo_chat_client::ReactionChange) -> Result<(), WireError> {
+    Ok(())
+  }
+  async fn deleted(&self, _: bmo_chat_client::Deletion) -> Result<(), WireError> {
+    Ok(())
+  }
   async fn room(&self, _: i64, _: RoomQuery) -> Result<Option<ReceiverRoom>, WireError> {
     Ok(None)
   }
@@ -195,7 +201,7 @@ impl ChatReceiver for Takes {
 async fn every_receiving_side_route_of_the_document_is_served() {
   let router = receiver_router(Arc::new(Takes), TOKEN);
   let routes = routes(Side::Receiver);
-  assert_eq!(routes.len(), 5);
+  assert_eq!(routes.len(), 7);
   for (method, path) in routes {
     let path = path.replace("{roomId}", "-100").replace("{messageId}", "5");
     let request = Request::builder()
@@ -593,6 +599,25 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_receivi
   };
   bodies.valid("post", "/avatar-changes", Request, &change);
   bodies.valid("post", "/avatar-changes", Answer(201), &change);
+  let reactions = bmo_chat_client::ReactionChange {
+    via: "stand-in".into(),
+    room_id: -100,
+    message_id: 5,
+    reactions: vec![bmo_chat_client::PersonReactions {
+      person_id: Some(42),
+      emojis: vec!["\u{1F44D}".into()],
+    }],
+    whole: false,
+  };
+  bodies.valid("post", "/reaction-changes", Request, &reactions);
+  bodies.valid("post", "/reaction-changes", Answer(201), &reactions);
+  let deletion = bmo_chat_client::Deletion {
+    via: "stand-in".into(),
+    room_id: -100,
+    message_ids: vec![5],
+  };
+  bodies.valid("post", "/deletions", Request, &deletion);
+  bodies.valid("post", "/deletions", Answer(201), &deletion);
   bodies.every_route(Side::Receiver);
 }
 
