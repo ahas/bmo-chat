@@ -603,6 +603,10 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_receivi
     via: "stand-in".into(),
     room_id: -100,
     message_id: 5,
+    stamp: Some(bmo_chat_client::MessageStamp {
+      sender_id: 42,
+      sent_at: 1_700_000_000_000,
+    }),
     reactions: vec![bmo_chat_client::PersonReactions {
       person_id: Some(42),
       emojis: vec!["\u{1F44D}".into()],
@@ -615,6 +619,7 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_receivi
     via: "stand-in".into(),
     room_id: -100,
     message_ids: vec![5],
+    stamps: vec![],
   };
   bodies.valid("post", "/deletions", Request, &deletion);
   bodies.valid("post", "/deletions", Answer(201), &deletion);

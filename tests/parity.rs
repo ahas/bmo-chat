@@ -734,6 +734,7 @@ macro_rules! fixtures {
           via: "stand-in".into(),
           room_id: -100,
           message_id: 7,
+          stamp: None,
           reactions: vec![
             PersonReactions {
               person_id: Some(42),
@@ -753,6 +754,10 @@ macro_rules! fixtures {
           via: "stand-in".into(),
           room_id: -100,
           message_ids: vec![7, 8],
+          stamps: vec![MessageStamp {
+            sender_id: 42,
+            sent_at: 1_700_000_000_000,
+          }],
         }]
       }
 

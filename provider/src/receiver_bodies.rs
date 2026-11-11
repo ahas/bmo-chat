@@ -64,6 +64,9 @@ pub struct ReactionChange {
   pub via: String,
   pub room_id: i64,
   pub message_id: i64,
+  /// The message by who sent it and when, where the account knows it by no number the receiving side holds.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub stamp: Option<MessageStamp>,
   /// Each person listed with every emoji they have on the message now.
   pub reactions: Vec<PersonReactions>,
   /// Whether the list is every reaction the message carries, so a person not listed has none.
@@ -87,4 +90,17 @@ pub struct Deletion {
   pub via: String,
   pub room_id: i64,
   pub message_ids: Vec<i64>,
+  /// The messages by who sent them and when, where the account knows them by no number the receiving side holds.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub stamps: Vec<MessageStamp>,
+}
+
+/// A message named by who sent it and the moment it was sent, as the hand-over carried them, where the account
+/// that names it knows it by no number the receiving side holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageStamp {
+  pub sender_id: i64,
+  /// Epoch milliseconds.
+  pub sent_at: i64,
 }

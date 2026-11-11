@@ -390,13 +390,15 @@ taken.
 A message's reactions as the platform shows them now. The body is `via`, `roomId`, `messageId`, `reactions`, a
 list of `{personId, emojis}` — `personId` the person's number, or null for the account itself, and `emojis` every
 emoji that person has on the message now, empty where they took theirs off — and `whole`, true where the list is
-every reaction the message carries. The answer is 201 with the change as taken; a message the receiving side does
-not hold is answered 404 `not-found`.
+every reaction the message carries. Where the account knows the message by no number the receiving side holds,
+`stamp` names it instead, `{senderId, sentAt}`, and `messageId` is not read. The answer is 201 with the change as
+taken; a message the receiving side does not hold is answered 404 `not-found`.
 
 ### `POST /deletions`
 
-Messages of one room deleted on the platform. The body is `via`, `roomId` and `messageIds`. The receiving side
-marks each message it holds as deleted, keeping its words, and passes over one it does not hold. The answer is
+Messages of one room deleted on the platform. The body is `via`, `roomId`, `messageIds`, and `stamps`, a list of
+`{senderId, sentAt}` naming the messages the account knows by no number the receiving side holds. The receiving
+side marks each message it holds as deleted, keeping its words, and passes over one it does not hold. The answer is
 201 with the deletion as taken.
 
 ## The harness plugin

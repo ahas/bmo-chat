@@ -406,7 +406,12 @@ unless the change says it is the message's `whole` set, when a person not listed
 their number, and the account itself by none.
 
 A message deleted on the platform is handed over as deleted: the receiving side marks it so and keeps what it
-held of it, its words included, so whoever reads the room can still open them. A provider hands over only a
+held of it, its words included, so whoever reads the room can still open them.
+
+Where the platform numbers a room's messages apart for each account, so the account that learns of a reaction
+or a deletion knows the message by a number the receiving side never held, the message is named by its
+`stamp` instead: who sent it and the moment it was sent, as the hand-over carried them. The receiving side
+takes the message of that room it holds under that sender and that moment. A provider hands over only a
 deletion it learned from the platform, never one it made itself on the receiving side's word.
 
 A provider asks whether a room is listened to where it must decide by itself what to read or gather there; it
