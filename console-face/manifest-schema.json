@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "The bundle's name: its words' namespace."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The key, in the bundle's words, its screen is named by in the console's menu; under the bundle's namespace."
+    },
+    "icon": {
+      "type": "string",
+      "pattern": "^i-[a-z0-9]+(?:-[a-z0-9]+)+$",
+      "description": "The icon drawn beside the screen's name."
+    },
+    "screenPath": {
+      "type": "string",
+      "pattern": "^(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+$",
+      "description": "The path the bundle's screens stand under."
+    },
+    "formerScreenPaths": {
+      "default": [],
+      "description": "The paths the bundle's screens stood under before; a console answers every address under one as moved to the screen path.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+$",
+        "description": "A path the bundle's screens stood under before."
+      }
+    },
+    "serviceName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "The service's name, which the console relays it under."
+    },
+    "layer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The version of the layer the bundle was built on, as the bundle build wrote it."
+    },
+    "bundle": {
+      "type": "string",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "description": "The path of the service's API the bundle's module is answered at."
+    },
+    "stylesheet": {
+      "type": "string",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "description": "The path of the service's API the bundle's stylesheet is answered at."
+    },
+    "words": {
+      "type": "string",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "description": "The path of the service's API the bundle's words are answered at."
+    },
+    "apiPrefix": {
+      "default": "/",
+      "type": "string",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "description": "The path of the service's API every call the screens make stands under."
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "administrator",
+        "member"
+      ],
+      "description": "The least role a reader holds to open the screen."
+    },
+    "ownerKey": {
+      "default": false,
+      "description": "Whether every call the screens make needs the reader's owner key.",
+      "type": "boolean"
+    },
+    "events": {
+      "default": false,
+      "description": "Whether the screens read the service's event stream.",
+      "type": "boolean"
+    },
+    "websocket": {
+      "default": false,
+      "description": "Whether the screens open a WebSocket to the service.",
+      "type": "boolean"
+    },
+    "pushKinds": {
+      "default": [],
+      "description": "The event kinds a console may raise as a notice to a reader not on the screen.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
+      }
+    },
+    "sidebarUnread": {
+      "description": "The route a console reads a sidebar unread count from, and the field of its answer that holds it.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+          "description": "The path of the service's API the count is answered at."
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$",
+          "description": "The answer's field holding the count, a whole number nought or more."
+        }
+      },
+      "required": [
+        "path",
+        "field"
+      ],
+      "additionalProperties": false
+    },
+    "calls": {
+      "default": [],
+      "description": "The other services the screens call through the console, each by the service name its own manifest gives it.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+      }
+    },
+    "relays": {
+      "default": [],
+      "description": "The service's own routes outside the API prefix that a console relays as well.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
+            "description": "The route's method."
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+            "description": "The route's whole path on the service's API."
+          }
+        },
+        "required": [
+          "method",
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "shareReads": {
+      "default": [],
+      "description": "The reads a share token alone permits: path patterns under the API prefix, each holding {token} once.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
+      }
+    },
+    "shareHead": {
+      "description": "The read a console asks for what a share address reads as before it is opened: a path pattern under the API prefix holding {token} once.",
+      "type": "string",
+      "pattern": "^(?:\\/(?:\\{token\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
+    }
+  },
+  "required": [
+    "name",
+    "title",
+    "icon",
+    "screenPath",
+    "serviceName",
+    "layer",
+    "bundle",
+    "words",
+    "role"
+  ],
+  "additionalProperties": false
+}

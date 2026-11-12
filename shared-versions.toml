@@ -1,6 +1,7 @@
 # The registry crates every Rust unit takes at one version and one feature set, so that what one unit's
-# build compiles into the shared build directory every other unit's build reuses. The rule is
-# docs/conventions.md, 「Shared versions」; the testbed's shared-versions quick check holds a unit to it.
+# build compiles into the shared build directory every other unit's build reuses, and the one release of each
+# package every consumer vendors as a packed file. The rule is docs/conventions.md, 「Shared versions」; the
+# testbed's shared-versions quick check holds a unit to it.
 
 # The line a unit writes for each listed crate, copied byte for byte into its [workspace.dependencies],
 # or into its [dependencies] where it is one package. The features are the union of what the units need,
@@ -167,3 +168,10 @@ zerotrie = "0.2.5"
 zerovec = "0.11.8"
 zerovec-derive = "0.11.6"
 zmij = "1.0.23"
+
+# The one release of each package every consumer vendors: the version, the packed file the package's release
+# verb wrote for it, and that file's sha256 as the package's own ledger holds it.
+[packages.bmo-ui]
+version = "0.1.0-rev.18"
+file = "bmo-ui-0.1.0-rev.18.tgz"
+sha256 = "be2b9cf3daa5a6a9a23de75cb88d96d7ea602e795f17f81f2740f24b2f3df512"

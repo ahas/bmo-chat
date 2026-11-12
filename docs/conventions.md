@@ -2,8 +2,8 @@
 
 This document is the one source of three things every bmo repository follows: the common wire format a
 service answers in, the rules between an upstream and its downstreams, and how a Rust unit builds, lays out
-its tests and takes its shared registry crates. A service's own documents state its routes and the pieces they
-carry, and take the format from here rather than restating it.
+its tests and takes its shared registry crates and the one release of bmo-ui. A service's own documents state
+its routes and the pieces they carry, and take the format from here rather than restating it.
 
 ## Upstream and downstream
 
@@ -21,7 +21,7 @@ is whether it can be offered to a harness as an MCP server and be of use there: 
 
 | Side | Units |
 |---|---|
-| Upstream libraries | bmo-chat (the chat protocol), bmo-text, bmo-ui |
+| Upstream libraries | bmo-chat (the chat protocol and the console face), bmo-text, bmo-ui |
 | Upstream services | bmo-job (todo), bmo-brain, bmo-graph, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
 | Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-kakaotalk, bmo-discord, bmo-ms-teams, bmo-remote, bmo-cli, bmo-web |
 | Downstream content | bmo-gate-harvest, bmo-persona |
@@ -352,6 +352,10 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   requirement, so a release of one unit forces no commit in another; the testbed builds each unit against the
   sibling checkouts and that build is the compatibility check. A client pack a consumer vendors is named by
   the commit it was packed from, not by a version.
+- **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle and its
+  console stand on one release of it (bmo-ui's `docs/console-bundles.md`, 「The layer a bundle is built on」).
+  Every consumer vendors the one packed file bmo-ui's release verb wrote for the release `shared-versions.toml`
+  pins (「Shared versions」), never a pack of its own.
 - **What a version says** is therefore only which release a running unit stands at; which change is live is
   the commit, everywhere a person reads it.
 
@@ -412,8 +416,10 @@ pays for. Every unit that builds with Cargo meets the rules below in its workspa
 A crate compiled into the shared build directory (「Rust builds」) is reused only by a build that asks for the
 same crate at the same version with the same features, standing on the same versions below it. A unit that
 asks for one feature more, or whose lock holds one patch version more of a crate far below, compiles the crate
-and everything above it again. `shared-versions.toml` at the root of this repository is the one list of the
-registry crates every unit takes alike, and every unit that builds with Cargo meets it.
+and everything above it again. A console bundle runs on its console's copy of bmo-ui, so it is attached only
+where it was built on the release the console runs. `shared-versions.toml` at the root of this repository is
+the one list of the registry crates every unit takes alike and of the one release of each package every
+consumer vendors, and every unit that builds with Cargo or vendors a listed package meets it.
 
 - **What the file holds.** Its `[dependencies]` table holds the line a unit writes for each listed crate: the
   version requirement, which is the snapshot's version of the crate, and the features, sorted. The features
@@ -421,11 +427,17 @@ registry crates every unit takes alike, and every unit that builds with Cargo me
   dev-dependency's features into the build it tests. Its `[snapshot]` table holds the version that every
   registry crate the listed crates build on for x86_64-unknown-linux-gnu resolves to, the listed crates
   included: one version for each semver line, and a list where the closure holds a crate on more than one
-  line. The file names crates and versions only, never a unit.
+  line. Its `[packages.<name>]` tables each pin the one release of a package every consumer vendors as a
+  packed file: `version`, the release's version; `file`, the packed file's name as the package's release verb
+  wrote it; and `sha256`, that file's sha256 in lowercase hexadecimal, as the package's own ledger holds it.
+  bmo-ui is pinned there. The file names crates, packages, files and versions only, never a unit.
 - **A unit's manifests carry the listed lines byte for byte.** A unit with a workspace writes each listed
   crate it uses in `[workspace.dependencies]` exactly as the file's line, and its crates take it with
   `workspace = true`, adding nothing but `optional`. A unit that is one package writes the file's line in
   every dependency table that names the crate. A crate the unit does not use it does not write.
+- **A consumer vendors the pinned file as it stands.** Every package manifest of a unit that names a pinned
+  package names the pinned file where it takes a file, or the pinned version where it names a version, and the
+  file it vendors has the pinned sha256. A unit never packs a pinned package from its source.
 - **A unit's lock holds the snapshot.** Every registry crate of the unit's `Cargo.lock` whose name the
   snapshot lists, on a semver line the snapshot names, stands at the snapshot's version. A version on a line
   the snapshot does not name is another crate, and the unit's own. A unit moves its lock with
@@ -438,9 +450,17 @@ registry crates every unit takes alike, and every unit that builds with Cargo me
 - **An exception a second unit needs as well goes into the shared line.** The union is this repository's
   decision, made by a change to the file, and the exception then leaves both units.
 - **The file changes here alone,** every line and the snapshot together, the snapshot taken from one
-  resolution of the lines; the units then copy the lines and move their locks.
+  resolution of the lines; the units then copy the lines and move their locks. A package's pin moves to a
+  release its own repository has published, and the units then vendor that file.
 - **The testbed holds the rule** by its `shared-versions` quick check, which a unit enables in its
   `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
+
+## The console face
+
+A Rust unit that brings a console screen serves its console face through the `bmo-console-face` crate of this
+repository (`console-face.md`), taken by path, and keeps no manifest, bundle route or console guard of its own.
+The crate holds the face to bmo-ui's contract, and a unit's test reads the manifest its face serves through
+bmo-ui's own reading, as `console-face.md` states.
 
 ## The order units are fixed in
 
@@ -465,8 +485,8 @@ flowchart TD
 ```
 
 - **Stage 1.** The libraries call nothing. bmo-chat defines, as protocol, the routes a provider serves and the
-  routes a provider calls on the receiving side; bmo-ui states the console plugin contract every console
-  bundle conforms to.
+  routes a provider calls on the receiving side, and serves a unit's console face; bmo-ui states the console
+  plugin contract every console bundle conforms to.
 - **Stage 2.** None of these calls another upstream service, so they are fixed side by side. The cache-warmer
   crate moves into bmo-cache-warmer here, since an upstream imports no downstream.
 - **Stage 3.** bmo-arbiter calls bmo-node, bmo-artifact calls bmo-explorer for page imports, and bmo-review

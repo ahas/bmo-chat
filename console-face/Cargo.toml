@@ -1,0 +1,24 @@
+[package]
+name = "bmo-console-face"
+description = "A service's console face by bmo-ui's console contract: its manifest, its bundle's files and their guard."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
+
+[dependencies]
+axum.workspace = true
+jsonschema.workspace = true
+mime_guess.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+toml.workspace = true
+tower.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

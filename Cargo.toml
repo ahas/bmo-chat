@@ -1,7 +1,7 @@
 # The workspace: the two base libraries, the harness plugin, and the repository's own package at the root,
 # which publishes nothing and holds the checks that span the crates in `tests/`.
 [workspace]
-members = ["provider", "client", "plugin"]
+members = ["provider", "client", "plugin", "console-face"]
 resolver = "3"
 
 [workspace.package]
@@ -16,6 +16,7 @@ base64 = "0.22.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 headers = "0.4.1"
 jsonschema = { version = "0.58.6", default-features = false }
+mime_guess = "2.0.5"
 pulldown-cmark = { version = "0.13.0", default-features = false }
 regex = "1.13.1"
 reqwest = { version = "0.13.5", features = ["json", "query", "stream"] }
@@ -23,6 +24,7 @@ rmcp = { version = "3.5.0", default-features = false, features = ["server", "tra
 schemars = "1.0.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.138"
+sha2 = "0.10.9"
 strum = { version = "0.28.0", features = ["derive"] }
 tokio = { version = "1.53.3", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
 tower = { version = "0.5.2", features = ["util"] }
