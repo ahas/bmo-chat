@@ -306,6 +306,7 @@ name = "bmo-console-face"
 version = "0.1.0-rev.8"
 dependencies = [
  "axum",
+ "headers",
  "jsonschema",
  "mime_guess",
  "percent-encoding",

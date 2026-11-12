@@ -9,6 +9,7 @@ autotests = false
 
 [dependencies]
 axum.workspace = true
+headers.workspace = true
 jsonschema.workspace = true
 mime_guess.workspace = true
 percent-encoding.workspace = true

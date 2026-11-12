@@ -1,8 +1,11 @@
 //! Who a call to the face, or to a screen's route, comes from: the console's credential, and the role and owner
 //! key the console relays with it (bmo-ui's `docs/console-bundles.md`, 「Roles and the owner key」).
 
-use axum::http::header::AUTHORIZATION;
+use std::fmt;
+
 use axum::http::{HeaderMap, Method};
+use headers::authorization::Bearer;
+use headers::{Authorization, HeaderMapExt};
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,7 +17,35 @@ pub const OWNER_KEY_HEADER: &str = "Owner-Key";
 /// The header the console relays the reader's role in.
 pub const OWNER_ROLE_HEADER: &str = "Owner-Role";
 
-const BEARER: &str = "Bearer ";
+/// The console's credential, kept as its digest: whether a call carries it, as the face's own routes read it, for
+/// a route the console alone calls (`docs/console-face.md`, 「The credential check」).
+#[derive(Clone)]
+pub struct ConsoleCredential {
+  digest: [u8; 32],
+}
+
+impl ConsoleCredential {
+  /// The credential the console calls with.
+  pub fn new(credential: &str) -> Self {
+    Self {
+      digest: digest(credential),
+    }
+  }
+
+  /// Whether a call carries the credential, as `Authorization: Bearer` with the scheme in any letter case.
+  pub fn carried_by(&self, headers: &HeaderMap) -> bool {
+    // Compared by digest, so the time taken says nothing of how much of the token was right.
+    headers
+      .typed_get::<Authorization<Bearer>>()
+      .is_some_and(|sent| digest(sent.token()) == self.digest)
+  }
+}
+
+impl fmt::Debug for ConsoleCredential {
+  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    formatter.write_str("ConsoleCredential(..)")
+  }
+}
 
 /// The contract's roles, from the one holding the most.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -33,10 +64,10 @@ impl Role {
   }
 }
 
-/// What the manifest asks of a reader, and the console's credential, as its digest.
+/// What the manifest asks of a reader, and the console's credential.
 #[derive(Clone, Debug)]
 pub(crate) struct Guard {
-  credential: [u8; 32],
+  credential: ConsoleCredential,
   role: Role,
   owner_key: bool,
   /// Whether the manifest names a share read, so a reader with no sign-in loads the bundle's files.
@@ -60,7 +91,7 @@ impl Guard {
     let share_page = !reads.is_empty();
     let shared = reads.into_iter().chain(head).filter_map(Value::as_str).map(segments).collect();
     Self {
-      credential: digest(credential),
+      credential: ConsoleCredential::new(credential),
       role,
       owner_key,
       share_page,
@@ -88,11 +119,7 @@ impl Guard {
 
   /// Whether the call carries the console's credential.
   pub fn carries_console_credential(&self, headers: &HeaderMap) -> bool {
-    let Some(token) = headers.get(AUTHORIZATION).and_then(|value| value.to_str().ok()) else {
-      return false;
-    };
-    // Compared by digest, so the time taken says nothing of how much of the token was right.
-    token.strip_prefix(BEARER).is_some_and(|token| digest(token) == self.credential)
+    self.credential.carried_by(headers)
   }
 
   /// The console's credential, refused 401 where the call lacks it.
