@@ -3,6 +3,7 @@
 
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, Method};
+use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -68,26 +69,19 @@ impl Guard {
   }
 
   /// Whether a call is a share read or the share head's read, which the contract holds to its token instead of
-  /// the role and the owner key (bmo-ui's `docs/console-bundles.md`, 「Share pages」): a `GET` or a `HEAD` whose
-  /// path a pattern matches segment by segment, a placeholder matching any one segment but an empty one and one
-  /// that reads as a dot or two. A segment holding an escaped dot is matched by no placeholder, so such a call is
-  /// held to the role.
+  /// the role and the owner key (bmo-ui's `docs/console-bundles.md`, 「Share pages」): a `GET` or a `HEAD`, in any
+  /// letter case, whose path a pattern matches segment by segment, a placeholder matching any one segment that
+  /// is not empty and does not read, plain or escaped, as a dot or two. The path is taken as the call writes it.
   pub fn shared(&self, method: &Method, path: &str) -> bool {
-    if method != Method::GET && method != Method::HEAD {
+    let method = method.as_str();
+    if !method.eq_ignore_ascii_case("GET") && !method.eq_ignore_ascii_case("HEAD") {
       return false;
     }
     let asked = segments(path);
     self.shared.iter().any(|pattern| {
       pattern.len() == asked.len()
         && pattern.iter().zip(&asked).all(|(written, segment)| {
-          if written.starts_with('{') && written.ends_with('}') {
-            !segment.is_empty()
-              && segment != "."
-              && segment != ".."
-              && !segment.to_ascii_lowercase().contains("%2e")
-          } else {
-            written == segment
-          }
+          if written.starts_with('{') { placeholder_matches(segment) } else { written == segment }
         })
     })
   }
@@ -133,6 +127,16 @@ impl Guard {
   pub fn file(&self, headers: &HeaderMap) -> Result<(), Refusal> {
     if self.share_page { Ok(()) } else { self.reader(headers) }
   }
+}
+
+// What a placeholder matches: one segment that is not empty and does not read, plain or escaped, as a dot or two.
+// A segment whose escapes do not decode as text is read as written.
+fn placeholder_matches(segment: &str) -> bool {
+  let read = percent_decode_str(segment)
+    .decode_utf8()
+    .map(|read| read.into_owned())
+    .unwrap_or_else(|_| segment.to_owned());
+  !segment.is_empty() && read != "." && read != ".."
 }
 
 // A path's segments after its leading slash.

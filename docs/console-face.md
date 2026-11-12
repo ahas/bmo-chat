@@ -84,8 +84,8 @@ console credential: the service's own guard refuses what it must.
 
 A share read and the share head's read, a `GET` or a `HEAD` whose path a pattern under `shareReads` or
 `shareHead` matches, pass on with no role and no owner key, since the contract holds them to their token: the
-service answers each for a live token alone. A segment holding an escaped dot matches no placeholder, so such a
-call is held to the role.
+service answers each for a live token alone. A path matches a pattern as the contract's reading matches a share
+read, in any letter case of the method; the crate's tests hold this matching to bmo-ui's own `shareRead`.
 
 ## The words
 
@@ -96,13 +96,18 @@ route of its own, a share head among them, speaks in the bundle's words without 
 
 - **What it is.** The crate reads a manifest through bmo-ui's own `consoleManifest`, run by Bun from bmo-ui's
   packed release file, and answers the manifest as a console reads it, or the reading's refusal. It answers the
-  contract's JSON Schema the same way. A service's running code never calls it.
+  contract's JSON Schema the same way, whether each of a list of method and path pairs is a share read of a
+  manifest, as bmo-ui's `shareRead` answers it, and the contract's own terms: the manifest's route, the two
+  headers and which role allows which. A service's running code never calls it.
 - **What it needs.** Bun on the machine and the release file. It unpacks the file into a scratch folder of its
   own, which it removes after, and needs nothing of the release installed; Bun brings the one package the
   reading imports. It unpacks with the system's `tar`.
 - **Who uses it.** The crate's own tests read the manifest it serves through it. A service using the face reads
   the manifest its own face serves through it in a test of its own, handing it the release file it vendors, so
   its test holds its own declaration to the whole reading.
+- **What the crate restates is held to it.** The crate's tests hold its route, its header names, its order of
+  the roles and its matching of share reads to what bmo-ui's release answers, so the crate keeps the contract by
+  bmo-ui's own module and keeps no rule of its own.
 - **The schema file.** The crate's tests fail where the schema it carries differs from the one bmo-ui's pinned
   release answers. `BMO_CONSOLE_FACE_WRITE_SCHEMA=1 cargo test -p bmo-console-face --test main schema::`
   writes it again from that release.

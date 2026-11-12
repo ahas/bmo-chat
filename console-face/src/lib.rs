@@ -15,4 +15,4 @@ pub use bundle::BundleFolder;
 pub use error::ConsoleFaceError;
 pub use face::{CONSOLE_FILES_PREFIX, CONSOLE_MANIFEST_ROUTE, ConsoleFace};
 pub use guard::{OWNER_KEY_HEADER, OWNER_ROLE_HEADER};
-pub use reading::{ReadingError, contract_schema, read_manifest};
+pub use reading::{ReadingError, contract_schema, contract_terms, read_manifest, share_reads};
