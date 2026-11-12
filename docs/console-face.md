@@ -13,6 +13,7 @@ flowchart TD
   F --> M["GET /console-manifest"]
   F --> X["GET /console/{file}"]
   F --> G["The screens' guard over the service's own routes"]
+  F --> K["The credential check, for a route the service guards itself"]
   F --> R["The reading through bmo-ui's pinned release, for tests"]
 ```
 
@@ -63,8 +64,9 @@ held by the reading through bmo-ui's release below.
 | `GET /console/{file}`, the words | the words file | the console credential |
 | `GET /console/{file}`, the module, the stylesheet and every other file | the file's bytes | the console credential, and the manifest's role and owner key unless the manifest names a share read |
 
-- **The console credential alone.** Each route takes `Authorization: Bearer` with the console credential. Any
-  other token, the service's own among them, is refused 401 `unauthorized`, as is a call with none.
+- **The console credential alone.** Each route takes `Authorization: Bearer` with the console credential, the
+  scheme in any letter case as HTTP reads it. Any other token, the service's own among them, is refused 401
+  `unauthorized`, as is a call with none.
 - **The role and the owner key.** The module, the stylesheet and every file beside them are refused 403
   `forbidden` where `Owner-Role` is missing or does not allow the manifest's role, or where the manifest asks
   for the owner key and `Owner-Key` is missing. A manifest that names a share read has them answered with
@@ -86,6 +88,16 @@ A share read and the share head's read, a `GET` or a `HEAD` whose path a pattern
 `shareHead` matches, pass on with no role and no owner key, since the contract holds them to their token: the
 service answers each for a live token alone. A path matches a pattern as the contract's reading matches a share
 read, in any letter case of the method; the crate's tests hold this matching to bmo-ui's own `shareRead`.
+
+## The credential check
+
+A route the console alone calls, which no other caller of the service reaches, takes the console credential and
+nothing else. The screens' guard leaves a call without it to the service, so such a route asks the crate itself:
+the crate answers, from the console credential, whether a call carries it, by the same reading and comparison its
+own routes use. The check needs no face, so a service that stands none, its bundle not built, refuses its console
+routes by the same rule. The crate keeps the credential as its digest and compares the digests, so the time a
+comparison takes says nothing of how much of a token was right. The refusal is the service's own to answer, 401
+`unauthorized` in the common wire format's error body as the face's routes answer it.
 
 ## The words
 

@@ -1,16 +1,19 @@
 //! The guard around the face's routes and over a service's screens (`docs/console-face.md`, 「What it answers」
 //! and 「The screens' guard」): the console's credential alone, the manifest's role and owner key on the bundle's
-//! files, and a share bundle's files answered with neither.
+//! files, and a share bundle's files answered with neither; and the check of the credential a service makes on a
+//! route it guards itself (「The credential check」).
 
 use axum::Router;
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, HeaderValue, Request, StatusCode};
 use axum::routing::{any, get as route};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use bmo_console_face::{
-  CONSOLE_MANIFEST_ROUTE, OWNER_KEY_HEADER, OWNER_ROLE_HEADER, contract_terms, share_reads,
+  CONSOLE_MANIFEST_ROUTE, ConsoleCredential, OWNER_KEY_HEADER, OWNER_ROLE_HEADER, contract_terms,
+  share_reads,
 };
 
 use crate::support::{Built, CONSOLE, bearer, face, get, pinned_release};
@@ -48,6 +51,31 @@ async fn every_route_of_the_face_takes_the_console_credential_alone() {
       assert_eq!(code(&body), "unauthorized");
     }
   }
+}
+
+#[test]
+fn the_credential_check_takes_the_console_bearer_in_any_letter_case_and_nothing_else() {
+  let credential = ConsoleCredential::new(CONSOLE);
+  let carried = |authorization: Option<String>| {
+    let mut headers = HeaderMap::new();
+    if let Some(value) = authorization {
+      headers.insert(AUTHORIZATION, HeaderValue::from_str(&value).expect("a header value"));
+    }
+    credential.carried_by(&headers)
+  };
+  for sent in [bearer(CONSOLE), format!("bearer {CONSOLE}"), format!("BEARER  {CONSOLE}")] {
+    assert!(carried(Some(sent.clone())), "{sent}");
+  }
+  let refused = [
+    Some(bearer(SERVICE)),
+    Some(CONSOLE.to_owned()),
+    Some(format!("Basic {CONSOLE}")),
+    Some("Bearer ".to_owned()),
+  ];
+  for sent in refused.into_iter().chain([None]) {
+    assert!(!carried(sent.clone()), "{sent:?}");
+  }
+  assert_eq!(format!("{credential:?}"), "ConsoleCredential(..)", "the digest is never printed");
 }
 
 #[tokio::test]
