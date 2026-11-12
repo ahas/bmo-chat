@@ -11,6 +11,7 @@ autotests = false
 axum.workspace = true
 jsonschema.workspace = true
 mime_guess.workspace = true
+percent-encoding.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 

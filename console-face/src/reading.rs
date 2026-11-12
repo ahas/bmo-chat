@@ -62,6 +62,42 @@ pub fn contract_schema(release: &Path) -> Result<Value, ReadingError> {
   run(release, &script, "")
 }
 
+/// Whether each method and path asked is a share read of the manifest, as bmo-ui's `shareRead` in the release file
+/// answers it, in the order asked.
+pub fn share_reads(
+  manifest: &Value,
+  asked: &[(&str, &str)],
+  release: &Path,
+) -> Result<Vec<bool>, ReadingError> {
+  let script = format!(
+    "import {{ consoleManifest, shareRead }} from \"{SHARED_MODULE}\";\n\
+     let given = \"\";\n\
+     for await (const part of process.stdin) given += String(part);\n\
+     const {{ manifest, asked }} = JSON.parse(given);\n\
+     const read = consoleManifest(manifest);\n\
+     process.stdout.write(JSON.stringify(asked.map(([method, path]) => shareRead(read, method, path))));\n"
+  );
+  let input = serde_json::json!({ "manifest": manifest, "asked": asked });
+  let answer = run(release, &script, &input.to_string())?;
+  serde_json::from_value(answer)
+    .map_err(|why| ReadingError::Unrun(format!("the reading answered no list: {why}")))
+}
+
+/// The contract's own terms as the release file's shared module names them: `route`, the manifest's route;
+/// `ownerKeyHeader` and `ownerRoleHeader`, the headers the console relays the owner key and the role in; and
+/// `roles`, each role held and each needed with whether the one held allows the one needed.
+pub fn contract_terms(release: &Path) -> Result<Value, ReadingError> {
+  let script = format!(
+    "import {{ CONSOLE_MANIFEST_ROUTE, OWNER_KEY_HEADER, OWNER_ROLE_HEADER, CONSOLE_ROLES, roleAllows }} \
+     from \"{SHARED_MODULE}\";\n\
+     const roles = CONSOLE_ROLES.flatMap((held) => CONSOLE_ROLES.map((needed) => \
+       ({{ held, needed, allows: roleAllows(held, needed) }})));\n\
+     process.stdout.write(JSON.stringify({{ route: CONSOLE_MANIFEST_ROUTE, ownerKeyHeader: OWNER_KEY_HEADER, \
+       ownerRoleHeader: OWNER_ROLE_HEADER, roles }}));\n"
+  );
+  run(release, &script, "")
+}
+
 // The script run by Bun in the release unpacked, the input handed on its standard input.
 fn run(release: &Path, script: &str, input: &str) -> Result<Value, ReadingError> {
   let unpacked = Unpacked::new(release)?;

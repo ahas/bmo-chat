@@ -17,6 +17,7 @@ clap = { version = "4.6.7", features = ["derive", "env"] }
 headers = "0.4.1"
 jsonschema = { version = "0.58.6", default-features = false }
 mime_guess = "2.0.5"
+percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.0", default-features = false }
 regex = "1.13.1"
 reqwest = { version = "0.13.5", features = ["json", "query", "stream"] }

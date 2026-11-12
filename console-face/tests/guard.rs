@@ -5,11 +5,15 @@
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use axum::routing::get as route;
+use axum::routing::{any, get as route};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use crate::support::{Built, CONSOLE, bearer, face, get};
+use bmo_console_face::{
+  CONSOLE_MANIFEST_ROUTE, OWNER_KEY_HEADER, OWNER_ROLE_HEADER, contract_terms, share_reads,
+};
+
+use crate::support::{Built, CONSOLE, bearer, face, get, pinned_release};
 
 const SERVICE: &str = "service-token";
 
@@ -141,4 +145,59 @@ async fn the_screens_guard_lets_a_share_read_pass_on_to_the_token() {
     .expect("the request is built");
   let answer = router.clone().oneshot(posted).await.expect("answered");
   assert_eq!(answer.status(), StatusCode::FORBIDDEN, "only a read is a share read");
+}
+
+#[tokio::test]
+async fn the_screens_guard_matches_a_share_read_as_bmo_ui_s_own_share_read_does() {
+  let built = Built::new("export default { routes: [] };");
+  let face = face(json!({ "shareReads": ["/api/shares/{token}/files/{fileId}"] }), &built);
+  let router: Router = face.guard_screens(Router::new().route("/{*rest}", any(|| async { "answered" })));
+  let asked = [
+    ("GET", "/api/shares/abc/files/7"),
+    ("get", "/api/shares/abc/files/7"),
+    ("HEAD", "/api/shares/abc/files/7"),
+    ("POST", "/api/shares/abc/files/7"),
+    ("GET", "/api/shares/%2E%2e/files/7"),
+    ("GET", "/api/shares/%2e/files/7"),
+    ("GET", "/api/shares/a%2Eb/files/7"),
+    ("GET", "/api/shares/%E0%A4%A/files/7"),
+    ("GET", "/api/shares//files/7"),
+    ("GET", "/api/shares/abc/files"),
+    ("GET", "/api/shares/abc/files/7/more"),
+    ("GET", "/api/other/abc/files/7"),
+  ];
+  let expected =
+    share_reads(face.manifest(), &asked, &pinned_release()).unwrap_or_else(|why| panic!("{why}"));
+  let console = bearer(CONSOLE);
+  for ((method, path), shared) in asked.iter().zip(expected) {
+    let request = Request::builder()
+      .method(*method)
+      .uri(*path)
+      .header("Authorization", &console)
+      .body(Body::empty());
+    let answer = router.clone().oneshot(request.expect("the request is built")).await.expect("answered");
+    let passed = answer.status() == StatusCode::OK;
+    assert_eq!(passed, shared, "{method} {path}: the guard and bmo-ui's shareRead disagree");
+  }
+}
+
+#[tokio::test]
+async fn the_route_the_headers_and_the_order_of_the_roles_are_bmo_ui_s_own() {
+  let terms = contract_terms(&pinned_release()).unwrap_or_else(|why| panic!("{why}"));
+  assert_eq!(terms["route"], CONSOLE_MANIFEST_ROUTE);
+  assert_eq!(terms["ownerKeyHeader"], OWNER_KEY_HEADER);
+  assert_eq!(terms["ownerRoleHeader"], OWNER_ROLE_HEADER);
+
+  let built = Built::new("export default { routes: [] };");
+  let console = bearer(CONSOLE);
+  let roles = terms["roles"].as_array().expect("the roles are a list");
+  assert!(!roles.is_empty());
+  for case in roles {
+    let (held, needed) = (case["held"].as_str().unwrap(), case["needed"].as_str().unwrap());
+    let router: Router = face(json!({ "role": needed }), &built)
+      .guard_screens(Router::new().route("/api/notes", route(|| async { "notes" })));
+    let (status, _) =
+      get(&router, "/api/notes", &[("Authorization", &console), (OWNER_ROLE_HEADER, held)]).await;
+    assert_eq!(status == StatusCode::OK, case["allows"] == true, "{held} for {needed}");
+  }
 }
