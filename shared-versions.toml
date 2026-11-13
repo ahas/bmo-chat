@@ -172,6 +172,6 @@ zmij = "1.0.23"
 # The one release of each package every consumer vendors: the version, the packed file the package's release
 # verb wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
-version = "0.1.0-rev.18"
-file = "bmo-ui-0.1.0-rev.18.tgz"
-sha256 = "be2b9cf3daa5a6a9a23de75cb88d96d7ea602e795f17f81f2740f24b2f3df512"
+version = "0.1.0-rev.20"
+file = "bmo-ui-0.1.0-rev.20.tgz"
+sha256 = "5d2a665294275e73c7b82bad784936b8a683fe3d30febb25e4b4dd815656ecee"
