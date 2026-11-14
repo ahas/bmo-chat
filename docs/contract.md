@@ -456,12 +456,27 @@ carry:
 | `document` | `bytes`, `fileName` |
 | `audio` | `audio`, `fileName` |
 | `voice` | `audio`, `said` (what the line said); optional `caption`, `transcript` (what was actually read out) |
-| `sticker` | `emoji` |
+| `sticker` | either `emoji` or `item` (see below) |
 | `reaction` | `messageId`, `emoji`; an empty emoji takes the account's own reaction off |
 | `pin` | `messageId`, `on`; optional `silent` |
 | `typing` | `on` |
 | `edit` | `messageId`, `text` |
 | `delete` | `messageId` |
+
+A sticker is named in one of two ways. `{ emoji }` names an emoji, for which the provider picks a sticker of
+its own. `{ item }` names one sticker item of the platform's own, which the provider maps onto its platform's
+wire:
+
+| Field of `item` | Meaning |
+|---|---|
+| `id` | the item's own key on the platform |
+| `pack` | optional: the key of the pack, set or product the item belongs to |
+| `title` | optional: the item's title, or the title of its pack |
+| `imageUrl` | optional: the address the item's picture stands at |
+| `thumbnailUrl` | optional: the address of the item's small picture |
+
+A provider that declares `sticker` but can send only one of the two forms refuses the other `platform`, with
+its own reason; so does one whose platform needs a field of `item` the send leaves out.
 
 Sanitising the words and deciding whether to fold them happen before the send reaches the provider. A provider
 takes the words as they come and applies only its dialect. Keeping a copy of what went out is the sender's own

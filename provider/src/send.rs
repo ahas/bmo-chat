@@ -18,6 +18,34 @@ pub enum AlbumItem {
   File(FileItem),
 }
 
+/// A sticker to send: an emoji the provider picks a sticker for, or one item of the platform's own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ChatSticker {
+  Emoji { emoji: String },
+  Item { item: StickerItem },
+}
+
+/// One sticker item of the platform's own, which the provider maps onto its platform's wire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StickerItem {
+  /// The item's own key on the platform.
+  pub id: String,
+  /// The key of the pack, set or product the item belongs to.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub pack: Option<String>,
+  /// The item's title, or the title of its pack.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub title: Option<String>,
+  /// The address the item's picture stands at.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub image_url: Option<String>,
+  /// The address of the item's small picture.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub thumbnail_url: Option<String>,
+}
+
 /// The kind of a send with its own fields, which cross as `kind` and `fields`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -67,9 +95,7 @@ pub enum ChatSend {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     transcript: Option<String>,
   },
-  Sticker {
-    emoji: String,
-  },
+  Sticker(ChatSticker),
   /// An empty emoji takes the account's own reaction off.
   Reaction {
     message_id: i64,
@@ -103,7 +129,7 @@ impl ChatSend {
       Self::Document { .. } => ChatVerb::Document,
       Self::Audio { .. } => ChatVerb::Audio,
       Self::Voice { .. } => ChatVerb::Voice,
-      Self::Sticker { .. } => ChatVerb::Sticker,
+      Self::Sticker(_) => ChatVerb::Sticker,
       Self::Reaction { .. } => ChatVerb::Reaction,
       Self::Pin { .. } => ChatVerb::Pin,
       Self::Typing { .. } => ChatVerb::Typing,

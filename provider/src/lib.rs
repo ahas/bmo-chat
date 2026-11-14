@@ -49,5 +49,5 @@ pub use receiver_bodies::{
   RoomQuery, RoomsQuery,
 };
 pub use refusal::{ChatRefusal, MissedPicture, MissedPictureReason};
-pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSent};
+pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatSticker, StickerItem};
 pub use server::provider_router;

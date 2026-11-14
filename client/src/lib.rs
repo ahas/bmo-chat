@@ -49,4 +49,4 @@ pub use receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, MessageStamp, PersonReactions, ReactionChange, ReceiverRoom,
   RoomQuery, RoomsQuery,
 };
-pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSent};
+pub use send::{AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatSticker, StickerItem};

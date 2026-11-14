@@ -186,9 +186,21 @@ macro_rules! fixtures {
           ),
           ChatSendRequest::new(
             7,
-            ChatSend::Sticker {
+            ChatSend::Sticker(ChatSticker::Emoji {
               emoji: "\u{1f44d}".into(),
-            },
+            }),
+          ),
+          ChatSendRequest::new(
+            7,
+            ChatSend::Sticker(ChatSticker::Item {
+              item: StickerItem {
+                id: "4412.emot_002.webp".into(),
+                pack: Some("4412".into()),
+                title: Some("Waving cat".into()),
+                image_url: Some("https://example.com/4412/emot_002.webp".into()),
+                thumbnail_url: Some("https://example.com/4412/emot_002_thumb.webp".into()),
+              },
+            }),
           ),
           ChatSendRequest::new(
             7,
