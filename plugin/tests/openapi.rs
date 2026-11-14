@@ -16,11 +16,11 @@ use bmo_chat_client::{
   AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatContact,
   ChatContactKind, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
   ChatMediaRequest, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient,
-  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatSticker,
-  ChatVoice, ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
-  GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, MessageFile, MessageOrigin, MissedPicture,
-  MissedPictureReason, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
-  RoomsQuery, StickerItem, WireError, receiver_router,
+  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatStartRequest,
+  ChatSticker, ChatVoice, ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading,
+  ErrorCode, FileItem, GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, MessageFile,
+  MessageOrigin, MissedPicture, MissedPictureReason, Page, ProviderOwner, ProviderRoom, ReceiverRoom,
+  RoomFacts, RoomKind, RoomQuery, RoomsQuery, StickerItem, WireError, receiver_router,
 };
 use bmo_chat_plugin::{Side, openapi, openapi_json, tools};
 use serde::Serialize;
@@ -122,7 +122,10 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
     client.health().await.err(),
     client.send(&send).await.err(),
     client.account_rooms(&AccountRoomsQuery::default()).await.err(),
-    client.start_chat(&ChatStart::OneToOne { contact_id: 42 }).await.err(),
+    client
+      .start_chat(&ChatStartRequest::new(ChatStart::OneToOne { contact_id: 42 }))
+      .await
+      .err(),
     client.contacts(&ContactsQuery::default()).await.err(),
     client.room(-100).await.err(),
     client.owner().await.err(),
@@ -477,10 +480,13 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
     bodies.valid("post", "/rooms", Answer(201), &listed.items[0]);
   }
   for start in [
-    ChatStart::OneToOne { contact_id: 42 },
-    ChatStart::Group {
-      title: "A room".into(),
-      contact_ids: vec![42, 77],
+    ChatStartRequest::new(ChatStart::OneToOne { contact_id: 42 }),
+    ChatStartRequest {
+      start: ChatStart::Group {
+        title: "A room".into(),
+        contact_ids: vec![42, 77],
+      },
+      account_id: Some(77),
     },
   ] {
     bodies.valid("post", "/rooms", Request, &start);
@@ -666,6 +672,8 @@ fn a_body_not_of_its_route_shape_is_not_valid() {
   provider.invalid("post", "/rooms", Request, json!({ "contactId": "someone" }));
   provider.invalid("post", "/rooms", Request, json!({ "contactId": 42, "title": "A room" }));
   provider.invalid("post", "/rooms", Request, json!({ "title": "A room" }));
+  provider.invalid("post", "/rooms", Request, json!({ "contactId": 42, "accountId": "someone" }));
+  provider.invalid("post", "/rooms", Request, json!({ "contactId": 42, "account": 77 }));
   provider.invalid(
     "get",
     "/contacts",
@@ -728,7 +736,11 @@ fn the_queries_and_keys_state_their_parameters() {
   );
   assert_eq!(
     names(&provider, "/contacts"),
-    [owned("after", "query", false), owned("limit", "query", false)]
+    [
+      owned("accountId", "query", false),
+      owned("after", "query", false),
+      owned("limit", "query", false)
+    ]
   );
   assert_eq!(
     names(&provider, "/rooms/{roomId}/messages/{messageId}/files"),

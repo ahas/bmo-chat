@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 
 use bmo_chat_client::{
   AccountRoomsQuery, AvatarChange, AvatarsQuery, ChatAvatar, ChatContact, ChatDeclaration, ChatHealth,
-  ChatSendRequest, ChatSent, ChatStart, ContactsQuery, Deletion, DialectCheck, DialectChecked, DialectRead,
-  DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, MessageFile, Page, ProviderOwner,
-  ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery, WireError,
+  ChatSendRequest, ChatSent, ChatStartRequest, ContactsQuery, Deletion, DialectCheck, DialectChecked,
+  DialectRead, DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, MessageFile, Page,
+  ProviderOwner, ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery, WireError,
 };
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
@@ -386,11 +386,12 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       id: "createRooms",
       tag: "rooms",
       summary: "A conversation started on the platform, a one-to-one with one contact or a group of several \
-        under a title, answered with its room as `GET /rooms/{roomId}` answers it, the one-to-one the account \
-        already had where it had one; refused `unsupported-capability` where the provider does not declare the \
-        shape's capability, `startChat` or `startGroup`, and `not-found` for a contact it does not know.",
+        under a title, for the account `accountId` names or the provider's own, answered with its room as \
+        `GET /rooms/{roomId}` answers it, the one-to-one the account already had where it had one; refused \
+        `unsupported-capability` where the provider does not declare the shape's capability, `startChat` or \
+        `startGroup`, and `not-found` for a contact it does not know.",
       parameters: Vec::new(),
-      body: Some(generator.subschema_for::<ChatStart>()),
+      body: Some(generator.subschema_for::<ChatStartRequest>()),
       answers: vec![(201, json_answer::<ProviderRoom>(generator))],
       codes: codes(
         true,
@@ -408,9 +409,10 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       path: "/contacts",
       id: "listContacts",
       tag: "contacts",
-      summary: "A page of the contacts of the provider's account, in ascending order of contact number and only \
-        those after `after`, at most `limit`, each with the one-to-one the account already has with it; refused \
-        `unsupported-capability` where the provider does not declare `contactList`.",
+      summary: "A page of the contacts of the account `accountId` names, or of the provider's own, in ascending \
+        order of contact number and only those after `after`, at most `limit`, each with the one-to-one the \
+        account already has with it; refused `unsupported-capability` where the provider does not declare \
+        `contactList`.",
       parameters: query::<ContactsQuery>(generator),
       body: None,
       answers: vec![(200, json_answer::<Page<ChatContact>>(generator))],

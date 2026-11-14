@@ -167,10 +167,14 @@ pub struct ChatSendRequest {
   /// that answers no message.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub reply_to_message_id: Option<i64>,
+  /// The account the send goes out in; unnamed, the provider's own.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub account_id: Option<i64>,
 }
 
 impl ChatSendRequest {
-  /// A send in the room's own voice, with no speaker, no tag, no prefix and answering no message.
+  /// A send in the room's own voice and the provider's own account, with no speaker, no tag, no prefix and
+  /// answering no message.
   pub fn new(room_id: i64, send: ChatSend) -> Self {
     Self {
       room_id,
@@ -180,6 +184,7 @@ impl ChatSendRequest {
       tag: None,
       prefix: None,
       reply_to_message_id: None,
+      account_id: None,
     }
   }
 }

@@ -99,8 +99,11 @@ impl bmo_chat::ChatProvider for Stand {
       modes: None,
     }])
   }
-  async fn contacts(&self) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
-    self.asked("contacts");
+  async fn contacts(
+    &self,
+    account_id: Option<i64>,
+  ) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
+    self.asked(format!("contacts for {account_id:?}"));
     Ok(vec![bmo_chat::ChatContact {
       id: 42,
       name: "A person".into(),
@@ -110,9 +113,9 @@ impl bmo_chat::ChatProvider for Stand {
   }
   async fn start_chat(
     &self,
-    start: bmo_chat::ChatStart,
+    request: bmo_chat::ChatStartRequest,
   ) -> Result<bmo_chat::ChatStartResult, bmo_chat::ChatFailure> {
-    self.asked(format!("start {start:?}"));
+    self.asked(format!("start {:?} for {:?}", request.start, request.account_id));
     Ok(bmo_chat::ChatStartResult::Started(bmo_chat::ProviderRoom {
       id: 42,
       owns: true,
@@ -263,8 +266,12 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   let contacts = bmo_chat_client::ContactsQuery {
     after: Some(7),
     limit: Some(5),
+    account_id: Some(77),
   };
-  let start = bmo_chat_client::ChatStart::OneToOne { contact_id: 42 };
+  let start = bmo_chat_client::ChatStartRequest {
+    start: bmo_chat_client::ChatStart::OneToOne { contact_id: 42 },
+    account_id: Some(77),
+  };
   let calls = [
     ("chat_declaration", json!({}), as_json(client.declaration().await.unwrap())),
     ("chat_health", json!({}), as_json(client.health().await.unwrap())),
@@ -276,12 +283,12 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
     ),
     (
       "chat_start",
-      json!({ "body": { "contactId": 42 } }),
+      json!({ "body": { "contactId": 42, "accountId": 77 } }),
       as_json(client.start_chat(&start).await.unwrap()),
     ),
     (
       "chat_contacts",
-      json!({ "after": 7, "limit": 5 }),
+      json!({ "after": 7, "limit": 5, "accountId": 77 }),
       as_json(client.contacts(&contacts).await.unwrap()),
     ),
     ("chat_room", json!({ "roomId": -100 }), as_json(client.room(-100).await.unwrap())),
@@ -326,8 +333,8 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
     [
       "send Text to -100",
       "rooms",
-      "start OneToOne { contact_id: 42 }",
-      "contacts",
+      "start OneToOne { contact_id: 42 } for Some(77)",
+      "contacts for Some(77)",
       "room -100",
       "owner",
       "files -100 5 Some(1000)",

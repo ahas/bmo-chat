@@ -172,6 +172,7 @@ One send. The body is a send as `contract.md` states it:
 | `tag` | optional string returned on the platform's echo of the send |
 | `prefix` | optional string put before the words in the `human-avatar` voice |
 | `replyToMessageId` | optional number: the message the send answers |
+| `accountId` | optional number: the account the send goes out in (`contract.md`, "The account a call is for") |
 
 Bytes (`bytes` of a document, `audio` of an audio or a voice, `bytes` of an inline album item) are base64.
 
@@ -198,7 +199,8 @@ Nothing in the page says whether the receiving side holds a room; a receiving si
 ### `POST /rooms`
 
 A conversation started on the platform (`contract.md`, "Starting a conversation"). The body is one of two
-shapes, and nothing else:
+shapes, each of which may also name `accountId` (number: the account the start is for, `contract.md`, "The
+account a call is for"), and nothing else:
 
 | Shape | Fields |
 |---|---|
@@ -215,8 +217,9 @@ the platform will not do is refused `platform`.
 ### `GET /contacts`
 
 The contacts of the provider's account (`contract.md`, "The contacts of the account"). The query takes `after`
-(a contact number) and `limit`, each optional. The answer is a page whose `items` are contacts in ascending
-order of `id`, only those after `after`, and at most `limit` of them, each:
+(a contact number), `limit` and `accountId` (the account the listing is for, `contract.md`, "The account a call
+is for"), each optional. The answer is a page whose `items` are contacts in ascending order of `id`, only those
+after `after`, and at most `limit` of them, each:
 
 | Field | Type |
 |---|---|
@@ -418,7 +421,7 @@ through the client:
 | `chat_send` | `POST /sends` | `body`: a send |
 | `chat_rooms` | `GET /rooms` | optional `after` and `limit` |
 | `chat_start` | `POST /rooms` | `body`: a start |
-| `chat_contacts` | `GET /contacts` | optional `after` and `limit` |
+| `chat_contacts` | `GET /contacts` | optional `after`, `limit` and `accountId` |
 | `chat_room` | `GET /rooms/{roomId}` | `roomId` |
 | `chat_owner` | `GET /owner` | none |
 | `chat_message_files` | `GET /rooms/{roomId}/messages/{messageId}/files` | `roomId`, `messageId`, optional `sentAt` |

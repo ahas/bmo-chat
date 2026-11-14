@@ -15,7 +15,7 @@ use crate::bodies::{
   AccountRoomsQuery, ChatHealth, DialectCheck, DialectChecked, DialectRead, DialectReading, Page,
   ProviderOwner, ProviderRoom,
 };
-use crate::contacts::{ChatContact, ChatStart, ContactsQuery};
+use crate::contacts::{ChatContact, ChatStartRequest, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, FilesQuery};
@@ -146,11 +146,12 @@ impl ChatProviderClient {
   /// `POST /rooms`: a conversation started on the platform, answered with its room. A shape the provider does
   /// not declare comes back as `ClientFailure::Answered` with `unsupported-capability`, a contact it does not
   /// know with `not-found`, and a start of no sound shape with `bad-request`.
-  pub async fn start_chat(&self, start: &ChatStart) -> Result<ProviderRoom, ClientFailure> {
+  pub async fn start_chat(&self, start: &ChatStartRequest) -> Result<ProviderRoom, ClientFailure> {
     self.post("rooms", start).await
   }
 
-  /// `GET /contacts`: a page of the contacts of the provider's account, in ascending order of contact number.
+  /// `GET /contacts`: a page of the contacts of the account the query names, or of the provider's own, in
+  /// ascending order of contact number.
   /// A provider that does not declare `contactList` comes back as `ClientFailure::Answered` with
   /// `unsupported-capability`.
   pub async fn contacts(&self, query: &ContactsQuery) -> Result<Page<ChatContact>, ClientFailure> {

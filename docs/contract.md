@@ -224,6 +224,19 @@ A provider that knows nothing of a room answers none, and the route answers `not
 it answers the room to speak into to reach the owner unprompted, or null. Whether a person behind a private
 room is a user is the receiving side's question, not the provider's.
 
+### The account a call is for
+
+A provider may speak through more than one account on its platform, one for each person it answers for. A
+send, a start and a listing of contacts may therefore name `accountId`: the account the call is for, as the
+number the caller knows that account by. The base never reads it and keeps no list of accounts; which of its
+platform's accounts a number stands for, and how it learns that, is the provider's own.
+
+- Left out or null, the call is for the provider's own account, the one it holds where it holds no other.
+- A provider that holds its own account alone takes every call as for that account, whichever it names.
+- A provider that holds an account for each person acts in the account named and never in another. Where it
+  cannot act for that account, a send or a start is refused `platform` with its own reason, and a listing of
+  contacts fails rather than answer another account's.
+
 ### The rooms of the account
 
 A provider that declares `roomList` lists the rooms its account is in, each as the `ProviderRoom` it answers
@@ -239,8 +252,8 @@ answer, by the room's number, which is the same number on both sides.
 ### The contacts of the account
 
 A provider that declares `contactList` lists the contacts of its account, the people it could start a
-conversation with, so a person can choose among them. Which of its accounts it lists, and what its platform
-counts as a contact, is the provider's own. Each is a `ChatContact`:
+conversation with, so a person can choose among them. A listing may name the account it is for (see "The account
+a call is for"); what its platform counts as a contact is the provider's own. Each is a `ChatContact`:
 
 | Member | What it is |
 |---|---|
@@ -256,7 +269,8 @@ whether the receiving side holds a contact's `roomId` is the receiving side's to
 ### Starting a conversation
 
 A provider that declares `startChat` or `startGroup` starts a conversation on its platform when asked. A
-`ChatStart` is one of two shapes:
+`ChatStartRequest` is a `ChatStart` and, optionally, the `accountId` it is for (see "The account a call is
+for"). A `ChatStart` is one of two shapes:
 
 | Shape | Members | Capability |
 |---|---|---|
@@ -447,6 +461,7 @@ carry:
   voice.
 - `replyToMessageId`: the message the send answers. A provider that does not declare `replyTo` ignores it, and
   so does every kind that answers no message: `reaction`, `pin`, `typing`, `edit` and `delete`.
+- `accountId`: the account the send goes out in (see "The account a call is for").
 
 | Kind | Its `fields` |
 |---|---|
