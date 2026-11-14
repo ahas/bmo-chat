@@ -9,9 +9,9 @@ use bmo_chat::{
   AvatarChange, ChatCapability, ChatDialect, ChatDialectLimits, ChatFailure, ChatHealth, ChatMarkup,
   ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRange, ChatNumberRanges, ChatNumberSpace,
   ChatNumbering, ChatProvider, ChatReach, ChatReadMode, ChatReceiver, ChatRefusal, ChatSend,
-  ChatSendRequest, ChatSendResult, ChatSent, ChatVerb, ChatVoice, ErrorCode, GatheredPatch, HandedMessage,
-  HeldMessage, InboundChatContext, MessageOrigin, Page, PlainDialect, ProviderRoom, ReceiverRoom,
-  RoomFacts, RoomKind, RoomQuery, RoomsQuery,
+  ChatSendRequest, ChatSendResult, ChatSent, ChatSticker, ChatVerb, ChatVoice, ErrorCode, GatheredPatch,
+  HandedMessage, HeldMessage, InboundChatContext, MessageOrigin, Page, PlainDialect, ProviderRoom,
+  ReceiverRoom, RoomFacts, RoomKind, RoomQuery, RoomsQuery,
 };
 
 const ROOM: i64 = -100;
@@ -391,9 +391,9 @@ async fn and_the_refusal_is_what_the_send_answers_rather_than_a_failure_or_a_sil
   let provider = StandIn::new(&[ChatCapability::Text], Box::new(PlainDialect));
   let sticker = ChatSendRequest::new(
     ROOM,
-    ChatSend::Sticker {
+    ChatSend::Sticker(ChatSticker::Emoji {
       emoji: "🙂".into()
-    },
+    }),
   );
 
   assert_eq!(

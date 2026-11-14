@@ -2,8 +2,8 @@
 //! comes back as it went.
 
 use bmo_chat::{
-  AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatVerb, ChatVoice, FileItem, MissedPicture,
-  MissedPictureReason,
+  AlbumItem, ChatSend, ChatSendRequest, ChatSent, ChatSticker, ChatVerb, ChatVoice, FileItem,
+  MissedPicture, MissedPictureReason, StickerItem,
 };
 use serde_json::{Value, json};
 
@@ -180,10 +180,46 @@ fn voice() {
 #[test]
 fn sticker() {
   crosses(
-    &send(ChatSend::Sticker {
+    &send(ChatSend::Sticker(ChatSticker::Emoji {
       emoji: "🙂".into()
-    }),
+    })),
     json!({ "kind": "sticker", "roomId": 7, "fields": { "emoji": "🙂" } }),
+  );
+}
+
+#[test]
+fn sticker_item() {
+  let item = StickerItem {
+    id: "4412.emot_002.webp".into(),
+    pack: Some("4412".into()),
+    title: Some("Waving cat".into()),
+    image_url: Some("https://example.com/4412/emot_002.webp".into()),
+    thumbnail_url: Some("https://example.com/4412/emot_002_thumb.webp".into()),
+  };
+  crosses(
+    &send(ChatSend::Sticker(ChatSticker::Item { item })),
+    json!({ "kind": "sticker", "roomId": 7, "fields": { "item": {
+      "id": "4412.emot_002.webp",
+      "pack": "4412",
+      "title": "Waving cat",
+      "imageUrl": "https://example.com/4412/emot_002.webp",
+      "thumbnailUrl": "https://example.com/4412/emot_002_thumb.webp",
+    } } }),
+  );
+}
+
+#[test]
+fn sticker_item_with_its_key_alone() {
+  let item = StickerItem {
+    id: "CAACAgIAAxkBAAE".into(),
+    pack: None,
+    title: None,
+    image_url: None,
+    thumbnail_url: None,
+  };
+  crosses(
+    &send(ChatSend::Sticker(ChatSticker::Item { item })),
+    json!({ "kind": "sticker", "roomId": 7, "fields": { "item": { "id": "CAACAgIAAxkBAAE" } } }),
   );
 }
 
@@ -301,9 +337,9 @@ fn every_kind_names_itself() {
       ChatVerb::Voice,
     ),
     (
-      ChatSend::Sticker {
+      ChatSend::Sticker(ChatSticker::Emoji {
         emoji: String::new(),
-      },
+      }),
       ChatVerb::Sticker,
     ),
     (

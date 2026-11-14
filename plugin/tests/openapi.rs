@@ -16,11 +16,11 @@ use bmo_chat_client::{
   AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatContact,
   ChatContactKind, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
   ChatMediaRequest, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient,
-  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatVoice,
-  ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
+  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatSticker,
+  ChatVoice, ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem,
   GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, MessageFile, MessageOrigin, MissedPicture,
   MissedPictureReason, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
-  RoomsQuery, WireError, receiver_router,
+  RoomsQuery, StickerItem, WireError, receiver_router,
 };
 use bmo_chat_plugin::{Side, openapi, openapi_json, tools};
 use serde::Serialize;
@@ -345,9 +345,18 @@ fn every_send() -> Vec<ChatSendRequest> {
       caption: None,
       transcript: Some("Hello!".into()),
     }),
-    send(ChatSend::Sticker {
+    send(ChatSend::Sticker(ChatSticker::Emoji {
       emoji: "\u{1f44d}".into(),
-    }),
+    })),
+    send(ChatSend::Sticker(ChatSticker::Item {
+      item: StickerItem {
+        id: "4412.emot_002.webp".into(),
+        pack: Some("4412".into()),
+        title: Some("Waving cat".into()),
+        image_url: Some("https://example.com/4412/emot_002.webp".into()),
+        thumbnail_url: Some("https://example.com/4412/emot_002_thumb.webp".into()),
+      },
+    })),
     send(ChatSend::Reaction {
       message_id: 4,
       emoji: String::new(),

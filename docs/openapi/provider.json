@@ -935,15 +935,7 @@
           {
             "properties": {
               "fields": {
-                "properties": {
-                  "emoji": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "emoji"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/ChatSticker"
               },
               "kind": {
                 "const": "sticker",
@@ -1213,6 +1205,33 @@
           }
         ],
         "description": "The body of `POST /rooms`: a conversation to start, with one contact or with several under a title."
+      },
+      "ChatSticker": {
+        "anyOf": [
+          {
+            "properties": {
+              "emoji": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "emoji"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/StickerItem"
+              }
+            },
+            "required": [
+              "item"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A sticker to send: an emoji the provider picks a sticker for, or one item of the platform's own."
       },
       "ChatVoice": {
         "description": "Whose account speaks on a provider. One axis of a read mode; `ChatReach` is the other.",
@@ -1717,6 +1736,47 @@
             "type": "string"
           }
         ]
+      },
+      "StickerItem": {
+        "description": "One sticker item of the platform's own, which the provider maps onto its platform's wire.",
+        "properties": {
+          "id": {
+            "description": "The item's own key on the platform.",
+            "type": "string"
+          },
+          "imageUrl": {
+            "description": "The address the item's picture stands at.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pack": {
+            "description": "The key of the pack, set or product the item belongs to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnailUrl": {
+            "description": "The address of the item's small picture.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "The item's title, or the title of its pack.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
       },
       "WireError": {
         "description": "The error shape: a code to match on and an English sentence saying what went wrong.",
