@@ -26,6 +26,7 @@ use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult, ContactsQu
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
+use crate::members::{ChatMembers, ChatMembersResult};
 use crate::message::MessageFile;
 use crate::provider::{ChatFailure, ChatProvider};
 use crate::send::{ChatSendRequest, ChatSendResult, ChatSent};
@@ -45,6 +46,7 @@ pub fn provider_router(provider: Arc<dyn ChatProvider>, token: impl Into<String>
     .route("/rooms", get(account_rooms).post(start_chat))
     .route("/contacts", get(contacts))
     .route("/rooms/{room_id}", get(room))
+    .route("/rooms/{room_id}/members", get(members))
     .route("/owner", get(owner))
     .route("/rooms/{room_id}/messages/{message_id}/files", get(files))
     .route("/dialect/readings", post(dialect_reading))
@@ -214,6 +216,27 @@ async fn room(
   let room = room
     .ok_or_else(|| WireError::new(ErrorCode::NotFound, format!("Nothing is known of room {room_id}.")))?;
   Ok(Json(room))
+}
+
+/// The members of a room, whole; refused where the provider does not declare `memberList`, and answered
+/// `not-found` with the provider's reason where it holds none of them.
+async fn members(
+  State(served): State<Served>,
+  uri: Uri,
+  path: Result<Path<i64>, PathRejection>,
+) -> Answered<ChatMembers> {
+  let room_id = keys(&uri, path)?;
+  let provider = ready(&served)?;
+  if let Some(refusal) = provider.undeclared(ChatCapability::MemberList) {
+    return Err(refusal.into());
+  }
+  match provider.members(room_id).await? {
+    ChatMembersResult::Listed(members) => Ok(Json(ChatMembers { members })),
+    ChatMembersResult::Unheld { reason } => {
+      Err(WireError::new(ErrorCode::NotFound, format!("{}: {reason}", provider.label())))
+    }
+    ChatMembersResult::Refused(refusal) => Err(refusal.into()),
+  }
 }
 
 async fn owner(State(served): State<Served>) -> Answered<ProviderOwner> {

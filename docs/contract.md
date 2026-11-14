@@ -112,7 +112,7 @@ whether an answer to that message can be pinned to it.
 `ChatVerb` names the twelve kinds of send: `text`, `photo`, `album`, `document`, `audio`, `voice`, `sticker`,
 `reaction`, `pin`, `typing`, `edit`, `delete`.
 
-`ChatCapability` is the twelve kinds plus eight answers that are not sends:
+`ChatCapability` is the twelve kinds plus nine answers that are not sends:
 
 | Capability | Meaning |
 |---|---|
@@ -122,10 +122,11 @@ whether an answer to that message can be pinned to it.
 | `history` | the provider can read a room's past messages back |
 | `roomList` | the provider can list the rooms its account is in |
 | `contactList` | the provider can list the contacts of its account |
+| `memberList` | the provider can list the members of a room |
 | `startChat` | the provider can start a one-to-one with a contact of its account |
 | `startGroup` | the provider can start a room of several contacts of its account, under a title |
 
-The full capability set is all twenty, taken from the type itself, so a reader handed a capability's name
+The full capability set is all twenty-one, taken from the type itself, so a reader handed a capability's name
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a kind it does not declare is refused (see Refusals).
 
@@ -265,6 +266,24 @@ a call is for"); what its platform counts as a contact is the provider's own. Ea
 The base pages the list in ascending order of contact number and asks only a provider that declares
 `contactList`; one that does not is refused `unsupported-capability` without being asked. As with a listed room,
 whether the receiving side holds a contact's `roomId` is the receiving side's to mark, never the provider's.
+
+### The members of a room
+
+A provider that declares `memberList` lists the people in a room as its platform last told it, so a person can
+see who is there. Each is a `ChatMember`:
+
+| Member | What it is |
+|---|---|
+| `person` | the person, as a number of the provider's `people` space, the number the room's messages carry as their sender; null where the provider has given the person none |
+| `name` | what the room calls the person |
+| `statusMessage` | the person's status line, or null where the platform gave none |
+
+The list is answered whole, as `members`, in the order the provider keeps it. A provider gives no number to a
+person only to list them, so a person who has not yet spoken in any of its rooms may stand with none, and no
+platform's own identifier ever stands in for one. The base asks only a provider that declares `memberList`; one
+that does not is refused `unsupported-capability` without being asked. A room whose members the provider does not
+hold, because it knows nothing of the room or has not yet read its members, is answered `not-found` with the
+provider's own reason.
 
 ### Starting a conversation
 
@@ -559,6 +578,7 @@ The capability words:
 | `history` | read past messages back |
 | `roomList` | list the rooms of its account |
 | `contactList` | list the contacts of its account |
+| `memberList` | list the members of a room |
 | `startChat` | start a conversation with a contact |
 | `startGroup` | start a group conversation |
 
