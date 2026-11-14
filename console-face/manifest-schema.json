@@ -35,7 +35,7 @@
     "serviceName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "The service's name, which the console relays it under."
+      "description": "The service's name, which the console relays it under; never people, the name the console answers the company's members under itself."
     },
     "layer": {
       "type": "string",
@@ -118,7 +118,7 @@
     },
     "calls": {
       "default": [],
-      "description": "The other services the screens call through the console, each by the service name its own manifest gives it.",
+      "description": "The other services the screens call through the console, each by the service name its own manifest gives it, or people, the company's members the console answers itself.",
       "type": "array",
       "items": {
         "type": "string",
