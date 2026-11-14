@@ -92,6 +92,7 @@ macro_rules! fixtures {
             tag: Some("send-1".into()),
             prefix: Some("[helper] ".into()),
             reply_to_message_id: Some(41),
+            account_id: Some(77),
           },
           ChatSendRequest::new(
             7,
@@ -502,17 +503,25 @@ macro_rules! fixtures {
         ]
       }
 
-      /// The queries for the contacts of the account, and below, the page answering each in the same order.
+      /// The queries for the contacts of the account, the last naming the account it is for, and below, the
+      /// page answering each in the same order.
       pub fn contact_queries() -> Vec<ContactsQuery> {
         vec![
           ContactsQuery::default(),
           ContactsQuery {
             after: Some(42),
             limit: None,
+            account_id: None,
           },
           ContactsQuery {
             after: None,
             limit: Some(1),
+            account_id: None,
+          },
+          ContactsQuery {
+            after: None,
+            limit: None,
+            account_id: Some(77),
           },
         ]
       }
@@ -531,16 +540,24 @@ macro_rules! fixtures {
             items: contacts()[..1].to_vec(),
             more: true,
           },
+          Page {
+            items: contacts(),
+            more: false,
+          },
         ]
       }
 
       /// One start of each shape; each comes to the provider room at the same place.
-      pub fn starts() -> Vec<ChatStart> {
+      /// One start of each shape, the group's naming the account it is for.
+      pub fn starts() -> Vec<ChatStartRequest> {
         vec![
-          ChatStart::OneToOne { contact_id: 42 },
-          ChatStart::Group {
-            title: "The garden".into(),
-            contact_ids: vec![42, 77],
+          ChatStartRequest::new(ChatStart::OneToOne { contact_id: 42 }),
+          ChatStartRequest {
+            start: ChatStart::Group {
+              title: "The garden".into(),
+              contact_ids: vec![42, 77],
+            },
+            account_id: Some(77),
           },
         ]
       }
@@ -1026,7 +1043,8 @@ fn the_fixtures_hold_every_member_of_every_set() {
       "a contact is {kind:?}"
     );
   }
-  let shapes: BTreeSet<_> = on_provider::starts().iter().map(bmo_chat::ChatStart::capability).collect();
+  let shapes: BTreeSet<_> =
+    on_provider::starts().iter().map(|request| request.start.capability()).collect();
   assert_eq!(shapes, BTreeSet::from([ChatCapability::StartChat, ChatCapability::StartGroup]));
 
   let handed = on_provider::handed_messages();
@@ -1058,6 +1076,11 @@ fn the_fixtures_hold_every_member_of_every_set() {
   }
   assert!(on_provider::sends().iter().any(|request| request.prefix.is_some()));
   assert!(on_provider::sends().iter().any(|request| request.speaker.is_some()));
+  for named in [true, false] {
+    assert!(on_provider::sends().iter().any(|request| request.account_id.is_some() == named));
+    assert!(on_provider::starts().iter().any(|request| request.account_id.is_some() == named));
+    assert!(on_provider::contact_queries().iter().any(|query| query.account_id.is_some() == named));
+  }
   let patches = on_provider::gathered_patches();
   assert!(patches.iter().any(|patch| !patch.files.is_empty() && patch.gather_failure.is_none()));
   assert!(patches.iter().any(|patch| patch.files.is_empty() && patch.gather_failure.is_some()));
@@ -1301,6 +1324,7 @@ struct Stand {
   sends: Mutex<Vec<bmo_chat::ChatSendRequest>>,
   fetches: Mutex<Vec<bmo_chat::ChatMediaRequest>>,
   rooms: Mutex<Vec<i64>>,
+  contacts_for: Mutex<Vec<Option<i64>>>,
   owners: AtomicUsize,
 }
 
@@ -1317,6 +1341,7 @@ impl Stand {
       sends: Mutex::default(),
       fetches: Mutex::default(),
       rooms: Mutex::default(),
+      contacts_for: Mutex::default(),
       owners: AtomicUsize::new(0),
     }
   }
@@ -1381,7 +1406,11 @@ impl bmo_chat::ChatProvider for Stand {
     Ok(listed)
   }
 
-  async fn contacts(&self) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
+  async fn contacts(
+    &self,
+    account_id: Option<i64>,
+  ) -> Result<Vec<bmo_chat::ChatContact>, bmo_chat::ChatFailure> {
+    self.contacts_for.lock().unwrap().push(account_id);
     let mut listed = on_provider::contacts();
     listed.reverse();
     Ok(listed)
@@ -1389,7 +1418,7 @@ impl bmo_chat::ChatProvider for Stand {
 
   async fn start_chat(
     &self,
-    start: bmo_chat::ChatStart,
+    start: bmo_chat::ChatStartRequest,
   ) -> Result<bmo_chat::ChatStartResult, bmo_chat::ChatFailure> {
     let at = on_provider::starts()
       .iter()
@@ -1520,6 +1549,9 @@ async fn every_provider_route_is_served_by_the_real_router_and_answered_to_the_r
   for (query, page) in on_client::contact_queries().iter().zip(on_client::contact_pages()) {
     assert_eq!(client.contacts(query).await.unwrap(), page, "{query:?}");
   }
+  let accounts: Vec<Option<i64>> =
+    on_provider::contact_queries().iter().map(|query| query.account_id).collect();
+  assert_eq!(*stand.contacts_for.lock().unwrap(), accounts);
   for (start, room) in on_client::starts().iter().zip(on_client::provider_rooms()) {
     assert_eq!(client.start_chat(start).await.unwrap(), room, "{start:?}");
   }

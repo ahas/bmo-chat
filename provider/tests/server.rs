@@ -15,8 +15,8 @@ use bmo_chat::{
   ChatAvatar, ChatAvatarKind, ChatCapability, ChatContact, ChatContactKind, ChatDialect, ChatDialectLimits,
   ChatFailure, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges,
   ChatNumberSpace, ChatNumbering, ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
-  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatStart, ChatStartResult, ChatVoice,
-  MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind, provider_router,
+  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatStart, ChatStartRequest,
+  ChatStartResult, ChatVoice, MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind, provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -189,8 +189,8 @@ impl ChatProvider for Desk {
     };
     Ok(vec![room(5, "Five"), room(ROOM, "A Room"), room(-7, "Seven"), room(ROOM, "A Room")])
   }
-  async fn contacts(&self) -> Result<Vec<ChatContact>, ChatFailure> {
-    self.ask("contacts".to_owned())?;
+  async fn contacts(&self, account_id: Option<i64>) -> Result<Vec<ChatContact>, ChatFailure> {
+    self.ask(format!("contacts for {account_id:?}"))?;
     let contact = |id, name: &str, kind, room_id| ChatContact {
       id,
       name: name.into(),
@@ -206,8 +206,8 @@ impl ChatProvider for Desk {
   }
   /// A one-to-one with contact 5 is started as room 5; one with the owner comes to the room it already has;
   /// contact 66 is one the platform will not start with, and any other is unknown. A group is room -300.
-  async fn start_chat(&self, start: ChatStart) -> Result<ChatStartResult, ChatFailure> {
-    self.ask(format!("start {start:?}"))?;
+  async fn start_chat(&self, request: ChatStartRequest) -> Result<ChatStartResult, ChatFailure> {
+    self.ask(format!("start {:?} for {:?}", request.start, request.account_id))?;
     let room = |id, title: &str, private_to| ProviderRoom {
       id,
       owns: true,
@@ -217,7 +217,7 @@ impl ChatProvider for Desk {
       title: Some(title.into()),
       modes: Some(vec![ChatVoice::HumanReader]),
     };
-    Ok(match start {
+    Ok(match request.start {
       ChatStart::OneToOne { contact_id: 5 } => ChatStartResult::Started(room(5, "Five", Some(5))),
       ChatStart::OneToOne { contact_id: OWNER } => {
         ChatStartResult::Started(room(ROOM, "A Room", Some(OWNER)))
@@ -661,6 +661,7 @@ async fn the_contacts_of_the_account_are_refused_where_undeclared_and_paged_by_n
   assert_eq!(listed("?after=5").await, (vec![30, OWNER], false));
   assert_eq!(listed("?after=5&limit=1").await, (vec![30], true));
   assert_eq!(listed("?after=42").await, (Vec::new(), false));
+  assert_eq!(listed("?accountId=77&limit=2").await, (vec![5, 30], true));
   let (status, answer) = call(&router, "GET", "/contacts", None).await;
   assert_eq!(
     answer["items"],
@@ -671,9 +672,13 @@ async fn the_contacts_of_the_account_are_refused_where_undeclared_and_paged_by_n
     ]),
     "{status}"
   );
-  let (status, answer) = call(&router, "GET", "/contacts?limit=many", None).await;
-  assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
-  assert_eq!(declared.asked().len(), 5);
+  for query in ["limit=many", "accountId=seven"] {
+    let (status, answer) = call(&router, "GET", &format!("/contacts?{query}"), None).await;
+    assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{query}: {answer}");
+  }
+  let mut asked = vec!["contacts for None"; 6];
+  asked[4] = "contacts for Some(77)";
+  assert_eq!(declared.asked(), asked);
 }
 
 #[tokio::test]
@@ -712,6 +717,9 @@ async fn a_start_of_no_sound_shape_is_a_bad_request() {
     (json!({ "contactId": 5, "title": "Plans" }), None),
     (json!({ "contactId": 5, "contactIds": [5] }), None),
     (json!({ "contactIds": [5] }), None),
+    (json!({ "contactId": 5, "accountId": "seven" }), None),
+    (json!({ "contactId": 5, "accountId": 7, "account": 7 }), None),
+    (json!({ "accountId": 7 }), None),
     (json!({}), None),
   ] {
     let (status, answer) = call(&router, "POST", "/rooms", Some(body.clone())).await;
@@ -740,8 +748,13 @@ async fn a_declared_start_is_answered_with_its_room_or_why_not() {
   );
   let (status, room) = call(&router, "POST", "/rooms", Some(json!({ "contactId": OWNER }))).await;
   assert_eq!((status, &room["id"]), (201, &json!(ROOM)), "the one-to-one that stood");
-  let (status, room) =
-    call(&router, "POST", "/rooms", Some(json!({ "title": "Plans", "contactIds": [5, 30] }))).await;
+  let (status, room) = call(
+    &router,
+    "POST",
+    "/rooms",
+    Some(json!({ "title": "Plans", "contactIds": [5, 30], "accountId": 77 })),
+  )
+  .await;
   assert_eq!((status, &room["id"], &room["title"]), (201, &json!(-300), &json!("Plans")));
   assert_eq!(
     call(&router, "POST", "/rooms", Some(json!({ "contactId": UNKNOWN }))).await,
@@ -757,11 +770,11 @@ async fn a_declared_start_is_answered_with_its_room_or_why_not() {
   assert_eq!(
     desk.asked(),
     [
-      "start OneToOne { contact_id: 5 }",
-      "start OneToOne { contact_id: 42 }",
-      "start Group { title: \"Plans\", contact_ids: [5, 30] }",
-      "start OneToOne { contact_id: 13 }",
-      "start OneToOne { contact_id: 66 }",
+      "start OneToOne { contact_id: 5 } for None",
+      "start OneToOne { contact_id: 42 } for None",
+      "start Group { title: \"Plans\", contact_ids: [5, 30] } for Some(77)",
+      "start OneToOne { contact_id: 13 } for None",
+      "start OneToOne { contact_id: 66 } for None",
     ]
   );
 }

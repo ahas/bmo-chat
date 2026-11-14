@@ -1090,6 +1090,14 @@
           }
         ],
         "properties": {
+          "accountId": {
+            "description": "The account the send goes out in; unnamed, the provider's own.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "mode": {
             "anyOf": [
               {
@@ -1166,10 +1174,9 @@
         ],
         "type": "object"
       },
-      "ChatStart": {
+      "ChatStartRequest": {
         "anyOf": [
           {
-            "additionalProperties": false,
             "description": "A one-to-one with one contact of the account.",
             "properties": {
               "contactId": {
@@ -1183,7 +1190,6 @@
             "type": "object"
           },
           {
-            "additionalProperties": false,
             "description": "A room of several contacts, under a title: not blank, and naming each contact once.",
             "properties": {
               "contactIds": {
@@ -1204,7 +1210,19 @@
             "type": "object"
           }
         ],
-        "description": "The body of `POST /rooms`: a conversation to start, with one contact or with several under a title."
+        "description": "The body of `POST /rooms`: a conversation to start, and the account it is for. The start's shapes cannot\nclose themselves once flattened beside `accountId`, so the body is closed here: a member neither the shape\nnor this request reads makes it no start.",
+        "properties": {
+          "accountId": {
+            "description": "The account the start is for; unnamed, the provider's own.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object",
+        "unevaluatedProperties": false
       },
       "ChatSticker": {
         "anyOf": [
@@ -1879,6 +1897,20 @@
         "operationId": "listContacts",
         "parameters": [
           {
+            "description": "The account the listing is for.",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "description": "The account the listing is for.",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
             "description": "A contact number.",
             "in": "query",
             "name": "after",
@@ -1933,7 +1965,7 @@
             "$ref": "#/components/responses/NotReady"
           }
         },
-        "summary": "A page of the contacts of the provider's account, in ascending order of contact number and only those after `after`, at most `limit`, each with the one-to-one the account already has with it; refused `unsupported-capability` where the provider does not declare `contactList`.",
+        "summary": "A page of the contacts of the account `accountId` names, or of the provider's own, in ascending order of contact number and only those after `after`, at most `limit`, each with the one-to-one the account already has with it; refused `unsupported-capability` where the provider does not declare `contactList`.",
         "tags": [
           "contacts"
         ],
@@ -2241,7 +2273,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChatStart"
+                "$ref": "#/components/schemas/ChatStartRequest"
               }
             }
           },
@@ -2284,7 +2316,7 @@
             "$ref": "#/components/responses/NotReady"
           }
         },
-        "summary": "A conversation started on the platform, a one-to-one with one contact or a group of several under a title, answered with its room as `GET /rooms/{roomId}` answers it, the one-to-one the account already had where it had one; refused `unsupported-capability` where the provider does not declare the shape's capability, `startChat` or `startGroup`, and `not-found` for a contact it does not know.",
+        "summary": "A conversation started on the platform, a one-to-one with one contact or a group of several under a title, for the account `accountId` names or the provider's own, answered with its room as `GET /rooms/{roomId}` answers it, the one-to-one the account already had where it had one; refused `unsupported-capability` where the provider does not declare the shape's capability, `startChat` or `startGroup`, and `not-found` for a contact it does not know.",
         "tags": [
           "rooms"
         ],
@@ -2688,12 +2720,12 @@
       "route": "GET /rooms"
     },
     {
-      "description": "Starts a conversation on the platform, a one-to-one with `contactId` or a group of `contactIds` under `title`, and answers its room; refused where the provider does not declare startChat or startGroup.",
+      "description": "Starts a conversation on the platform, a one-to-one with `contactId` or a group of `contactIds` under `title`, for the account `accountId` names or the provider's own, and answers its room; refused where the provider does not declare startChat or startGroup.",
       "input": {
         "description": "A body sent as it is.",
         "properties": {
           "body": {
-            "$ref": "#/components/schemas/ChatStart"
+            "$ref": "#/components/schemas/ChatStartRequest"
           }
         },
         "required": [
@@ -2708,10 +2740,18 @@
       "route": "POST /rooms"
     },
     {
-      "description": "A page of the contacts of the provider's account, in ascending order of contact number, only those after `after`, each with the one-to-one the account already has with it; refused where the provider does not declare contactList.",
+      "description": "A page of the contacts of the account `accountId` names, or of the provider's own, in ascending order of contact number, only those after `after`, each with the one-to-one the account already has with it; refused where the provider does not declare contactList.",
       "input": {
-        "description": "The query of `GET /contacts`: only the contacts numbered after `after`, and at most `limit` of them.",
+        "description": "The query of `GET /contacts`: only the contacts numbered after `after`, and at most `limit` of them, of the\naccount `accountId` names, or of the provider's own where it names none.",
         "properties": {
+          "accountId": {
+            "description": "The account the listing is for.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "after": {
             "description": "A contact number.",
             "format": "int64",

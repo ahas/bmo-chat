@@ -29,14 +29,19 @@ pub struct ChatContact {
   pub room_id: Option<i64>,
 }
 
-/// The query of `GET /contacts`: only the contacts numbered after `after`, and at most `limit` of them.
+/// The query of `GET /contacts`: only the contacts numbered after `after`, and at most `limit` of them, of the
+/// account `accountId` names, or of the provider's own where it names none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ContactsQuery {
   /// A contact number.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub after: Option<i64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub limit: Option<u32>,
+  /// The account the listing is for.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub account_id: Option<i64>,
 }
 
 impl ContactsQuery {
@@ -47,7 +52,7 @@ impl ContactsQuery {
   }
 }
 
-/// The body of `POST /rooms`: a conversation to start, with one contact or with several under a title.
+/// A conversation to start, with one contact or with several under a title.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ChatStart {
@@ -57,6 +62,27 @@ pub enum ChatStart {
   /// A room of several contacts, under a title.
   #[serde(rename_all = "camelCase")]
   Group { title: String, contact_ids: Vec<i64> },
+}
+
+/// The body of `POST /rooms`: a conversation to start, and the account it is for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatStartRequest {
+  #[serde(flatten)]
+  pub start: ChatStart,
+  /// The account the start is for; unnamed, the provider's own.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub account_id: Option<i64>,
+}
+
+impl ChatStartRequest {
+  /// A start for the provider's own account.
+  pub fn new(start: ChatStart) -> Self {
+    Self {
+      start,
+      account_id: None,
+    }
+  }
 }
 
 impl ChatStart {

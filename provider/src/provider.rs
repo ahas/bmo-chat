@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use crate::avatar::{ChatAvatar, ChatAvatarKind, ChatPicture};
 use crate::bodies::{ChatHealth, Page, ProviderRoom};
 use crate::capability::ChatCapability;
-use crate::contacts::{ChatContact, ChatStart, ChatStartResult};
+use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult};
 use crate::declaration::ChatDeclaration;
 use crate::dialect::ChatDialect;
 use crate::media::{ChatMediaRequest, ChatMediaResult};
@@ -127,17 +127,18 @@ pub trait ChatProvider: Send + Sync {
     Ok(Vec::new())
   }
 
-  /// Every contact of the provider's account. The base pages the list and asks only a provider that declares
-  /// `contactList`; one that supplies no list of its own lists none.
-  async fn contacts(&self) -> Result<Vec<ChatContact>, ChatFailure> {
+  /// Every contact of the account named, or of the provider's own where none is (`contract.md`, "The account a
+  /// call is for"). The base pages the list and asks only a provider that declares `contactList`; one that
+  /// supplies no list of its own lists none.
+  async fn contacts(&self, _account_id: Option<i64>) -> Result<Vec<ChatContact>, ChatFailure> {
     Ok(Vec::new())
   }
 
-  /// A conversation started on the platform. The base asks only a provider that declares the start's
-  /// capability, with a start of a sound shape; one that supplies no start of its own refuses with
-  /// `unsupported-capability`.
-  async fn start_chat(&self, start: ChatStart) -> Result<ChatStartResult, ChatFailure> {
-    Ok(ChatStartResult::Refused(self.unsupported(start.capability())))
+  /// A conversation started on the platform, in the account the request names or in the provider's own. The
+  /// base asks only a provider that declares the start's capability, with a start of a sound shape; one that
+  /// supplies no start of its own refuses with `unsupported-capability`.
+  async fn start_chat(&self, request: ChatStartRequest) -> Result<ChatStartResult, ChatFailure> {
+    Ok(ChatStartResult::Refused(self.unsupported(request.start.capability())))
   }
 
   /// One send. A send the provider does not perform is answered as refused; a failure while performing it

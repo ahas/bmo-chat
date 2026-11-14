@@ -22,7 +22,7 @@ use crate::bodies::{
   ProviderOwner, ProviderRoom,
 };
 use crate::capability::ChatCapability;
-use crate::contacts::{ChatContact, ChatStart, ChatStartResult, ContactsQuery};
+use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
@@ -172,15 +172,15 @@ async fn start_chat(
   State(served): State<Served>,
   body: Bytes,
 ) -> Result<(StatusCode, Json<ProviderRoom>), WireError> {
-  let start: ChatStart = read(&body)?;
-  if let Some(fault) = start.fault() {
+  let request: ChatStartRequest = read(&body)?;
+  if let Some(fault) = request.start.fault() {
     return Err(WireError::new(ErrorCode::BadRequest, fault));
   }
   let provider = ready(&served)?;
-  if let Some(refusal) = provider.undeclared(start.capability()) {
+  if let Some(refusal) = provider.undeclared(request.start.capability()) {
     return Err(refusal.into());
   }
-  match provider.start_chat(start).await? {
+  match provider.start_chat(request).await? {
     ChatStartResult::Started(room) => Ok((StatusCode::CREATED, Json(room))),
     ChatStartResult::NoContact { contact_id } => Err(WireError::new(
       ErrorCode::NotFound,
@@ -190,8 +190,8 @@ async fn start_chat(
   }
 }
 
-/// The contacts of the provider's account as one page; refused where the provider does not declare
-/// `contactList`.
+/// The contacts of the account the query names, or of the provider's own, as one page; refused where the
+/// provider does not declare `contactList`.
 async fn contacts(
   State(served): State<Served>,
   asked: Result<Query<ContactsQuery>, QueryRejection>,
@@ -201,7 +201,7 @@ async fn contacts(
   if let Some(refusal) = provider.undeclared(ChatCapability::ContactList) {
     return Err(refusal.into());
   }
-  Ok(Json(asked.page(provider.contacts().await?)))
+  Ok(Json(asked.page(provider.contacts(asked.account_id).await?)))
 }
 
 async fn room(

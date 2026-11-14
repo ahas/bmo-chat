@@ -34,16 +34,17 @@ and a wrong one answers every tool with a 401 `unauthorized` error.
    Where it declares `roomList`, `chat_rooms` pages the rooms its account is in, each answered the same way;
    pass the last one's `id` as `after` for the next page while `more` is true. Where it declares
    `contactList`, `chat_contacts` pages the contacts of its account the same way, each with the one-to-one the
-   account already has with it, or null.
+   account already has with it, or null; `accountId` names another account of the provider's to list instead.
 
 `chat_start` starts a conversation on the platform, `{ "body": { "contactId": 5 } }` for a one-to-one or
-`{ "body": { "title": "…", "contactIds": [5, 6] } }` for a group. It is as real as a send: a group is made on the
-platform and its people see it, so start one only with contacts set aside for testing.
+`{ "body": { "title": "…", "contactIds": [5, 6] } }` for a group, either with `accountId` beside it to start it in
+another account of the provider's. It is as real as a send: a group is made on the platform and its people see
+it, so start one only with contacts set aside for testing.
 
 ## Sending
 
 `chat_send` takes `body`, one send: `kind`, `roomId` and the kind's own `fields`, with `mode`, `speaker`,
-`tag`, `prefix` and `replyToMessageId` beside them where needed. A text is the simplest:
+`tag`, `prefix`, `replyToMessageId` and `accountId` beside them where needed. A text is the simplest:
 
 ```json
 { "body": { "kind": "text", "roomId": 12, "fields": { "text": "Hello **there**" } } }

@@ -6,7 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use bmo_chat_client::{
-  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ChatStart,
+  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ChatStartRequest,
   ClientFailure, ContactsQuery, DialectCheck, DialectRead,
 };
 use schemars::generate::SchemaGenerator;
@@ -174,15 +174,16 @@ pub fn tools() -> Vec<ChatTool> {
     tool(
       "chat_start",
       "Starts a conversation on the platform, a one-to-one with `contactId` or a group of `contactIds` under \
-       `title`, and answers its room; refused where the provider does not declare startChat or startGroup.",
+       `title`, for the account `accountId` names or the provider's own, and answers its room; refused where the \
+       provider does not declare startChat or startGroup.",
       "POST /rooms",
-      |client, Body { body }: Body<ChatStart>| async move { client.start_chat(&body).await },
+      |client, Body { body }: Body<ChatStartRequest>| async move { client.start_chat(&body).await },
     ),
     tool(
       "chat_contacts",
-      "A page of the contacts of the provider's account, in ascending order of contact number, only those \
-       after `after`, each with the one-to-one the account already has with it; refused where the provider \
-       does not declare contactList.",
+      "A page of the contacts of the account `accountId` names, or of the provider's own, in ascending order of \
+       contact number, only those after `after`, each with the one-to-one the account already has with it; \
+       refused where the provider does not declare contactList.",
       "GET /contacts",
       |client, query: ContactsQuery| async move { client.contacts(&query).await },
     ),
