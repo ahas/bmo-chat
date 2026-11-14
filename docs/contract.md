@@ -287,7 +287,7 @@ until then it declares none of them, and the receiving side offers only the room
 
 | Platform | What it needs |
 |---|---|
-| KakaoTalk | its friends list, read through the desktop automation that reads the owner's account; a start opens the friend's chat on the desktop. Its account-safety rules forbid adding a friend automatically, so a contact is only a friend the owner already has, and a group start is declared only where the desktop can make one without adding anyone |
+| KakaoTalk | its friends list, read headless from the platform's `talk/friends/sync` over the owner's account's login; a one-to-one start is the chat protocol's `CREATE` naming the one friend's id, and a friend who already has a one-to-one is answered the room the account's room list names. Its account-safety rules forbid adding a friend automatically, so a contact is only a friend the owner already has; they also forbid every start that invites people, a `CREATE` naming several ids, `ADDMEM` into a room that stands and the open-chat commands, so `startGroup` is never declared |
 | Discord | a contact is a user who shares a server with the bot; a one-to-one is the bot's direct-message channel with that user, which the bot account opens itself. The bot cannot start a group of several users, so `startGroup` stays undeclared |
 | Microsoft Teams | contacts from Microsoft Graph's people or users of the organization, and a start through Graph's chat creation, a one-to-one or a group chat with a topic, which needs the permission to create chats on the account it reads |
 
