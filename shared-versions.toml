@@ -1,6 +1,6 @@
 # The registry crates every Rust unit takes at one version and one feature set, so that what one unit's
-# build compiles into the shared build directory every other unit's build reuses, and the one release of each
-# package every consumer vendors as a packed file. The rule is docs/conventions.md, 「Shared versions」; the
+# build compiles into the shared build directory every other unit's build reuses, and the releases of each
+# package a consumer may vendor as a packed file. The rule is docs/conventions.md, 「Shared versions」; the
 # testbed's shared-versions quick check holds a unit to it.
 
 # The line a unit writes for each listed crate, copied byte for byte into its [workspace.dependencies],
@@ -169,9 +169,26 @@ zerovec = "0.11.8"
 zerovec-derive = "0.11.6"
 zmij = "1.0.23"
 
-# The one release of each package every consumer vendors: the version, the packed file the package's release
-# verb wrote for it, and that file's sha256 as the package's own ledger holds it.
+# The release of each package a consumer moves onto: the version, the packed file the package's release verb
+# wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
+version = "0.1.0-rev.26"
+file = "bmo-ui-0.1.0-rev.26.tgz"
+sha256 = "6d4619d70dd067c59d420a07a72420f7ee46626f6a8edd9430a5e1ddf7530684"
+
+# The earlier releases each pinned release stays compatible with, from the bound its ledger line names up,
+# which a consumer that needs nothing of the pinned release may still vendor, each as the pin is written.
+[[compatible.bmo-ui]]
+version = "0.1.0-rev.23"
+file = "bmo-ui-0.1.0-rev.23.tgz"
+sha256 = "87caf5a6617cba2dc3a83b2abaa103814a5dd4313a149b8e9a63537dad25b3ce"
+
+[[compatible.bmo-ui]]
 version = "0.1.0-rev.24"
 file = "bmo-ui-0.1.0-rev.24.tgz"
 sha256 = "f362c1db9c67212e8dba6f58dfc227345e99a9d4bb4b7812a21c3d9b42c173c9"
+
+[[compatible.bmo-ui]]
+version = "0.1.0-rev.25"
+file = "bmo-ui-0.1.0-rev.25.tgz"
+sha256 = "ff2898116d22590edd60aca5e5376853fa2d3c7300d87b9873fea06855edae49"
