@@ -352,10 +352,11 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   requirement, so a release of one unit forces no commit in another; the testbed builds each unit against the
   sibling checkouts and that build is the compatibility check. A client pack a consumer vendors is named by
   the commit it was packed from, not by a version.
-- **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle and its
-  console stand on one release of it (bmo-ui's `docs/console-bundles.md`, 「The layer a bundle is built on」).
-  Every consumer vendors the one packed file bmo-ui's release verb wrote for the release `shared-versions.toml`
-  pins (「Shared versions」), never a pack of its own.
+- **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle stands on a
+  release inside the range its console's release declares (bmo-ui's `docs/console-bundles.md`, 「The layer a
+  bundle is built on」). Every consumer vendors a packed file bmo-ui's release verb wrote, for the release
+  `shared-versions.toml` pins or for one of the earlier releases it names compatible with it (「Shared
+  versions」), never a pack of its own.
 - **What a version says** is therefore only which release a running unit stands at; which change is live is
   the commit, everywhere a person reads it.
 
@@ -417,9 +418,9 @@ A crate compiled into the shared build directory (「Rust builds」) is reused o
 same crate at the same version with the same features, standing on the same versions below it. A unit that
 asks for one feature more, or whose lock holds one patch version more of a crate far below, compiles the crate
 and everything above it again. A console bundle runs on its console's copy of bmo-ui, so it is attached only
-where it was built on the release the console runs. `shared-versions.toml` at the root of this repository is
-the one list of the registry crates every unit takes alike and of the one release of each package every
-consumer vendors, and every unit that builds with Cargo or vendors a listed package meets it.
+where it was built on a release inside the range the console's release declares. `shared-versions.toml` at the
+root of this repository is the one list of the registry crates every unit takes alike and of the releases of
+each package a consumer may vendor, and every unit that builds with Cargo or vendors a listed package meets it.
 
 - **What the file holds.** Its `[dependencies]` table holds the line a unit writes for each listed crate: the
   version requirement, which is the snapshot's version of the crate, and the features, sorted. The features
@@ -427,17 +428,25 @@ consumer vendors, and every unit that builds with Cargo or vendors a listed pack
   dev-dependency's features into the build it tests. Its `[snapshot]` table holds the version that every
   registry crate the listed crates build on for x86_64-unknown-linux-gnu resolves to, the listed crates
   included: one version for each semver line, and a list where the closure holds a crate on more than one
-  line. Its `[packages.<name>]` tables each pin the one release of a package every consumer vendors as a
+  line. Its `[packages.<name>]` tables each pin the release of a package a consumer moves onto, vendored as a
   packed file: `version`, the release's version; `file`, the packed file's name as the package's release verb
   wrote it; and `sha256`, that file's sha256 in lowercase hexadecimal, as the package's own ledger holds it.
-  bmo-ui is pinned there. The file names crates, packages, files and versions only, never a unit.
+  Its `[[compatible.<name>]]` lists name, for a pinned package, each earlier release the pinned release stays
+  compatible with, as the package's own ledger states the pinned release's range, by the same three keys; a
+  package whose pinned release is its own bound has none. bmo-ui is pinned there. The file names crates,
+  packages, files and versions only, never a unit.
 - **A unit's manifests carry the listed lines byte for byte.** A unit with a workspace writes each listed
   crate it uses in `[workspace.dependencies]` exactly as the file's line, and its crates take it with
   `workspace = true`, adding nothing but `optional`. A unit that is one package writes the file's line in
   every dependency table that names the crate. A crate the unit does not use it does not write.
-- **A consumer vendors the pinned file as it stands.** Every package manifest of a unit that names a pinned
-  package names the pinned file where it takes a file, or the pinned version where it names a version, and the
-  file it vendors has the pinned sha256. A unit never packs a pinned package from its source.
+- **A consumer vendors a listed release's file as it stands.** Every package manifest of a unit that names a
+  pinned package names the file of the pinned release or of a compatible one where it takes a file, or that
+  release's version where it names a version, and the file it vendors has that release's sha256. A unit never
+  packs a pinned package from its source.
+- **A consumer moves when it needs to.** A consumer whose own build needs what the pinned release brings
+  vendors it; one that needs nothing of it stays on the compatible release it vendors, since its console still
+  attaches it. A pin whose release raises the bound lists no release below that bound, so every consumer
+  still standing there moves with it.
 - **A unit's lock holds the snapshot.** Every registry crate of the unit's `Cargo.lock` whose name the
   snapshot lists, on a semver line the snapshot names, stands at the snapshot's version. A version on a line
   the snapshot does not name is another crate, and the unit's own. A unit moves its lock with
@@ -451,7 +460,8 @@ consumer vendors, and every unit that builds with Cargo or vendors a listed pack
   decision, made by a change to the file, and the exception then leaves both units.
 - **The file changes here alone,** every line and the snapshot together, the snapshot taken from one
   resolution of the lines; the units then copy the lines and move their locks. A package's pin moves to a
-  release its own repository has published, and the units then vendor that file.
+  release its own repository has published, and its compatible list to the releases of that release's range
+  below it, each with the sha256 the package's ledger holds.
 - **The testbed holds the rule** by its `shared-versions` quick check, which a unit enables in its
   `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
 
