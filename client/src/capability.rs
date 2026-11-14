@@ -54,6 +54,8 @@ pub enum ChatCapability {
   RoomList,
   /// The provider can list the contacts of its account.
   ContactList,
+  /// The provider can list the members of a room.
+  MemberList,
   /// The provider can start a one-to-one with a contact of its account.
   StartChat,
   /// The provider can start a room of several contacts of its account, under a title.
@@ -90,6 +92,7 @@ impl ChatCapability {
       Self::History => "read past messages back",
       Self::RoomList => "list the rooms of its account",
       Self::ContactList => "list the contacts of its account",
+      Self::MemberList => "list the members of a room",
       Self::StartChat => "start a conversation with a contact",
       Self::StartGroup => "start a group conversation",
     }

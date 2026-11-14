@@ -15,6 +15,7 @@ mod dialect;
 mod error;
 mod inbound;
 mod media;
+mod members;
 mod message;
 mod missed;
 mod modes;
@@ -36,6 +37,7 @@ pub use dialect::{ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
 pub use inbound::{ChatReceiver, receiver_router};
 pub use media::{ChatMediaRequest, FilesQuery};
+pub use members::{ChatMember, ChatMembers};
 pub use message::{
   ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, MessageFile, MessageOrigin,
   RoomFacts, RoomKind,

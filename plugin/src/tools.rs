@@ -142,7 +142,7 @@ struct Files {
   sent_at: Option<i64>,
 }
 
-/// The twelve tools, in the order the protocol lists their routes.
+/// The thirteen tools, in the order the protocol lists their routes.
 pub fn tools() -> Vec<ChatTool> {
   vec![
     tool(
@@ -194,6 +194,13 @@ pub fn tools() -> Vec<ChatTool> {
        be sent in.",
       "GET /rooms/{roomId}",
       |client, Room { room_id }| async move { client.room(room_id).await },
+    ),
+    tool(
+      "chat_members",
+      "The members of a room, whole: each person's number where the provider gave one, name and status line; \
+       refused where the provider does not declare memberList, and not-found where it holds none of them.",
+      "GET /rooms/{roomId}/members",
+      |client, Room { room_id }| async move { client.members(room_id).await },
     ),
     tool(
       "chat_owner",

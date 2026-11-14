@@ -1,4 +1,4 @@
-//! The harness plugin's MCP server over the real provider router: each of the twelve tools, called as a harness
+//! The harness plugin's MCP server over the real provider router: each of the thirteen tools, called as a harness
 //! calls it, answers exactly what the client answers for its route, from a stand-in provider served by
 //! bmo-chat. The server is spoken to over an in-process pipe, and every listener is taken down before the
 //! test ends.
@@ -98,6 +98,14 @@ impl bmo_chat::ChatProvider for Stand {
       title: Some("The garden".into()),
       modes: None,
     }])
+  }
+  async fn members(&self, room_id: i64) -> Result<bmo_chat::ChatMembersResult, bmo_chat::ChatFailure> {
+    self.asked(format!("members of {room_id}"));
+    Ok(bmo_chat::ChatMembersResult::Listed(vec![bmo_chat::ChatMember {
+      person: Some(42),
+      name: "A person".into(),
+      status_message: None,
+    }]))
   }
   async fn contacts(
     &self,
@@ -292,6 +300,7 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
       as_json(client.contacts(&contacts).await.unwrap()),
     ),
     ("chat_room", json!({ "roomId": -100 }), as_json(client.room(-100).await.unwrap())),
+    ("chat_members", json!({ "roomId": -100 }), as_json(client.members(-100).await.unwrap())),
     ("chat_owner", json!({}), as_json(client.owner().await.unwrap())),
     (
       "chat_message_files",
@@ -336,6 +345,7 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
       "start OneToOne { contact_id: 42 } for Some(77)",
       "contacts for Some(77)",
       "room -100",
+      "members of -100",
       "owner",
       "files -100 5 Some(1000)",
       "avatars"

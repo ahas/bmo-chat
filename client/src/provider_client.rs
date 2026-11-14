@@ -19,6 +19,7 @@ use crate::contacts::{ChatContact, ChatStartRequest, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, FilesQuery};
+use crate::members::ChatMembers;
 use crate::message::MessageFile;
 use crate::patience::ChatPatience;
 use crate::send::{ChatSendRequest, ChatSent};
@@ -162,6 +163,13 @@ impl ChatProviderClient {
   /// `not-found`.
   pub async fn room(&self, room_id: i64) -> Result<ProviderRoom, ClientFailure> {
     self.get(&format!("rooms/{room_id}")).await
+  }
+
+  /// `GET /rooms/{roomId}/members`: the room's members, whole. A provider that does not declare `memberList`
+  /// comes back as `ClientFailure::Answered` with `unsupported-capability`, and a room whose members it does not
+  /// hold with `not-found` and its reason.
+  pub async fn members(&self, room_id: i64) -> Result<ChatMembers, ClientFailure> {
+    self.get(&format!("rooms/{room_id}/members")).await
   }
 
   /// `GET /owner`.

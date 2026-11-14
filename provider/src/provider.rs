@@ -13,6 +13,7 @@ use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult};
 use crate::declaration::ChatDeclaration;
 use crate::dialect::ChatDialect;
 use crate::media::{ChatMediaRequest, ChatMediaResult};
+use crate::members::ChatMembersResult;
 use crate::message::{GatheredPatch, HandedMessage};
 use crate::modes::{ChatModeStanding, ChatReadMode, ChatVoice};
 use crate::numbering::ChatNumbering;
@@ -132,6 +133,12 @@ pub trait ChatProvider: Send + Sync {
   /// supplies no list of its own lists none.
   async fn contacts(&self, _account_id: Option<i64>) -> Result<Vec<ChatContact>, ChatFailure> {
     Ok(Vec::new())
+  }
+
+  /// The members of a room (`contract.md`, "The members of a room"). The base asks only a provider that declares
+  /// `memberList`; one that supplies no list of its own refuses with `unsupported-capability`.
+  async fn members(&self, _room_id: i64) -> Result<ChatMembersResult, ChatFailure> {
+    Ok(ChatMembersResult::Refused(self.unsupported(ChatCapability::MemberList)))
   }
 
   /// A conversation started on the platform, in the account the request names or in the provider's own. The

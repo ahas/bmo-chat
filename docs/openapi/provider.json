@@ -304,6 +304,11 @@
             "type": "string"
           },
           {
+            "const": "memberList",
+            "description": "The provider can list the members of a room.",
+            "type": "string"
+          },
+          {
             "const": "startChat",
             "description": "The provider can start a one-to-one with a contact of its account.",
             "type": "string"
@@ -577,6 +582,51 @@
           "ready",
           "reason",
           "version"
+        ],
+        "type": "object"
+      },
+      "ChatMember": {
+        "description": "One person in a room.",
+        "properties": {
+          "name": {
+            "description": "What the room calls the person.",
+            "type": "string"
+          },
+          "person": {
+            "description": "The person, as a number of the provider's `people` space, the sender number the room's messages carry;\nnull where the provider has given the person none.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "statusMessage": {
+            "description": "The person's status line, or null where the platform gave none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "person",
+          "name",
+          "statusMessage"
+        ],
+        "type": "object"
+      },
+      "ChatMembers": {
+        "description": "The answer of `GET /rooms/{roomId}/members`: the room's members, whole.",
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMember"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
         ],
         "type": "object"
       },
@@ -2429,6 +2479,73 @@
         ]
       }
     },
+    "/rooms/{roomId}/members": {
+      "get": {
+        "operationId": "getRoomMembers",
+        "parameters": [
+          {
+            "description": "The room's number.",
+            "in": "path",
+            "name": "roomId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMembers"
+                }
+              }
+            },
+            "description": "Answered."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WireError"
+                }
+              }
+            },
+            "description": "- `unsupported-capability`: refused: the provider does not declare the capability the call needs.\n- `platform`: refused by the platform; the sentence is the provider's own English reason."
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "The members of a room, whole: each person's number in the `people` space where the provider gave one, the name the room calls them and their status line; `not-found` with the provider's reason where it holds none of them, and refused `unsupported-capability` where the provider does not declare `memberList`.",
+        "tags": [
+          "rooms"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-found",
+          "unsupported-capability",
+          "platform",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
     "/rooms/{roomId}/messages/{messageId}/files": {
       "get": {
         "operationId": "listRoomsMessagesFiles",
@@ -2797,6 +2914,27 @@
         "$ref": "#/components/schemas/ProviderRoom"
       },
       "route": "GET /rooms/{roomId}"
+    },
+    {
+      "description": "The members of a room, whole: each person's number where the provider gave one, name and status line; refused where the provider does not declare memberList, and not-found where it holds none of them.",
+      "input": {
+        "description": "One room, by its number.",
+        "properties": {
+          "roomId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "roomId"
+        ],
+        "type": "object"
+      },
+      "name": "chat_members",
+      "output": {
+        "$ref": "#/components/schemas/ChatMembers"
+      },
+      "route": "GET /rooms/{roomId}/members"
     },
     {
       "description": "The room to reach the account's owner in unprompted.",

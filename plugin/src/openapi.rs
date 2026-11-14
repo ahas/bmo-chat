@@ -7,9 +7,10 @@ use std::collections::BTreeMap;
 
 use bmo_chat_client::{
   AccountRoomsQuery, AvatarChange, AvatarsQuery, ChatAvatar, ChatContact, ChatDeclaration, ChatHealth,
-  ChatSendRequest, ChatSent, ChatStartRequest, ContactsQuery, Deletion, DialectCheck, DialectChecked,
-  DialectRead, DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, MessageFile, Page,
-  ProviderOwner, ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery, WireError,
+  ChatMembers, ChatSendRequest, ChatSent, ChatStartRequest, ContactsQuery, Deletion, DialectCheck,
+  DialectChecked, DialectRead, DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage,
+  MessageFile, Page, ProviderOwner, ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
+  WireError,
 };
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
@@ -430,6 +431,29 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       body: None,
       answers: vec![(200, json_answer::<ProviderRoom>(generator))],
       codes: codes(false, &[ErrorCode::NotFound, ErrorCode::NotReady, ErrorCode::Failed]),
+    },
+    Route {
+      method: "get",
+      path: "/rooms/{roomId}/members",
+      id: "getRoomMembers",
+      tag: "rooms",
+      summary: "The members of a room, whole: each person's number in the `people` space where the provider gave \
+        one, the name the room calls them and their status line; `not-found` with the provider's reason where it \
+        holds none of them, and refused `unsupported-capability` where the provider does not declare \
+        `memberList`.",
+      parameters: vec![room.clone()],
+      body: None,
+      answers: vec![(200, json_answer::<ChatMembers>(generator))],
+      codes: codes(
+        true,
+        &[
+          ErrorCode::NotFound,
+          ErrorCode::UnsupportedCapability,
+          ErrorCode::Platform,
+          ErrorCode::NotReady,
+          ErrorCode::Failed,
+        ],
+      ),
     },
     Route {
       method: "get",

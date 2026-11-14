@@ -14,6 +14,7 @@ mod dialect;
 mod error;
 mod link;
 mod media;
+mod members;
 mod message;
 mod modes;
 mod numbering;
@@ -38,6 +39,7 @@ pub use dialect::{ChatDialect, ChatDialectDeclaration, ChatDialectLimits, ChatMa
 pub use error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
 pub use link::{ChatPatience, ChatReceiverLink, ChatWait, LinkFailure, RealClock};
 pub use media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
+pub use members::{ChatMember, ChatMembers, ChatMembersResult};
 pub use message::{
   ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, MessageFile, MessageOrigin,
   RoomFacts, RoomKind,

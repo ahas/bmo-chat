@@ -1,7 +1,7 @@
 //! The OpenAPI documents: each committed document is what the code generates, the provider document lists
 //! exactly the routes the client calls and the receiving-side document exactly those the router serves,
 //! every body the client crate writes is valid against the schema of its route, and the tools stated under
-//! `x-tools` are the twelve the MCP server lists, each on a route of the document.
+//! `x-tools` are the thirteen the MCP server lists, each on a route of the document.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -15,12 +15,13 @@ use axum::response::{IntoResponse, Response};
 use bmo_chat_client::{
   AccountRoomsQuery, AlbumItem, AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatContact,
   ChatContactKind, ChatDeclaration, ChatDialectDeclaration, ChatDialectLimits, ChatHealth, ChatMarkup,
-  ChatMediaRequest, ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatProviderClient,
-  ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest, ChatSent, ChatStart, ChatStartRequest,
-  ChatSticker, ChatVoice, ContactsQuery, DialectCheck, DialectChecked, DialectRead, DialectReading,
-  ErrorCode, FileItem, GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, MessageFile,
-  MessageOrigin, MissedPicture, MissedPictureReason, Page, ProviderOwner, ProviderRoom, ReceiverRoom,
-  RoomFacts, RoomKind, RoomQuery, RoomsQuery, StickerItem, WireError, receiver_router,
+  ChatMediaRequest, ChatMember, ChatMembers, ChatModeStanding, ChatNumberRanges, ChatNumberSpace,
+  ChatNumbering, ChatProviderClient, ChatReach, ChatReadMode, ChatReceiver, ChatSend, ChatSendRequest,
+  ChatSent, ChatStart, ChatStartRequest, ChatSticker, ChatVoice, ContactsQuery, DialectCheck,
+  DialectChecked, DialectRead, DialectReading, ErrorCode, FileItem, GatheredPatch, HandedMessage,
+  HeldMessage, InboundChatContext, MessageFile, MessageOrigin, MissedPicture, MissedPictureReason, Page,
+  ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery, RoomsQuery, StickerItem,
+  WireError, receiver_router,
 };
 use bmo_chat_plugin::{Side, openapi, openapi_json, tools};
 use serde::Serialize;
@@ -31,8 +32,8 @@ use tower::ServiceExt;
 
 const TOKEN: &str = "the-token";
 
-/// The twelve tools the protocol's harness plugin serves, in the order the protocol lists their routes.
-const TOOLS: [&str; 12] = [
+/// The thirteen tools the protocol's harness plugin serves, in the order the protocol lists their routes.
+const TOOLS: [&str; 13] = [
   "chat_declaration",
   "chat_health",
   "chat_send",
@@ -40,6 +41,7 @@ const TOOLS: [&str; 12] = [
   "chat_start",
   "chat_contacts",
   "chat_room",
+  "chat_members",
   "chat_owner",
   "chat_message_files",
   "chat_dialect_reading",
@@ -128,6 +130,7 @@ async fn the_provider_routes_are_exactly_those_the_client_calls() {
       .err(),
     client.contacts(&ContactsQuery::default()).await.err(),
     client.room(-100).await.err(),
+    client.members(-100).await.err(),
     client.owner().await.err(),
     client.message_files(&media).await.err(),
     client.dialect_reading("*a*").await.err(),
@@ -438,6 +441,21 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_provide
   bodies.valid("get", "/declaration", Answer(200), &declaration());
   bodies.valid("get", "/health", Answer(200), &ChatHealth::ready("1.0.0"));
   bodies.valid("get", "/health", Answer(200), &ChatHealth::not_ready("1.0.0", "Not open yet."));
+  let members = ChatMembers {
+    members: vec![
+      ChatMember {
+        person: Some(42),
+        name: "A person".into(),
+        status_message: Some("Away".into()),
+      },
+      ChatMember {
+        person: None,
+        name: "A guest".into(),
+        status_message: None,
+      },
+    ],
+  };
+  bodies.valid("get", "/rooms/{roomId}/members", Answer(200), &members);
   for send in every_send() {
     bodies.valid("post", "/sends", Request, &send);
   }
@@ -907,7 +925,7 @@ fn every_reference_points_at_what_it_holds_and_every_schema_is_a_json_schema() {
 }
 
 #[test]
-fn the_documents_state_the_plugin_and_the_provider_document_its_twelve_tools_each_on_a_route() {
+fn the_documents_state_the_plugin_and_the_provider_document_its_thirteen_tools_each_on_a_route() {
   for side in [Side::Provider, Side::Receiver] {
     let document = openapi(side);
     assert_eq!(document["openapi"], "3.1.0");

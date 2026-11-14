@@ -122,6 +122,7 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `POST` | `/rooms` | 201, the room a conversation started came to |
 | `GET` | `/contacts` | 200, a page of the contacts of the provider's account |
 | `GET` | `/rooms/{roomId}` | 200, what the provider knows of a room |
+| `GET` | `/rooms/{roomId}/members` | 200, the members of a room |
 | `GET` | `/owner` | 200, the room to reach the account's owner in |
 | `GET` | `/rooms/{roomId}/messages/{messageId}/files` | 200, a page of the files a message carried |
 | `POST` | `/dialect/readings` | 200, the dialect's reading of markdown |
@@ -131,7 +132,7 @@ answered `not-ready` decides itself whether to ask again after `Retry-After`.
 | `GET` | `/people/{personId}/avatar` | 200, a person's kept picture as its bytes |
 
 The declaration, health, dialect and avatar routes answer whatever state the provider is in. The others
-(sends, the rooms, a start, the contacts, a room, the owner and a message's files) answer 503 `not-ready`
+(sends, the rooms, a start, the contacts, a room, a room's members, the owner and a message's files) answer 503 `not-ready`
 while the provider's health is not ready, without asking the provider.
 
 ### `GET /declaration`
@@ -247,6 +248,20 @@ What the provider knows of a room (`contract.md`, "A room as a provider knows it
 | `modes` | array of `ChatVoice`, or null: the voices the room is read by and may be sent in; null where the provider does not say, standing for every mode the declaration lists, and read as null where a provider leaves it out |
 
 A room the provider knows nothing of is answered 404 `not-found`.
+
+### `GET /rooms/{roomId}/members`
+
+The people in a room (`contract.md`, "The members of a room"). The answer is `members`, the whole list, each:
+
+| Field | Type |
+|---|---|
+| `person` | number or null: the person in the provider's `people` space, the sender number the room's messages carry; null where the provider has given the person none |
+| `name` | string: what the room calls the person |
+| `statusMessage` | string or null: the person's status line |
+
+A provider that does not declare `memberList` is refused `unsupported-capability` by the base before the provider
+is asked. A room whose members the provider does not hold is answered 404 `not-found` with the provider's own
+reason.
 
 ### `GET /owner`
 
@@ -423,6 +438,7 @@ through the client:
 | `chat_start` | `POST /rooms` | `body`: a start |
 | `chat_contacts` | `GET /contacts` | optional `after`, `limit` and `accountId` |
 | `chat_room` | `GET /rooms/{roomId}` | `roomId` |
+| `chat_members` | `GET /rooms/{roomId}/members` | `roomId` |
 | `chat_owner` | `GET /owner` | none |
 | `chat_message_files` | `GET /rooms/{roomId}/messages/{messageId}/files` | `roomId`, `messageId`, optional `sentAt` |
 | `chat_dialect_reading` | `POST /dialect/readings` | `body`: `text` |

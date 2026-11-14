@@ -13,10 +13,11 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bmo_chat::{
   ChatAvatar, ChatAvatarKind, ChatCapability, ChatContact, ChatContactKind, ChatDialect, ChatDialectLimits,
-  ChatFailure, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatModeStanding, ChatNumberRanges,
-  ChatNumberSpace, ChatNumbering, ChatPicture, ChatProvider, ChatReach, ChatReadMode, ChatReceiver,
-  ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatStart, ChatStartRequest,
-  ChatStartResult, ChatVoice, MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind, provider_router,
+  ChatFailure, ChatMarkup, ChatMediaRequest, ChatMediaResult, ChatMember, ChatMembersResult,
+  ChatModeStanding, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatPicture, ChatProvider, ChatReach,
+  ChatReadMode, ChatReceiver, ChatRefusal, ChatSend, ChatSendRequest, ChatSendResult, ChatSent, ChatStart,
+  ChatStartRequest, ChatStartResult, ChatVoice, MessageFile, ProviderRoom, RETRY_AFTER_SECONDS, RoomKind,
+  provider_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -189,6 +190,26 @@ impl ChatProvider for Desk {
     };
     Ok(vec![room(5, "Five"), room(ROOM, "A Room"), room(-7, "Seven"), room(ROOM, "A Room")])
   }
+  async fn members(&self, room_id: i64) -> Result<ChatMembersResult, ChatFailure> {
+    self.ask(format!("members of {room_id}"))?;
+    Ok(match room_id {
+      ROOM => ChatMembersResult::Listed(vec![
+        ChatMember {
+          person: Some(OWNER),
+          name: "The owner".into(),
+          status_message: Some("Away".into()),
+        },
+        ChatMember {
+          person: None,
+          name: "A guest".into(),
+          status_message: None,
+        },
+      ]),
+      _ => ChatMembersResult::Unheld {
+        reason: format!("no members of room {room_id} are read yet"),
+      },
+    })
+  }
   async fn contacts(&self, account_id: Option<i64>) -> Result<Vec<ChatContact>, ChatFailure> {
     self.ask(format!("contacts for {account_id:?}"))?;
     let contact = |id, name: &str, kind, room_id| ChatContact {
@@ -360,6 +381,7 @@ fn routes() -> Vec<(&'static str, String, Option<Value>)> {
     ("POST", "/rooms".into(), Some(json!({ "contactId": 5 }))),
     ("GET", "/contacts".into(), None),
     ("GET", format!("/rooms/{ROOM}"), None),
+    ("GET", format!("/rooms/{ROOM}/members"), None),
     ("GET", "/owner".into(), None),
     ("GET", files(5), None),
     ("POST", "/dialect/readings".into(), Some(json!({ "text": "hello" }))),
@@ -544,6 +566,7 @@ async fn a_provider_that_fails_answers_failed() {
     ChatCapability::FetchMedia,
     ChatCapability::RoomList,
     ChatCapability::ContactList,
+    ChatCapability::MemberList,
     ChatCapability::StartChat,
   ]);
   desk.fails();
@@ -679,6 +702,39 @@ async fn the_contacts_of_the_account_are_refused_where_undeclared_and_paged_by_n
   let mut asked = vec!["contacts for None"; 6];
   asked[4] = "contacts for Some(77)";
   assert_eq!(declared.asked(), asked);
+}
+
+#[tokio::test]
+async fn a_rooms_members_are_refused_where_undeclared_and_answered_whole_or_not_found_where_declared() {
+  let undeclared = Desk::new(&[ChatCapability::ContactList]);
+  assert_eq!(
+    call(&router(&undeclared), "GET", &format!("/rooms/{ROOM}/members"), None).await,
+    (
+      422,
+      json!({ "code": "unsupported-capability", "error": "Platform cannot list the members of a room." })
+    )
+  );
+  assert_eq!(undeclared.asked(), Vec::<String>::new());
+  let declared = Desk::new(&[ChatCapability::MemberList]);
+  let router = router(&declared);
+  assert_eq!(
+    call(&router, "GET", &format!("/rooms/{ROOM}/members"), None).await,
+    (
+      200,
+      json!({ "members": [
+        { "person": OWNER, "name": "The owner", "statusMessage": "Away" },
+        { "person": null, "name": "A guest", "statusMessage": null },
+      ] })
+    )
+  );
+  assert_eq!(
+    call(&router, "GET", "/rooms/-7/members", None).await,
+    (
+      404,
+      json!({ "code": "not-found", "error": "Platform: no members of room -7 are read yet" })
+    )
+  );
+  assert_eq!(declared.asked(), ["members of -100", "members of -7"]);
 }
 
 #[tokio::test]
