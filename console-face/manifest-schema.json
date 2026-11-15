@@ -71,6 +71,15 @@
       ],
       "description": "The least role a reader holds to open the screen."
     },
+    "sidebarSection": {
+      "default": "application",
+      "description": "The section of a console's sidebar the bundle's entry stands in: administration, among the services an administrator runs the system with, or application, among the applications a reader works in.",
+      "enum": [
+        "administration",
+        "application"
+      ],
+      "type": "string"
+    },
     "ownerKey": {
       "default": false,
       "description": "Whether every call the screens make needs the reader's owner key.",
