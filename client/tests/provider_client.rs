@@ -297,7 +297,7 @@ async fn every_provider_route_is_called_with_its_method_token_and_body_and_its_a
         id: "file-1".into(),
         name: "a.png".into(),
         mime: "image/png".into(),
-        bytes: vec![137, 80],
+        bytes: vec![137, 80].into(),
         kind: None,
       }],
       more: false,

@@ -231,7 +231,7 @@ fn file() -> MessageFile {
     id: "file-1".into(),
     name: "a.png".into(),
     mime: "image/png".into(),
-    bytes: vec![137, 80],
+    bytes: vec![137, 80].into(),
     kind: None,
   }
 }
@@ -259,7 +259,21 @@ async fn a_hand_over_is_answered_with_the_message_held_created_where_it_was_not_
     "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }],
     "gathering": false,
   });
-  assert_eq!(call(&router, "PUT", "/rooms/-100/messages/6", Some(&carried)).await, (201, carried));
+  let mut answered = carried.clone();
+  answered["files"] = json!([{ "id": "file-1", "name": "a.png", "mime": "image/png" }]);
+  assert_eq!(
+    call(&router, "PUT", "/rooms/-100/messages/6", Some(&carried)).await,
+    (201, answered),
+    "the answer names each file without its bytes"
+  );
+  let mut unborne = carried.clone();
+  unborne["files"] = json!([{ "id": "file-2", "name": "b.png", "mime": "image/png" }]);
+  let (status, answer) = call(&router, "PUT", "/rooms/-100/messages/8", Some(&unborne)).await;
+  assert_eq!(
+    (status, &answer["code"]),
+    (400, &json!("bad-request")),
+    "a file handed over carries its bytes"
+  );
 
   assert_eq!(
     desk.taken(),
@@ -299,7 +313,7 @@ async fn the_gathered_files_patch_the_message_held() {
   let kept =
     json!({ "files": [{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=" }] });
   let mut patched = message_wire("live", "carried");
-  patched["files"] = kept["files"].clone();
+  patched["files"] = json!([{ "id": "file-1", "name": "a.png", "mime": "image/png" }]);
   assert_eq!(call(&router, "PATCH", MESSAGE, Some(&kept)).await, (200, patched));
   assert_eq!(
     call(&router, "PATCH", MESSAGE, Some(&kept)).await,
@@ -483,7 +497,7 @@ async fn a_large_file_is_taken_whole() {
   }]);
   assert_eq!(call(&router, "PUT", MESSAGE, Some(&body)).await.0, 201);
   match &desk.taken()[..] {
-    [Taken::HandOver(_, _, message)] => assert_eq!(message.files[0].bytes, bytes),
+    [Taken::HandOver(_, _, message)] => assert_eq!(message.files[0].bytes, bytes.into()),
     taken => panic!("one hand-over is taken, not {taken:?}"),
   }
 }

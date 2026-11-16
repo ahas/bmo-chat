@@ -17,6 +17,7 @@ use crate::bodies::Page;
 use crate::capability::ChatCapability;
 use crate::error::{ErrorCode, WireError};
 use crate::message::{GatheredPatch, HandedMessage};
+use crate::parts::Outgoing;
 use crate::presence::{PresenceChange, TypingMark};
 use crate::provider::{ChatFailure, ChatProvider, ChatReceiver};
 use crate::receiver_bodies::{
@@ -201,7 +202,6 @@ impl ChatReceiverLink {
   /// refused and the patience window lasts, and gives a successful answer's status and bytes.
   async fn exchange(&self, method: Method, route: &str, call: Call) -> Result<Exchanged, LinkFailure> {
     let url = format!("{}/{route}", self.base);
-    let body = call.body.map(|body| body.to_string());
     let ChatPatience {
       window,
       every,
@@ -213,8 +213,12 @@ impl ChatReceiverLink {
       if let Some(query) = &call.query {
         request = request.query(query);
       }
-      if let Some(body) = &body {
-        request = request.header(CONTENT_TYPE, "application/json").body(body.clone());
+      if let Some(body) = &call.body {
+        let bytes = body.body().await.map_err(|error| LinkFailure::Transport {
+          url: url.clone(),
+          why: format!("a file the body carries could not be read: {error}"),
+        })?;
+        request = request.header(CONTENT_TYPE, body.content_type()).body(bytes);
       }
       let error = match request.send().await {
         Ok(answer) => {
@@ -272,11 +276,12 @@ impl ChatReceiverLink {
   }
 }
 
-/// What a call carries beside its method and route, each as the JSON it is written as.
+/// What a call carries beside its method and route: its query as JSON, and its body as it is sent, JSON or
+/// multipart where it names a file stored on disk.
 #[derive(Default)]
 struct Call {
   query: Option<Value>,
-  body: Option<Value>,
+  body: Option<Outgoing>,
 }
 
 impl Call {
@@ -290,7 +295,7 @@ impl Call {
   fn body(body: &impl Serialize) -> Self {
     Self {
       query: None,
-      body: Some(serde_json::to_value(body).expect("a wire body always renders as JSON")),
+      body: Some(Outgoing::of(body).expect("a wire body always renders as JSON")),
     }
   }
 }

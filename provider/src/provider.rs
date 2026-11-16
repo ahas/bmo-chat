@@ -2,6 +2,7 @@
 //! provider calls it.
 
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -125,6 +126,12 @@ pub trait ChatProvider: Send + Sync {
   /// Whether a send may name a speaker other than the one the room is answered by.
   fn speakers(&self) -> bool {
     false
+  }
+
+  /// The directory each file a multipart send carries is written into as it arrives (`contract.md`, "A
+  /// file's bytes"): the system's temporary directory unless the provider names its own.
+  fn spool(&self) -> PathBuf {
+    std::env::temp_dir()
   }
 
   /// What the provider knows of the room, or null where it knows nothing of it.

@@ -153,7 +153,7 @@ impl bmo_chat::ChatProvider for Stand {
       id: "file-1".into(),
       name: "a.png".into(),
       mime: "image/png".into(),
-      bytes: vec![137, 80],
+      bytes: vec![137, 80].into(),
       kind: Some(bmo_chat::ChatFileKind::Photo),
     }]))
   }

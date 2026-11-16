@@ -253,7 +253,7 @@ impl ChatProvider for Desk {
   }
   async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
     let what = match &request.send {
-      ChatSend::Document { bytes, .. } => format!("send a document of {} bytes", bytes.len()),
+      ChatSend::Document { bytes, .. } => format!("send a document of {} bytes", bytes.size().await?),
       send => format!("send {:?} to {}", send.kind(), request.room_id),
     };
     self.ask(what)?;
@@ -295,7 +295,7 @@ impl ChatProvider for Desk {
       id: id.into(),
       name: name.into(),
       mime: "image/png".into(),
-      bytes: vec![137, 80],
+      bytes: vec![137, 80].into(),
       kind: None,
     };
     Ok(ChatMediaResult::Fetched(vec![file("file-1", "a.png"), file("file-2", "b.png")]))
@@ -532,6 +532,64 @@ async fn a_send_carrying_a_large_file_is_taken_whole() {
     (201, json!({ "messageId": 40, "missed": [] }))
   );
   assert_eq!(desk.asked(), [format!("send a document of {} bytes", bytes.len())]);
+}
+
+/// A send as a multipart body of these parts, each a name and its bytes, in order.
+async fn send_parts(router: &Router, parts: &[(&str, Vec<u8>)]) -> (u16, Value) {
+  let mut body = Vec::new();
+  for (name, bytes) in parts {
+    body.extend_from_slice(
+      format!("--edge\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+    );
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(b"\r\n");
+  }
+  body.extend_from_slice(b"--edge--\r\n");
+  let request = Request::builder()
+    .method("POST")
+    .uri("/sends")
+    .header("authorization", format!("Bearer {TOKEN}"))
+    .header("content-type", "multipart/form-data; boundary=edge")
+    .body(Body::from(body))
+    .unwrap();
+  let answer = router.clone().oneshot(request).await.expect("the router answers");
+  let status = answer.status().as_u16();
+  let bytes = to_bytes(answer.into_body(), usize::MAX).await.expect("the answer has a body");
+  (status, serde_json::from_slice(&bytes).expect("every answer is JSON"))
+}
+
+#[tokio::test]
+async fn a_multipart_send_takes_each_part_its_body_names_and_refuses_a_body_of_unsound_parts() {
+  let desk = Desk::new(&[ChatCapability::Document]);
+  let router = router(&desk);
+  let document = |part: &str| {
+    let send = json!({
+      "kind": "document", "roomId": ROOM, "fields": { "bytes": { "part": part }, "fileName": "a.bin" },
+    });
+    send.to_string().into_bytes()
+  };
+  let file = || b"abc".to_vec();
+  let sound = [("body", document("file-0")), ("file-0", file())];
+  assert_eq!(send_parts(&router, &sound).await, (201, json!({ "messageId": 40, "missed": [] })));
+  assert_eq!(desk.asked(), ["send a document of 3 bytes"]);
+  let unsound = [
+    (vec![("file-0", file())], "no part named body"),
+    (vec![("body", document("file-1")), ("file-0", file())], "names the part file-1"),
+    (
+      vec![("body", document("file-0")), ("file-0", file()), ("file-1", file())],
+      "file-1 is named by no file",
+    ),
+    (
+      vec![("body", document("file-0")), ("file-0", file()), ("file-0", file())],
+      "two parts named file-0",
+    ),
+  ];
+  for (parts, why) in unsound {
+    let (status, answer) = send_parts(&router, &parts).await;
+    assert_eq!((status, &answer["code"]), (400, &json!("bad-request")), "{answer}");
+    assert!(answer["error"].as_str().unwrap().contains(why), "{why}: {answer}");
+  }
+  assert_eq!(desk.asked().len(), 1, "a body of unsound parts never reaches the provider");
 }
 
 #[tokio::test]

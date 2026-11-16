@@ -7,12 +7,12 @@
 
 mod avatar;
 mod bodies;
-mod bytes;
 mod capability;
 mod contacts;
 mod declaration;
 mod dialect;
 mod error;
+mod file_body;
 mod inbound;
 mod media;
 mod members;
@@ -20,6 +20,7 @@ mod message;
 mod missed;
 mod modes;
 mod numbering;
+mod parts;
 mod patience;
 mod presence;
 mod provider_client;
@@ -36,6 +37,7 @@ pub use contacts::{ChatContact, ChatContactKind, ChatStart, ChatStartRequest, Co
 pub use declaration::ChatDeclaration;
 pub use dialect::{ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
+pub use file_body::{FileBody, StoredFile};
 pub use inbound::{ChatReceiver, receiver_router};
 pub use media::{ChatMediaRequest, FilesQuery};
 pub use members::{ChatMember, ChatMembers};

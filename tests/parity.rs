@@ -39,7 +39,7 @@ macro_rules! fixtures {
         FileItem {
           name: name.into(),
           mime: mime.into(),
-          bytes: bytes.to_vec(),
+          bytes: bytes.to_vec().into(),
         }
       }
 
@@ -48,7 +48,7 @@ macro_rules! fixtures {
           id: id.into(),
           name: name.into(),
           mime: mime.into(),
-          bytes: bytes.to_vec(),
+          bytes: bytes.to_vec().into(),
           kind: None,
         }
       }
@@ -151,7 +151,7 @@ macro_rules! fixtures {
             ..ChatSendRequest::new(
               7,
               ChatSend::Document {
-                bytes: b"%PDF-1.7 a document".to_vec(),
+                bytes: b"%PDF-1.7 a document".to_vec().into(),
                 file_name: "notes.pdf".into(),
               },
             )
@@ -159,7 +159,7 @@ macro_rules! fixtures {
           ChatSendRequest::new(
             7,
             ChatSend::Audio {
-              audio: vec![0xff, 0xfb, 0x90, 0x00],
+              audio: vec![0xff, 0xfb, 0x90, 0x00].into(),
               file_name: "song.mp3".into(),
             },
           ),
@@ -169,7 +169,7 @@ macro_rules! fixtures {
             ..ChatSendRequest::new(
               7,
               ChatSend::Voice {
-                audio: vec![b'O', b'g', b'g', b'S', 0],
+                audio: vec![b'O', b'g', b'g', b'S', 0].into(),
                 said: "Good morning".into(),
                 caption: Some("A greeting".into()),
                 transcript: Some("Good morning!".into()),
@@ -179,7 +179,7 @@ macro_rules! fixtures {
           ChatSendRequest::new(
             7,
             ChatSend::Voice {
-              audio: vec![1, 2, 3],
+              audio: vec![1, 2, 3].into(),
               said: "Bye".into(),
               caption: None,
               transcript: None,
@@ -1854,6 +1854,14 @@ impl bmo_chat_client::ChatReceiver for Taker {
   }
 }
 
+/// The message as an answer names it: each file without its bytes.
+fn withheld(mut message: bmo_chat::HandedMessage) -> bmo_chat::HandedMessage {
+  for file in &mut message.files {
+    file.bytes = bmo_chat::FileBody::withheld();
+  }
+  message
+}
+
 #[tokio::test]
 async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_router() {
   use bmo_chat::ChatReceiver;
@@ -1870,7 +1878,7 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
       held,
       bmo_chat::HeldMessage {
         created: true,
-        message
+        message: withheld(message)
       }
     );
   }
@@ -1884,7 +1892,7 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
     link.hand_over(room_id, message_id, again.clone()).await.unwrap(),
     bmo_chat::HeldMessage {
       created: false,
-      message: first
+      message: withheld(first)
     },
     "a message held before is answered 200 with the message as held"
   );
@@ -1897,7 +1905,7 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
       gathering: false,
       ..on_provider::handed_messages().swap_remove(GATHERING)
     };
-    assert_eq!(gathered, expected);
+    assert_eq!(gathered, withheld(expected));
   }
   for change in on_provider::avatar_changes() {
     link.avatars_changed(change).await.unwrap();

@@ -357,7 +357,8 @@ number. Nothing platform-shaped crosses:
 | `gathering` | boolean | the provider is still gathering its files and sends them later |
 | `gatherFailure` | string or null, optional | why the files gathering promised could not be kept |
 
-A message carries no file path. The files a message carries cross the wire as bytes (see Files).
+A message carries no file path. The files a message carries cross the wire as their bytes, inline or as parts
+(see Files).
 
 ### Context
 
@@ -407,6 +408,28 @@ file and a round video from a plain one:
 A provider fills `kind` as far as its platform tells it and leaves it out where it cannot tell. An inline file
 item of a send carries no `kind`.
 
+### A file's bytes
+
+A file's bytes are a `FileBody`, held one of three ways:
+
+| Held | What it is | How it crosses |
+|---|---|---|
+| inline | the bytes in memory | inline, as base64 |
+| stored | a file on the disk of the side that holds it, read only as it is sent | as a part of a multipart body (`protocol.md`, "Files carried as parts") |
+| withheld | no bytes: a file named by an answer whose asker already holds them | with its `bytes` left out |
+
+- **A sender picks the way.** A file already on its disk is sent stored, so it is never read whole into
+  memory; a small one may be sent inline. A stored file the sender names is read where it lies and left there.
+- **A part arrives stored.** The side a part arrives at writes it, as it arrives, into a directory of its own
+  choosing on its own disk (its spool), the system's temporary directory where it names none, and hands the
+  file on stored there. The file is removed once the last holder of it lets go, unless it was moved away
+  first, so a side that keeps it moves it where it keeps files.
+- **A side reads a file's bytes as it needs them:** whole, or as a stream read from the disk. Reading a
+  withheld file is an error.
+- **Every body that carries files takes them both ways:** a send's files, a hand-over's and a gathering's
+  patch's. The answers of a hand-over and of a patch name their files withheld, and a fetch of a message's
+  files answers them inline.
+
 A provider gathers a file from its platform. Where it is kept is the receiving side's concern, so the provider
 hands the bytes over:
 
@@ -420,7 +443,7 @@ hands the bytes over:
 
 | Call | What it hands over or asks |
 |---|---|
-| hand over | a message under its room and number, whatever its origin; the answer is the message as held, and whether the receiving side held it before |
+| hand over | a message under its room and number, whatever its origin; the answer is the message as held, its files withheld, and whether the receiving side held it before |
 | gathered | the files a message's `gathering` promised, or why they were not kept |
 | avatars changed | the rooms and people whose kept profile picture changed, as an `AvatarChange` |
 | reactions changed | the reactions on one message as the platform shows them now, as a `ReactionChange` |
@@ -565,6 +588,9 @@ carry:
 | `typing` | `on` |
 | `edit` | `messageId`, `text` |
 | `delete` | `messageId` |
+
+Every field that carries a file's bytes (`bytes` of a document and of an inline album item, `audio` of an audio
+and of a voice) is a file body (see "A file's bytes"), so a send of a large file carries it stored.
 
 A sticker is named in one of two ways. `{ emoji }` names an emoji, for which the provider picks a sticker of
 its own. `{ item }` names one sticker item of the platform's own, which the provider maps onto its platform's

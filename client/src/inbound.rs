@@ -1,6 +1,7 @@
 //! The server for the receiving-side routes: the hand-overs and questions `docs/protocol.md` lists for the
 //! receiving side, handed to the receiving side the consuming service supplies, behind the token it supplies.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -19,7 +20,9 @@ use serde::de::DeserializeOwned;
 
 use crate::bodies::Page;
 use crate::error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
-use crate::message::{GatheredPatch, HandedMessage};
+use crate::file_body::FileBody;
+use crate::message::{GatheredPatch, HandedMessage, MessageFile};
+use crate::parts::arrived;
 use crate::presence::{PresenceChange, TypingMark};
 use crate::receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
@@ -75,6 +78,14 @@ pub trait ChatReceiver: Send + Sync {
   /// The room as the receiving side holds it for the provider `via`, or null where it holds nothing of it.
   async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError>;
 
+  /// The directory each file a multipart hand-over or patch carries is written into as it arrives
+  /// (`contract.md`, "A file's bytes"): the system's temporary directory unless the receiving side names its
+  /// own. A receiving side that keeps the files names a directory on the disk it keeps them on, so each is
+  /// moved into place rather than copied.
+  fn spool(&self) -> PathBuf {
+    std::env::temp_dir()
+  }
+
   /// The rooms of the provider `via` whose past it may read back, each with the oldest message held of it:
   /// in ascending order of room number, only those after `after`, at most `limit`. The router asks for one
   /// more than its caller's limit, to tell whether more stand past the page it answers.
@@ -83,7 +94,8 @@ pub trait ChatReceiver: Send + Sync {
 
 /// The receiving-side routes over `receiver`, each answering only a request that carries `token` as its
 /// bearer token. The serving service mounts the router where it likes and supplies the token from its own
-/// configuration. No body limit is set, since a hand-over carries its files in its body.
+/// configuration. No body limit is set, since a hand-over carries its files in its body, and a file part is
+/// written to the receiving side's spool as it arrives rather than held in memory.
 pub fn receiver_router(receiver: Arc<dyn ChatReceiver>, token: impl Into<String>) -> Router {
   let served = Served {
     receiver,
@@ -214,30 +226,54 @@ async fn room(
   Ok(Json(room))
 }
 
+/// A message handed over, its body JSON or multipart; answered as held, its files withheld.
 async fn hand_over(
   State(served): State<Served>,
   method: Method,
   uri: Uri,
   path: Result<Path<(i64, i64)>, PathRejection>,
-  body: Bytes,
+  body: Request,
 ) -> Result<(StatusCode, Json<HandedMessage>), Answer> {
   let (room_id, message_id) = keys(&method, &uri, path)?;
-  let HeldMessage { created, message } =
-    served.receiver.hand_over(room_id, message_id, read(&body)?).await?;
+  let message: HandedMessage = arrived(body, &served.receiver.spool()).await?;
+  carried(&message.files)?;
+  let HeldMessage { created, message } = served.receiver.hand_over(room_id, message_id, message).await?;
   let status = if created { StatusCode::CREATED } else { StatusCode::OK };
-  Ok((status, Json(message)))
+  Ok((status, Json(withheld(message))))
 }
 
+/// A gathering's patch, its body JSON or multipart; answered with the message as held, its files withheld.
 async fn gathered(
   State(served): State<Served>,
   method: Method,
   uri: Uri,
   path: Result<Path<(i64, i64)>, PathRejection>,
-  body: Bytes,
+  body: Request,
 ) -> Answered<HandedMessage> {
   let (room_id, message_id) = keys(&method, &uri, path)?;
-  let message = served.receiver.gathered(room_id, message_id, read(&body)?).await?;
-  Ok(Json(message))
+  let patch: GatheredPatch = arrived(body, &served.receiver.spool()).await?;
+  carried(&patch.files)?;
+  let message = served.receiver.gathered(room_id, message_id, patch).await?;
+  Ok(Json(withheld(message)))
+}
+
+/// Nothing where every file carries its bytes; a bad request naming the first that does not.
+fn carried(files: &[MessageFile]) -> Result<(), Answer> {
+  match files.iter().find(|file| file.bytes.is_withheld()) {
+    Some(file) => Err(Answer(WireError::new(
+      ErrorCode::BadRequest,
+      format!("The file {} carries no bytes.", file.id),
+    ))),
+    None => Ok(()),
+  }
+}
+
+/// The message as an answer names it: each file without its bytes, which the provider that sent them holds.
+fn withheld(mut message: HandedMessage) -> HandedMessage {
+  for file in &mut message.files {
+    file.bytes = FileBody::Withheld;
+  }
+  message
 }
 
 async fn avatars_changed(

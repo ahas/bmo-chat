@@ -299,7 +299,7 @@ fn message_file() -> MessageFile {
     id: "file-1".into(),
     name: "a.png".into(),
     mime: "image/png".into(),
-    bytes: vec![137, 80],
+    bytes: vec![137, 80].into(),
     kind: None,
   }
 }
@@ -332,21 +332,21 @@ fn every_send() -> Vec<ChatSendRequest> {
         AlbumItem::File(FileItem {
           name: "b.png".into(),
           mime: "image/png".into(),
-          bytes: vec![1, 2],
+          bytes: vec![1, 2].into(),
         }),
       ],
       caption: None,
     }),
     send(ChatSend::Document {
-      bytes: b"a document".to_vec(),
+      bytes: b"a document".to_vec().into(),
       file_name: "a.txt".into(),
     }),
     send(ChatSend::Audio {
-      audio: vec![0xff, 0xfb],
+      audio: vec![0xff, 0xfb].into(),
       file_name: "a.mp3".into(),
     }),
     send(ChatSend::Voice {
-      audio: vec![1],
+      audio: vec![1].into(),
       said: "Hello".into(),
       caption: None,
       transcript: Some("Hello!".into()),

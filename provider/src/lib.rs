@@ -6,18 +6,19 @@
 
 mod avatar;
 mod bodies;
-mod bytes;
 mod capability;
 mod contacts;
 mod declaration;
 mod dialect;
 mod error;
+mod file_body;
 mod link;
 mod media;
 mod members;
 mod message;
 mod modes;
 mod numbering;
+mod parts;
 mod plain;
 mod presence;
 mod provider;
@@ -38,6 +39,7 @@ pub use contacts::{
 pub use declaration::ChatDeclaration;
 pub use dialect::{ChatDialect, ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
+pub use file_body::{FileBody, StoredFile};
 pub use link::{ChatPatience, ChatReceiverLink, ChatWait, LinkFailure, RealClock};
 pub use media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
 pub use members::{ChatMember, ChatMembers, ChatMembersResult};
