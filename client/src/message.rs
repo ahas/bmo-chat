@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::file_body::FileBody;
 use crate::modes::ChatVoice;
 
 /// Which kind of room one chat is.
@@ -65,14 +66,12 @@ pub struct RoomFacts {
   pub private_to: Option<i64>,
 }
 
-/// A file as it crosses the wire with no identifier of its own, as a send carries it inline.
+/// A file as it crosses the wire with no identifier of its own, as a send carries it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FileItem {
   pub name: String,
   pub mime: String,
-  #[serde(with = "crate::bytes")]
-  #[schemars(with = "String", extend("contentEncoding" = "base64"))]
-  pub bytes: Vec<u8>,
+  pub bytes: FileBody,
 }
 
 /// What a file a message carried is, as the platform showed it.
@@ -102,9 +101,9 @@ pub struct MessageFile {
   pub id: String,
   pub name: String,
   pub mime: String,
-  #[serde(with = "crate::bytes")]
-  #[schemars(with = "String", extend("contentEncoding" = "base64"))]
-  pub bytes: Vec<u8>,
+  /// Left out, and read as withheld, where an answer names the file without its bytes.
+  #[serde(default = "FileBody::withheld", skip_serializing_if = "FileBody::is_withheld")]
+  pub bytes: FileBody,
   /// What the file is, as far as the platform tells; left out where the provider cannot tell.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub kind: Option<ChatFileKind>,

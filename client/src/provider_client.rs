@@ -21,6 +21,7 @@ use crate::error::{ErrorCode, WireError};
 use crate::media::{ChatMediaRequest, FilesQuery};
 use crate::members::ChatMembers;
 use crate::message::MessageFile;
+use crate::parts::Outgoing;
 use crate::patience::ChatPatience;
 use crate::send::{ChatSendRequest, ChatSent};
 
@@ -128,8 +129,9 @@ impl ChatProviderClient {
     self.get("health").await
   }
 
-  /// `POST /sends`. A send the provider does not perform comes back as `ClientFailure::Answered` with the
-  /// refusal's code.
+  /// `POST /sends`. A send that carries a file stored on disk goes as a multipart body, the file read from
+  /// the disk as it is sent. A send the provider does not perform comes back as `ClientFailure::Answered` with
+  /// the refusal's code.
   pub async fn send(&self, request: &ChatSendRequest) -> Result<ChatSent, ClientFailure> {
     self.post("sends", request).await
   }
@@ -251,12 +253,12 @@ impl ChatProviderClient {
     body: &impl Serialize,
   ) -> Result<T, ClientFailure> {
     let url = self.url(route);
-    let body = serde_json::to_vec(body).map_err(|error| ClientFailure::Transport {
+    let body = Outgoing::of(body).map_err(|error| ClientFailure::Transport {
       url: url.clone(),
       why: error.to_string(),
     })?;
-    let request = self.client.post(&url).header(CONTENT_TYPE, "application/json").body(body);
-    self.call(&url, request).await
+    let Exchanged { bytes, .. } = self.exchange_with(&url, self.client.post(&url), Some(&body)).await?;
+    decoded(&url, &bytes)
   }
 
   fn url(&self, route: &str) -> String {
@@ -270,15 +272,23 @@ impl ChatProviderClient {
     request: RequestBuilder,
   ) -> Result<T, ClientFailure> {
     let Exchanged { bytes, .. } = self.exchange(url, request).await?;
-    serde_json::from_slice(&bytes).map_err(|error| ClientFailure::Undecodable {
-      url: url.to_owned(),
-      why: error.to_string(),
-    })
+    decoded(url, &bytes)
+  }
+
+  /// Makes a call that carries no body of its own.
+  async fn exchange(&self, url: &str, request: RequestBuilder) -> Result<Exchanged, ClientFailure> {
+    self.exchange_with(url, request, None).await
   }
 
   /// Makes the call behind the provider's token, offering it again only while the connection is refused and
-  /// the patience window lasts, and gives a successful answer's type and bytes.
-  async fn exchange(&self, url: &str, request: RequestBuilder) -> Result<Exchanged, ClientFailure> {
+  /// the patience window lasts, and gives a successful answer's type and bytes. A body is taken anew for
+  /// each offer, so a file it carries as a part is read from the disk again.
+  async fn exchange_with(
+    &self,
+    url: &str,
+    request: RequestBuilder,
+    body: Option<&Outgoing>,
+  ) -> Result<Exchanged, ClientFailure> {
     let url = url.to_owned();
     let request = request.bearer_auth(&self.token);
     let ChatPatience {
@@ -288,7 +298,14 @@ impl ChatProviderClient {
     } = &self.patience;
     let mut waited = Duration::ZERO;
     loop {
-      let offered = request.try_clone().expect("a request whose body is bytes always clones");
+      let mut offered = request.try_clone().expect("a request with no body yet always clones");
+      if let Some(body) = body {
+        let bytes = body.body().await.map_err(|error| ClientFailure::Transport {
+          url: url.clone(),
+          why: format!("a file the body carries could not be read: {error}"),
+        })?;
+        offered = offered.header(CONTENT_TYPE, body.content_type()).body(bytes);
+      }
       let error = match offered.send().await {
         Ok(answer) => {
           let status = answer.status();
@@ -332,6 +349,14 @@ impl ChatProviderClient {
       waited += *every;
     }
   }
+}
+
+/// A successful answer decoded as the route's.
+fn decoded<T: DeserializeOwned>(url: &str, bytes: &[u8]) -> Result<T, ClientFailure> {
+  serde_json::from_slice(bytes).map_err(|error| ClientFailure::Undecodable {
+    url: url.to_owned(),
+    why: error.to_string(),
+  })
 }
 
 /// A successful answer: its `Content-Type`, where it gave one, and its bytes.

@@ -106,7 +106,7 @@ fn album_of_addresses_and_inline_files() {
         AlbumItem::File(FileItem {
           name: "b.png".into(),
           mime: "image/png".into(),
-          bytes: vec![1, 2, 3],
+          bytes: vec![1, 2, 3].into(),
         }),
       ],
       caption: Some("two".into()),
@@ -130,7 +130,7 @@ fn album_of_addresses_and_inline_files() {
 #[test]
 fn document() {
   let request = send(ChatSend::Document {
-    bytes: b"report".to_vec(),
+    bytes: b"report".to_vec().into(),
     file_name: "report.txt".into(),
   });
   crosses(
@@ -144,7 +144,7 @@ fn audio() {
   let request = answering(
     6,
     ChatSend::Audio {
-      audio: vec![0, 255],
+      audio: vec![0, 255].into(),
       file_name: "song.mp3".into(),
     },
   );
@@ -162,7 +162,7 @@ fn voice() {
   let request = answering(
     8,
     ChatSend::Voice {
-      audio: vec![9, 8, 7],
+      audio: vec![9, 8, 7].into(),
       said: "the line".into(),
       caption: Some("under it".into()),
       transcript: Some("what was read".into()),
@@ -315,21 +315,21 @@ fn every_kind_names_itself() {
     ),
     (
       ChatSend::Document {
-        bytes: vec![],
+        bytes: vec![].into(),
         file_name: String::new(),
       },
       ChatVerb::Document,
     ),
     (
       ChatSend::Audio {
-        audio: vec![],
+        audio: vec![].into(),
         file_name: String::new(),
       },
       ChatVerb::Audio,
     ),
     (
       ChatSend::Voice {
-        audio: vec![],
+        audio: vec![].into(),
         said: String::new(),
         caption: None,
         transcript: None,

@@ -25,15 +25,18 @@ use crate::capability::ChatCapability;
 use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
+use crate::file_body::FileBody;
 use crate::media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
 use crate::members::{ChatMembers, ChatMembersResult};
 use crate::message::MessageFile;
+use crate::parts::arrived;
 use crate::provider::{ChatFailure, ChatProvider};
 use crate::send::{ChatSendRequest, ChatSendResult, ChatSent};
 
 /// The provider routes over `provider`, each answering only a request that carries `token` as its bearer
 /// token. The serving service mounts the router where it likes and supplies the token from its own
-/// configuration. No body limit is set, since a send carries its files in its body.
+/// configuration. No body limit is set, since a send carries its files in its body, and a file part is
+/// written to the provider's spool as it arrives rather than held in memory.
 pub fn provider_router(provider: Arc<dyn ChatProvider>, token: impl Into<String>) -> Router {
   let served = Served {
     provider,
@@ -139,12 +142,13 @@ async fn health(State(served): State<Served>) -> Json<ChatHealth> {
   Json(served.provider.health())
 }
 
-/// A send the provider performed is answered 201 with what it came to; a refusal, in the error shape.
+/// A send the provider performed is answered 201 with what it came to; a refusal, in the error shape. Its body
+/// is JSON, or multipart with each file part written into the provider's spool as it arrives.
 async fn send(
   State(served): State<Served>,
-  body: Bytes,
+  body: Request,
 ) -> Result<(StatusCode, Json<ChatSent>), WireError> {
-  let request: ChatSendRequest = read(&body)?;
+  let request: ChatSendRequest = arrived(body, &served.provider.spool()).await?;
   let provider = ready(&served)?;
   if let Some(refusal) = provider.undeclared(request.send.kind().into()) {
     return Err(refusal.into());
@@ -264,10 +268,25 @@ async fn files(
     sent_at,
   };
   match provider.fetch_media(request).await? {
-    ChatMediaResult::Fetched(files) => Ok(Json(Page::whole(files))),
+    ChatMediaResult::Fetched(files) => Ok(Json(Page::whole(inline(files).await?))),
     ChatMediaResult::Unavailable { reason } => Err(WireError::new(ErrorCode::Unavailable, reason)),
     ChatMediaResult::Refused(refusal) => Err(refusal.into()),
   }
+}
+
+/// The files with their bytes inline, as the fetch answers them; a stored file is read whole, and a file
+/// fetched without its bytes is a failure.
+async fn inline(mut files: Vec<MessageFile>) -> Result<Vec<MessageFile>, WireError> {
+  for file in &mut files {
+    if matches!(file.bytes, FileBody::Inline(_)) {
+      continue;
+    }
+    let bytes = file.bytes.read().await.map_err(|error| {
+      WireError::new(ErrorCode::Failed, format!("The file {} could not be read: {error}", file.id))
+    })?;
+    file.bytes = FileBody::Inline(bytes);
+  }
+  Ok(files)
 }
 
 async fn dialect_reading(State(served): State<Served>, body: Bytes) -> Answered<DialectReading> {

@@ -36,7 +36,8 @@ this one, since the two sides serve paths of the same shape: `openapi/provider.j
 and `openapi/receiver.json` for the receiving-side routes. Each states every route's method and path, its
 parameters, its request body, its answers and the error codes it can give, with every body as a JSON Schema.
 A body is described as its sender writes it, so a field the sender may leave out is not required, and a
-nullable field is required and may be null. The provider document also carries the harness plugin's tools
+nullable field is required and may be null. A route that takes files as parts states both forms of its body,
+the JSON and the multipart. The provider document also carries the harness plugin's tools
 under `x-tools` and the plugin itself under `x-harness`.
 
 bmo-chat-plugin generates both documents from the types bmo-chat-client sends and reads and from the tools
@@ -53,8 +54,9 @@ every failure in the error shape. Beside it:
 
 - **Optional and nullable fields.** An optional field may be left out. A field described as nullable is sent
   as null when it has no value.
-- **Bytes.** Bytes inside a JSON body are base64 strings (standard alphabet, with padding). A profile picture
-  is the one answer that is not JSON: it is answered as its own bytes, typed by `Content-Type`.
+- **Bytes.** Bytes inside a JSON body are base64 strings (standard alphabet, with padding). A file's bytes may
+  instead cross as a part of a multipart body (see "Files carried as parts"). A profile picture is the one
+  answer that is not JSON: it is answered as its own bytes, typed by `Content-Type`.
 - **Auth.** Every route, on both sides, needs an `Authorization: Bearer <token>` header. The token is supplied
   by the service that serves the routes, from its own configuration; the libraries read no environment
   variable themselves. A caller is configured with the token of the service it calls. A request with a
@@ -62,6 +64,39 @@ every failure in the error shape. Beside it:
 - **Refusals are errors.** A send the provider does not perform and a file it cannot fetch are answered with a
   non-2xx status in the error shape, like a request that could not be answered at all. A 2xx answer is
   always the route's success.
+
+### Files carried as parts
+
+Three bodies carry files: a send (`POST /sends`), a hand-over (`PUT /rooms/{roomId}/messages/{messageId}`)
+and a gathering's patch (`PATCH` of the same path). Each of those routes takes its body in either of two forms:
+
+- **JSON** (`Content-Type: application/json`): every file's bytes inline, as a base64 string.
+- **Multipart** (`Content-Type: multipart/form-data`): the part named `body` is the JSON body, typed
+  `application/json`. A file whose bytes are not inline is written in it as `{"part": "<name>"}` where its
+  base64 string would stand, and its bytes are the part of that name, as they are, with no encoding. A file
+  may still be inline in a multipart body.
+
+A multipart body is answered 400 `bad-request` where it has no `body` part, carries two parts of one name,
+names a part it does not carry, or carries a part no file names.
+
+```mermaid
+flowchart TD
+  S["sender: a file in memory, or a file on its disk"] --> J["JSON body: in-memory files inline"]
+  S --> M["multipart body: files on disk as parts, read from disk as sent"]
+  J --> R["receiving end: inline files in memory"]
+  M --> D["receiving end: each part written to its disk as it arrives"]
+  R --> H["handed on to the provider or the receiving side"]
+  D --> H
+```
+
+- **The sender chooses the form, file by file.** The libraries send a file held in memory inline and a file
+  kept on disk as a part, read from the disk while it is sent; a body with no file on disk goes as JSON. A
+  file in memory is meant to be small; a large one is kept on disk, so neither side holds it whole.
+- **The receiving end never holds a part whole.** It writes each part to its own disk as it arrives and hands
+  the file on as a file kept there (`contract.md`, "Files").
+- **The answers stay JSON.** The answer of a hand-over and of a gathering's patch names each file without its
+  bytes, since the provider that sent them holds them. The fetch of a message's files answers each file's
+  bytes inline.
 
 ### Error codes
 
@@ -175,7 +210,8 @@ One send. The body is a send as `contract.md` states it:
 | `replyToMessageId` | optional number: the message the send answers |
 | `accountId` | optional number: the account the send goes out in (`contract.md`, "The account a call is for") |
 
-Bytes (`bytes` of a document, `audio` of an audio or a voice, `bytes` of an inline album item) are base64.
+A file's bytes (`bytes` of a document, `audio` of an audio or a voice, `bytes` of an inline album item) are
+base64 inline, or a part of a multipart body (see "Files carried as parts").
 
 The answer, for a send the provider performed, is 201 with `messageId` (number or null) and `missed`, the
 list of the pictures of an album that did not go, each `address` and `reason`, empty where everything went. A
@@ -273,7 +309,7 @@ speak into to reach the owner unprompted.
 The pictures and files a message carried, fetched again from the platform. Gated by the `fetchMedia`
 capability. The query takes `sentAt` (number, epoch milliseconds), optional, for a platform that finds an old
 message by its time. The answer is a page whose `items` are message files, each `id`, `name`, `mime`, `bytes`
-(base64) and optionally `kind`, in the order the message carried them; `more` is always false, since a
+(base64, always inline) and optionally `kind`, in the order the message carried them; `more` is always false, since a
 message's files come in one page.
 
 Files the platform would not give are answered 404 `unavailable`, and a fetch the provider refuses is
@@ -370,12 +406,13 @@ the path's; the body is the message as `contract.md` states it:
 | `mode` | the voice of the mode that delivered it |
 | `context` | object: `roomTitle`, `senderUsername`, `replyToSenderId`, `spokenText`, `metadata` (any JSON), `carriesFile`, `tag`, each optional |
 | `room` | object: `kind` (`owner` or `group`), `identity` (number or null), `privateTo` (number or null), each optional |
-| `files` | list of message files, each `id`, `name`, `mime`, `bytes` (base64) and optionally `kind`: the files the message carries, where they are already gathered |
+| `files` | list of message files, each `id`, `name`, `mime`, `bytes` (base64 inline, or a part) and optionally `kind`: the files the message carries, where they are already gathered |
 | `gathering` | boolean: the provider is still gathering the message's files and sends them with a `PATCH` |
 | `gatherFailure` | optional string or null: why the files gathering promised could not be kept |
 
-The answer is the message as the receiving side holds it after the hand-over: 201 where it did not hold the
-message before, 200 where it did.
+The answer is the message as the receiving side holds it after the hand-over, each file named without its
+`bytes`: 201 where it did not hold the message before, 200 where it did. A file of the body that carries no
+`bytes` is answered 400 `bad-request`.
 
 - A `live` message is one a room said. One the receiving side already holds is not taken again.
 - An `edit` replaces the message the receiving side holds: its words and its sender (`senderId`,
@@ -394,8 +431,9 @@ files of one message (`contract.md`, "Files"). An inline album item of a send is
 
 The files a message's `gathering` promised, or why they could not be kept, as a JSON merge patch of the
 message. The body is `files`, a list of message files, and optionally `gatherFailure`, an English sentence
-saying why the files could not be kept. The answer is the message as the receiving side now holds it, with
-`gathering` false. A message the receiving side does not hold is answered 404 `not-found`, and one that
+saying why the files could not be kept; each file's bytes are inline or a part, as a hand-over's are. The
+answer is the message as the receiving side now holds it, with `gathering` false and each file named without
+its `bytes`. A message the receiving side does not hold is answered 404 `not-found`, and one that
 promised no files 409 `conflict`.
 
 ### `POST /avatar-changes`

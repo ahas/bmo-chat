@@ -4,6 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::capability::ChatVerb;
+use crate::file_body::FileBody;
 use crate::message::FileItem;
 use crate::missed::MissedPicture;
 use crate::modes::ChatVoice;
@@ -76,21 +77,15 @@ pub enum ChatSend {
     caption: Option<String>,
   },
   Document {
-    #[serde(with = "crate::bytes")]
-    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
-    bytes: Vec<u8>,
+    bytes: FileBody,
     file_name: String,
   },
   Audio {
-    #[serde(with = "crate::bytes")]
-    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
-    audio: Vec<u8>,
+    audio: FileBody,
     file_name: String,
   },
   Voice {
-    #[serde(with = "crate::bytes")]
-    #[schemars(with = "String", extend("contentEncoding" = "base64"))]
-    audio: Vec<u8>,
+    audio: FileBody,
     /// What the line said.
     said: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

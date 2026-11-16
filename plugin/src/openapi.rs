@@ -203,6 +203,8 @@ struct Route {
   /// The path and query parameters, as OpenAPI parameter objects.
   parameters: Vec<Value>,
   body: Option<Schema>,
+  /// Whether the body may also come as multipart, its files carried as parts.
+  parts: bool,
   /// The success answers, each by its status: the content by media type.
   answers: Vec<(u16, Value)>,
   /// Every code the route can answer, the request's own faults among them.
@@ -240,13 +242,28 @@ impl Route {
       operation["parameters"] = self.parameters.into();
     }
     if let Some(body) = self.body {
-      operation["requestBody"] = json!({
-        "required": true,
-        "content": { "application/json": { "schema": body } },
-      });
+      let mut content = json!({ "application/json": { "schema": body.clone() } });
+      if self.parts {
+        content["multipart/form-data"] = parts_body(body);
+      }
+      operation["requestBody"] = json!({ "required": true, "content": content });
     }
     operation
   }
+}
+
+/// A body as a multipart form: the JSON body as the part `body`, and each file it names by `part` as the part
+/// of that name, its bytes as they are.
+fn parts_body(body: Schema) -> Value {
+  json!({
+    "schema": {
+      "type": "object",
+      "properties": { "body": body },
+      "required": ["body"],
+      "additionalProperties": { "type": "string", "contentMediaType": "application/octet-stream" },
+    },
+    "encoding": { "body": { "contentType": "application/json" } },
+  })
 }
 
 /// A JSON answer of this type.
@@ -342,6 +359,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "The provider's self-declaration.",
       parameters: Vec::new(),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ChatDeclaration>(generator))],
       codes: codes(false, &[]),
     },
@@ -353,6 +371,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "Whether the provider is ready, why not where it is not, and the provider service's version.",
       parameters: Vec::new(),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ChatHealth>(generator))],
       codes: codes(false, &[]),
     },
@@ -366,6 +385,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         provider does not declare is refused `unsupported-capability`.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<ChatSendRequest>()),
+      parts: true,
       answers: vec![(201, json_answer::<ChatSent>(generator))],
       codes: codes(true, SEND_REFUSALS),
     },
@@ -379,6 +399,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `unsupported-capability` where the provider does not declare `roomList`.",
       parameters: query::<AccountRoomsQuery>(generator),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<Page<ProviderRoom>>(generator))],
       codes: codes(true, &[ErrorCode::UnsupportedCapability, ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -394,6 +415,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `startGroup`, and `not-found` for a contact it does not know.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<ChatStartRequest>()),
+      parts: false,
       answers: vec![(201, json_answer::<ProviderRoom>(generator))],
       codes: codes(
         true,
@@ -417,6 +439,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `contactList`.",
       parameters: query::<ContactsQuery>(generator),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<Page<ChatContact>>(generator))],
       codes: codes(true, &[ErrorCode::UnsupportedCapability, ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -430,6 +453,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `not-found` where it knows nothing of it.",
       parameters: vec![room.clone()],
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ProviderRoom>(generator))],
       codes: codes(false, &[ErrorCode::NotFound, ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -444,6 +468,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `memberList`.",
       parameters: vec![room.clone()],
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ChatMembers>(generator))],
       codes: codes(
         true,
@@ -464,6 +489,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "The room to reach the account's owner in unprompted.",
       parameters: Vec::new(),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ProviderOwner>(generator))],
       codes: codes(false, &[ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -481,6 +507,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       ]
       .concat(),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<Page<MessageFile>>(generator))],
       codes: codes(true, FILES_REFUSALS),
     },
@@ -492,6 +519,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "The provider's dialect reading markdown: the markup, its plain words, the parts, the fold.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<DialectRead>()),
+      parts: false,
       answers: vec![(200, json_answer::<DialectReading>(generator))],
       codes: codes(true, &[]),
     },
@@ -503,6 +531,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "The provider's dialect checking markup it built.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<DialectCheck>()),
+      parts: false,
       answers: vec![(200, json_answer::<DialectChecked>(generator))],
       codes: codes(true, &[]),
     },
@@ -516,6 +545,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         moment; empty where the provider does not declare `avatars`.",
       parameters: query::<AvatarsQuery>(generator),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<Page<ChatAvatar>>(generator))],
       codes: codes(true, &[ErrorCode::Failed]),
     },
@@ -528,6 +558,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         kept or the provider does not declare `avatars`.",
       parameters: vec![room],
       body: None,
+      parts: false,
       answers: vec![(200, bytes_answer())],
       codes: codes(false, &[ErrorCode::NotFound, ErrorCode::Failed]),
     },
@@ -540,6 +571,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         is kept or the provider does not declare `avatars`.",
       parameters: vec![key(generator, "personId", "The person's number.")],
       body: None,
+      parts: false,
       answers: vec![(200, bytes_answer())],
       codes: codes(false, &[ErrorCode::NotFound, ErrorCode::Failed]),
     },
@@ -561,6 +593,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         held, in ascending order of room number and only those after `after`.",
       parameters: query::<RoomsQuery>(generator),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<Page<ReceiverRoom>>(generator))],
       codes: codes(true, &waits),
     },
@@ -573,6 +606,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         asked for it to be read, and the oldest message held; `not-found` where nothing is held of it.",
       parameters: [vec![room.clone()], query::<RoomQuery>(generator)].concat(),
       body: None,
+      parts: false,
       answers: vec![(200, json_answer::<ReceiverRoom>(generator))],
       codes: codes(true, &[ErrorCode::NotFound, ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -585,6 +619,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         message as held, 201 where the receiving side did not hold it before and 200 where it did.",
       parameters: vec![room.clone(), message.clone()],
       body: Some(generator.subschema_for::<HandedMessage>()),
+      parts: true,
       answers: vec![
         (200, json_answer::<HandedMessage>(generator)),
         (201, json_answer::<HandedMessage>(generator)),
@@ -600,6 +635,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         `not-found` where the message is not held, and `conflict` where it promised no files.",
       parameters: vec![room, message],
       body: Some(generator.subschema_for::<GatheredPatch>()),
+      parts: true,
       answers: vec![(200, json_answer::<HandedMessage>(generator))],
       codes: codes(
         true,
@@ -614,6 +650,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "Word that the kept profile pictures of these rooms and people changed.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<AvatarChange>()),
+      parts: false,
       answers: vec![(201, json_answer::<AvatarChange>(generator))],
       codes: codes(true, &waits),
     },
@@ -625,6 +662,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "One message's reactions as the platform shows them now.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<ReactionChange>()),
+      parts: false,
       answers: vec![(201, json_answer::<ReactionChange>(generator))],
       codes: codes(true, &[ErrorCode::NotFound, ErrorCode::NotReady, ErrorCode::Failed]),
     },
@@ -636,6 +674,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "Messages of one room deleted on the platform.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<Deletion>()),
+      parts: false,
       answers: vec![(201, json_answer::<Deletion>(generator))],
       codes: codes(true, &waits),
     },
@@ -648,6 +687,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         six seconds where it is null; a mark about a room nothing is held of is passed over.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<TypingMark>()),
+      parts: false,
       answers: vec![(201, json_answer::<TypingMark>(generator))],
       codes: codes(true, &waits),
     },
@@ -660,6 +700,7 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         unknown.",
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<PresenceChange>()),
+      parts: false,
       answers: vec![(201, json_answer::<PresenceChange>(generator))],
       codes: codes(true, &waits),
     },
