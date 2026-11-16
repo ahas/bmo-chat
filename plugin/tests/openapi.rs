@@ -207,7 +207,7 @@ impl ChatReceiver for Takes {
 async fn every_receiving_side_route_of_the_document_is_served() {
   let router = receiver_router(Arc::new(Takes), TOKEN);
   let routes = routes(Side::Receiver);
-  assert_eq!(routes.len(), 7);
+  assert_eq!(routes.len(), 9);
   for (method, path) in routes {
     let path = path.replace("{roomId}", "-100").replace("{messageId}", "5");
     let request = Request::builder()
@@ -656,6 +656,39 @@ fn every_body_the_client_crate_writes_is_valid_against_the_schema_of_its_receivi
   };
   bodies.valid("post", "/deletions", Request, &deletion);
   bodies.valid("post", "/deletions", Answer(201), &deletion);
+  for lasts_ms in [Some(5_000), None] {
+    let mark = bmo_chat_client::TypingMark {
+      via: "stand-in".into(),
+      room_id: -100,
+      person_id: 42,
+      on: true,
+      lasts_ms,
+    };
+    bodies.valid("post", "/typing-marks", Request, &mark);
+    bodies.valid("post", "/typing-marks", Answer(201), &mark);
+  }
+  let presence = bmo_chat_client::PresenceChange {
+    via: "stand-in".into(),
+    people: vec![
+      bmo_chat_client::PersonPresence {
+        person_id: 42,
+        presence: bmo_chat_client::ChatPresence {
+          state: bmo_chat_client::ChatPresenceState::Away,
+          last_seen_at: Some(1_700_000_000_000),
+        },
+      },
+      bmo_chat_client::PersonPresence {
+        person_id: 43,
+        presence: bmo_chat_client::ChatPresence {
+          state: bmo_chat_client::ChatPresenceState::Online,
+          last_seen_at: None,
+        },
+      },
+    ],
+    whole: true,
+  };
+  bodies.valid("post", "/presence-changes", Request, &presence);
+  bodies.valid("post", "/presence-changes", Answer(201), &presence);
   bodies.every_route(Side::Receiver);
 }
 

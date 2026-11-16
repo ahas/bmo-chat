@@ -497,3 +497,20 @@ async fn the_routes_can_be_mounted_under_a_prefix() {
   assert_eq!(status, 201);
   assert_eq!(desk.taken().len(), 1);
 }
+
+#[tokio::test]
+async fn a_receiving_side_that_shows_neither_typing_nor_presence_takes_both_and_passes_them_over() {
+  let desk = Arc::new(Desk::default());
+  let router = router(&desk);
+  let mark = json!({ "via": "stand-in", "roomId": -100, "personId": 42, "on": true, "lastsMs": null });
+  assert_eq!(call(&router, "POST", "/typing-marks", Some(&mark)).await, (201, mark));
+  let change = json!({
+    "via": "stand-in",
+    "people": [{ "personId": 42, "state": "online", "lastSeenAt": null }],
+    "whole": false,
+  });
+  assert_eq!(call(&router, "POST", "/presence-changes", Some(&change)).await, (201, change));
+  let not_a_mark = json!({ "via": "stand-in", "roomId": -100, "on": true });
+  assert_eq!(call(&router, "POST", "/typing-marks", Some(&not_a_mark)).await.0, 400);
+  assert_eq!(desk.taken(), [], "the default hands the stand-in nothing");
+}

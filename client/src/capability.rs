@@ -24,7 +24,7 @@ pub enum ChatVerb {
   Delete,
 }
 
-/// What a provider can do: the twelve verbs, and eight answers that are not verbs.
+/// What a provider can do: the twelve verbs, and eleven answers that are not verbs.
 #[derive(
   Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, VariantArray,
 )]
@@ -60,6 +60,10 @@ pub enum ChatCapability {
   StartChat,
   /// The provider can start a room of several contacts of its account, under a title.
   StartGroup,
+  /// The provider tells when a person is writing in a room.
+  PeopleTyping,
+  /// The provider tells whether a person is reachable.
+  Presence,
 }
 
 impl ChatVerb {
@@ -95,6 +99,8 @@ impl ChatCapability {
       Self::MemberList => "list the members of a room",
       Self::StartChat => "start a conversation with a contact",
       Self::StartGroup => "start a group conversation",
+      Self::PeopleTyping => "tell who is typing in a room",
+      Self::Presence => "tell who is online",
     }
   }
 }

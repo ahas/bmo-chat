@@ -790,6 +790,51 @@ macro_rules! fixtures {
         }]
       }
 
+      /// A mark told on with its own life, and one told off that names none.
+      pub fn typing_marks() -> Vec<TypingMark> {
+        vec![
+          TypingMark {
+            via: "stand-in".into(),
+            room_id: -100,
+            person_id: 42,
+            on: true,
+            lasts_ms: Some(5_000),
+          },
+          TypingMark {
+            via: "stand-in".into(),
+            room_id: -100,
+            person_id: 42,
+            on: false,
+            lasts_ms: None,
+          },
+        ]
+      }
+
+      /// A whole list holding every presence state, one with a moment last seen and the rest with none,
+      /// and a change of one person that is not whole.
+      pub fn presence_changes() -> Vec<PresenceChange> {
+        let person = |person_id, state, last_seen_at| PersonPresence {
+          person_id,
+          presence: ChatPresence { state, last_seen_at },
+        };
+        vec![
+          PresenceChange {
+            via: "stand-in".into(),
+            people: vec![
+              person(42, ChatPresenceState::Online, None),
+              person(43, ChatPresenceState::Away, None),
+              person(44, ChatPresenceState::Offline, Some(1_700_000_000_000)),
+            ],
+            whole: true,
+          },
+          PresenceChange {
+            via: "stand-in".into(),
+            people: vec![person(43, ChatPresenceState::Online, None)],
+            whole: false,
+          },
+        ]
+      }
+
       pub fn room_queries() -> Vec<RoomQuery> {
         vec![RoomQuery {
           via: "stand-in".into(),
@@ -935,6 +980,7 @@ fn both_crates_answer_every_code_with_the_same_status() {
     assert_eq!(code.status(), read.status(), "{code:?}");
   }
   assert_eq!(bmo_chat::RETRY_AFTER_SECONDS, bmo_chat_client::RETRY_AFTER_SECONDS);
+  assert_eq!(bmo_chat::TYPING_MARK_LASTS_MS, bmo_chat_client::TYPING_MARK_LASTS_MS);
 }
 
 #[test]
@@ -970,6 +1016,8 @@ fn every_receiving_side_body_and_the_error_shape_cross_both_ways() {
   crosses("handed message", on_provider::handed_messages(), on_client::handed_messages());
   crosses("gathered patch", on_provider::gathered_patches(), on_client::gathered_patches());
   crosses("avatar change", on_provider::avatar_changes(), on_client::avatar_changes());
+  crosses("typing mark", on_provider::typing_marks(), on_client::typing_marks());
+  crosses("presence change", on_provider::presence_changes(), on_client::presence_changes());
   crosses("room query", on_provider::room_queries(), on_client::room_queries());
   crosses("receiving-side room", on_provider::receiver_rooms(), on_client::receiver_rooms());
   crosses("rooms query", on_provider::rooms_queries(), on_client::rooms_queries());
@@ -1037,6 +1085,18 @@ fn the_fixtures_hold_every_member_of_every_set() {
     );
   }
   assert_eq!(declarations[0].can, ChatCapability::ALL.iter().copied().collect());
+  let states: BTreeSet<_> = on_provider::presence_changes()
+    .iter()
+    .flat_map(|change| change.people.iter().map(|person| person.presence.state))
+    .collect();
+  assert_eq!(
+    states,
+    BTreeSet::from([
+      bmo_chat::ChatPresenceState::Online,
+      bmo_chat::ChatPresenceState::Away,
+      bmo_chat::ChatPresenceState::Offline,
+    ])
+  );
   for kind in [bmo_chat::ChatContactKind::Person, bmo_chat::ChatContactKind::Bot] {
     assert!(
       on_provider::contacts().iter().any(|contact| contact.kind == kind),
@@ -1669,6 +1729,8 @@ enum Took {
   AvatarsChanged(bmo_chat_client::AvatarChange),
   ReactionsChanged(bmo_chat_client::ReactionChange),
   Deleted(bmo_chat_client::Deletion),
+  TypingMarked(bmo_chat_client::TypingMark),
+  PresenceChanged(bmo_chat_client::PresenceChange),
   Room(i64, bmo_chat_client::RoomQuery),
   Rooms(bmo_chat_client::RoomsQuery),
 }
@@ -1753,6 +1815,20 @@ impl bmo_chat_client::ChatReceiver for Taker {
     self.take(Took::Deleted(deletion))
   }
 
+  async fn typing_marked(
+    &self,
+    mark: bmo_chat_client::TypingMark,
+  ) -> Result<(), bmo_chat_client::WireError> {
+    self.take(Took::TypingMarked(mark))
+  }
+
+  async fn presence_changed(
+    &self,
+    change: bmo_chat_client::PresenceChange,
+  ) -> Result<(), bmo_chat_client::WireError> {
+    self.take(Took::PresenceChanged(change))
+  }
+
   async fn room(
     &self,
     room_id: i64,
@@ -1785,7 +1861,8 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
   let taker = Arc::new(Taker::default());
   let router = Router::new().nest("/receiving", bmo_chat_client::receiver_router(taker.clone(), TOKEN));
   let listening = Listening::start(router).await;
-  let link = link_to(listening.base("receiving"), TOKEN);
+  let stand = Arc::new(Stand::new());
+  let link = link_to(listening.base("receiving"), TOKEN).declared_by(&stand);
 
   for ((room_id, message_id), message) in KEYS.into_iter().zip(on_provider::handed_messages()) {
     let held = link.hand_over(room_id, message_id, message.clone()).await.unwrap();
@@ -1831,6 +1908,12 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
   for deletion in on_provider::deletions() {
     link.deleted(deletion).await.unwrap();
   }
+  for mark in on_provider::typing_marks() {
+    link.typing_marked(mark).await.unwrap();
+  }
+  for change in on_provider::presence_changes() {
+    link.presence_changed(change).await.unwrap();
+  }
   let asking = on_provider::room_queries().swap_remove(0);
   for room in on_provider::receiver_rooms() {
     assert_eq!(link.room(room.id, asking.clone()).await.unwrap(), Some(room));
@@ -1859,6 +1942,8 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
   expected.extend(on_client::avatar_changes().into_iter().map(Took::AvatarsChanged));
   expected.extend(on_client::reaction_changes().into_iter().map(Took::ReactionsChanged));
   expected.extend(on_client::deletions().into_iter().map(Took::Deleted));
+  expected.extend(on_client::typing_marks().into_iter().map(Took::TypingMarked));
+  expected.extend(on_client::presence_changes().into_iter().map(Took::PresenceChanged));
   let asked = on_client::room_queries().swap_remove(0);
   expected.extend(on_client::receiver_rooms().iter().map(|room| Took::Room(room.id, asked.clone())));
   expected.push(Took::Room(13, asked));
@@ -1897,6 +1982,6 @@ async fn every_receiving_side_route_is_called_by_the_real_link_into_the_real_rou
     (401, Some(bmo_chat::ErrorCode::Unauthorized))
   );
 
-  drop((link, stranger));
+  drop((link, stranger, stand));
   listening.close().await;
 }

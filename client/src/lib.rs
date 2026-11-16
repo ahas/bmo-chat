@@ -21,6 +21,7 @@ mod missed;
 mod modes;
 mod numbering;
 mod patience;
+mod presence;
 mod provider_client;
 mod receiver_bodies;
 mod send;
@@ -46,6 +47,9 @@ pub use missed::{MissedPicture, MissedPictureReason};
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering};
 pub use patience::{ChatPatience, ChatWait, RealClock};
+pub use presence::{
+  ChatPresence, ChatPresenceState, PersonPresence, PresenceChange, TYPING_MARK_LASTS_MS, TypingMark,
+};
 pub use provider_client::{ChatProviderClient, ClientFailure};
 pub use receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, MessageStamp, PersonReactions, ReactionChange, ReceiverRoom,

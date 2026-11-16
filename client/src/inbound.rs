@@ -20,6 +20,7 @@ use serde::de::DeserializeOwned;
 use crate::bodies::Page;
 use crate::error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
 use crate::message::{GatheredPatch, HandedMessage};
+use crate::presence::{PresenceChange, TypingMark};
 use crate::receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
 };
@@ -59,6 +60,18 @@ pub trait ChatReceiver: Send + Sync {
   /// Messages of one room deleted on the platform: each one held marked deleted, its words kept.
   async fn deleted(&self, deletion: Deletion) -> Result<(), WireError>;
 
+  /// A person writing in a room now, or no longer; a mark about a room nothing is held of is passed over.
+  /// The default passes every mark over, for a receiving side that shows no typing.
+  async fn typing_marked(&self, _mark: TypingMark) -> Result<(), WireError> {
+    Ok(())
+  }
+
+  /// Whether people are reachable now; a person held in no room is passed over. The default passes every
+  /// change over, for a receiving side that shows no presence.
+  async fn presence_changed(&self, _change: PresenceChange) -> Result<(), WireError> {
+    Ok(())
+  }
+
   /// The room as the receiving side holds it for the provider `via`, or null where it holds nothing of it.
   async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, WireError>;
 
@@ -83,6 +96,8 @@ pub fn receiver_router(receiver: Arc<dyn ChatReceiver>, token: impl Into<String>
     .route("/avatar-changes", post(avatars_changed))
     .route("/reaction-changes", post(reactions_changed))
     .route("/deletions", post(deleted))
+    .route("/typing-marks", post(typing_marked))
+    .route("/presence-changes", post(presence_changed))
     .fallback(no_route)
     .method_not_allowed_fallback(no_route)
     .layer(DefaultBodyLimit::disable())
@@ -250,4 +265,22 @@ async fn deleted(
   let deletion: Deletion = read(&body)?;
   served.receiver.deleted(deletion.clone()).await?;
   Ok((StatusCode::CREATED, Json(deletion)))
+}
+
+async fn typing_marked(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<TypingMark>), Answer> {
+  let mark: TypingMark = read(&body)?;
+  served.receiver.typing_marked(mark.clone()).await?;
+  Ok((StatusCode::CREATED, Json(mark)))
+}
+
+async fn presence_changed(
+  State(served): State<Served>,
+  body: Bytes,
+) -> Result<(StatusCode, Json<PresenceChange>), Answer> {
+  let change: PresenceChange = read(&body)?;
+  served.receiver.presence_changed(change.clone()).await?;
+  Ok((StatusCode::CREATED, Json(change)))
 }

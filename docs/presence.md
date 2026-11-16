@@ -3,9 +3,9 @@
 Who is writing in a room now, and who is reachable now. Neither is a message: nothing of either is kept in a
 room's record, wakes anybody or reaches a turn. They are told while they hold and forgotten once they end.
 
-This is the design every side builds to. The provider's pieces and the two receiving-side routes below enter
-`contract.md` and `protocol.md` with the release of the libraries that carry them; until then those two
-documents state the protocol as it runs, and this one states what is built next.
+This is the design every side builds to. The provider's pieces and the two receiving-side routes below are
+stated canonically in `contract.md` ("Typing and presence") and `protocol.md`, as the libraries carry them; this
+document places them among what the receiving side and the console do with them.
 
 ```mermaid
 flowchart TD
@@ -54,7 +54,7 @@ flowchart TD
 
 ## What a chat service tells
 
-- **Two capabilities say what a provider hears,** beside the twenty-one of `contract.md`:
+- **Two capabilities of `contract.md` say what a provider hears:**
 
 | Capability | Meaning | Words |
 |---|---|---|

@@ -9,8 +9,8 @@ use bmo_chat_client::{
   AccountRoomsQuery, AvatarChange, AvatarsQuery, ChatAvatar, ChatContact, ChatDeclaration, ChatHealth,
   ChatMembers, ChatSendRequest, ChatSent, ChatStartRequest, ContactsQuery, Deletion, DialectCheck,
   DialectChecked, DialectRead, DialectReading, ErrorCode, FilesQuery, GatheredPatch, HandedMessage,
-  MessageFile, Page, ProviderOwner, ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
-  WireError,
+  MessageFile, Page, PresenceChange, ProviderOwner, ProviderRoom, ReactionChange, ReceiverRoom, RoomQuery,
+  RoomsQuery, TypingMark, WireError,
 };
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
@@ -152,10 +152,11 @@ const PROVIDER: &str = "The routes a chat provider serves and the receiving side
 
 const RECEIVER: &str = "The routes the receiving side serves and a provider calls, as the chat protocol \
   defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the \
-  files a gathering message promised, the rooms a provider may read back and whether one is listened to, and \
-  word that kept pictures changed. Paths are relative to the base address the provider is configured with, \
-  and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times \
-  are integers of epoch milliseconds. Every failure is answered in the error shape with its status.";
+  files a gathering message promised, the rooms a provider may read back and whether one is listened to, \
+  word that kept pictures, a message's reactions or its deletion changed, and who is typing or reachable \
+  now. Paths are relative to the base address the provider is configured with, and a service may mount \
+  them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of \
+  epoch milliseconds. Every failure is answered in the error shape with its status.";
 
 /// An answer in the error shape with one of these codes, all answered with one status.
 fn answered(error: &Schema, codes: &[ErrorCode]) -> Value {
@@ -636,6 +637,30 @@ fn receiver_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       parameters: Vec::new(),
       body: Some(generator.subschema_for::<Deletion>()),
       answers: vec![(201, json_answer::<Deletion>(generator))],
+      codes: codes(true, &waits),
+    },
+    Route {
+      method: "post",
+      path: "/typing-marks",
+      id: "createTypingMarks",
+      tag: "typing-marks",
+      summary: "A person writing in a room now, or no longer, standing for `lastsMs` unless told again, \
+        six seconds where it is null; a mark about a room nothing is held of is passed over.",
+      parameters: Vec::new(),
+      body: Some(generator.subschema_for::<TypingMark>()),
+      answers: vec![(201, json_answer::<TypingMark>(generator))],
+      codes: codes(true, &waits),
+    },
+    Route {
+      method: "post",
+      path: "/presence-changes",
+      id: "createPresenceChanges",
+      tag: "presence-changes",
+      summary: "Whether people are reachable now; where the change is `whole`, a person not listed is \
+        unknown.",
+      parameters: Vec::new(),
+      body: Some(generator.subschema_for::<PresenceChange>()),
+      answers: vec![(201, json_answer::<PresenceChange>(generator))],
       codes: codes(true, &waits),
     },
   ]

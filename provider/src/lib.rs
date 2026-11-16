@@ -19,6 +19,7 @@ mod message;
 mod modes;
 mod numbering;
 mod plain;
+mod presence;
 mod provider;
 mod receiver_bodies;
 mod refusal;
@@ -47,6 +48,9 @@ pub use message::{
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering};
 pub use plain::PlainDialect;
+pub use presence::{
+  ChatPresence, ChatPresenceState, PersonPresence, PresenceChange, TYPING_MARK_LASTS_MS, TypingMark,
+};
 pub use provider::{ChatFailure, ChatProvider, ChatReceiver};
 pub use receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, MessageStamp, PersonReactions, ReactionChange, ReceiverRoom,
