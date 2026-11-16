@@ -16,7 +16,7 @@ There are two directions:
 
 Paths below are relative to that base address. A service may mount the routes under a prefix of its own.
 
-This document states version 0.1.0-rev.8 of the libraries and the plugin; a caller pins that version or a
+This document states version 0.1.0-rev.9 of the libraries and the plugin; a caller pins that version or a
 later one for every route and field below. The version is numbered by the revision rule of `conventions.md`.
 Each older number the crates carry in their history stands for one revision:
 
@@ -323,6 +323,8 @@ its type as `Content-Type`. Where none is kept, or the provider does not declare
 | `POST` | `/avatar-changes` | 201, word that kept pictures changed |
 | `POST` | `/reaction-changes` | 201, a message's reactions as the platform shows them now |
 | `POST` | `/deletions` | 201, messages deleted on the platform |
+| `POST` | `/typing-marks` | 201, a person writing in a room now, or no longer |
+| `POST` | `/presence-changes` | 201, whether people are reachable now |
 
 Every receiving-side route can answer 503 `not-ready` where the receiving side cannot take or answer it yet,
 and 500 `failed` where it failed while doing so, beside the codes each route names.
@@ -418,6 +420,34 @@ Messages of one room deleted on the platform. The body is `via`, `roomId`, `mess
 `{senderId, sentAt}` naming the messages the account knows by no number the receiving side holds. The receiving
 side marks each message it holds as deleted, keeping its words, and passes over one it does not hold. The answer is
 201 with the deletion as taken.
+
+### `POST /typing-marks`
+
+A person writing in a room now, or no longer, as `contract.md` states a typing mark. The body:
+
+| Field | Type |
+|---|---|
+| `via` | string: the key of the provider telling |
+| `roomId` | number: the room |
+| `personId` | number: the person, a number of the provider's `people` space |
+| `on` | boolean: whether the person is writing |
+| `lastsMs` | number or null: how long the mark stands unless told again; null takes the base's six seconds |
+
+The answer is 201 with the mark as taken. A mark about a room the receiving side holds nothing of is passed over
+and still answered 201. A provider whose declaration lacks `peopleTyping` never calls the route: the link drops
+the mark.
+
+### `POST /presence-changes`
+
+Whether people are reachable now, as `contract.md` states presence. The body is `via`; `people`, a list of
+`{personId, state, lastSeenAt}`, `state` one of `online`, `away` or `offline` and `lastSeenAt` a moment or null;
+and `whole`, true where the list is every person the provider tells presence of, so a person not listed is
+unknown. The answer is 201 with the change as taken. A person the receiving side holds in no room is passed
+over, and the change still answered 201. A provider whose declaration lacks `presence` never calls the route:
+the link drops the change.
+
+A receiving side that shows neither typing nor presence serves both routes all the same: bmo-chat-client's
+default takes each and passes it over.
 
 ## The harness plugin
 

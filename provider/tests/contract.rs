@@ -468,7 +468,7 @@ async fn a_dialect_that_cannot_fold_is_never_asked_for_a_fold() {
 }
 
 #[test]
-fn the_full_capability_set_is_all_twenty_one_from_the_type_itself() {
+fn the_full_capability_set_is_all_twenty_three_from_the_type_itself() {
   let names: Vec<String> = ChatCapability::ALL
     .iter()
     .map(|capability| serde_json::to_value(capability).unwrap().as_str().unwrap().to_owned())
@@ -497,9 +497,11 @@ fn the_full_capability_set_is_all_twenty_one_from_the_type_itself() {
       "memberList",
       "startChat",
       "startGroup",
+      "peopleTyping",
+      "presence",
     ]
   );
-  assert_eq!(ChatCapability::ALL.iter().collect::<BTreeSet<_>>().len(), 21);
+  assert_eq!(ChatCapability::ALL.iter().collect::<BTreeSet<_>>().len(), 23);
   assert_eq!(ChatVerb::ALL.len(), 12);
   for verb in ChatVerb::ALL {
     assert!(ChatCapability::ALL.contains(&ChatCapability::from(*verb)));

@@ -3,7 +3,7 @@
 
 use std::fmt;
 use std::io;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -14,9 +14,11 @@ use serde::de::{DeserializeOwned, IgnoredAny};
 use serde_json::Value;
 
 use crate::bodies::Page;
+use crate::capability::ChatCapability;
 use crate::error::{ErrorCode, WireError};
 use crate::message::{GatheredPatch, HandedMessage};
-use crate::provider::{ChatFailure, ChatReceiver};
+use crate::presence::{PresenceChange, TypingMark};
+use crate::provider::{ChatFailure, ChatProvider, ChatReceiver};
 use crate::receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
 };
@@ -126,6 +128,28 @@ pub struct ChatReceiverLink {
   token: String,
   patience: ChatPatience,
   client: Client,
+  declarer: Declarer,
+}
+
+/// The provider whose declaration the link reads before telling what a capability hears. It is held weakly,
+/// since the provider holds the link once started.
+#[derive(Clone, Default)]
+struct Declarer(Option<Weak<dyn ChatProvider>>);
+
+impl Declarer {
+  /// Whether the provider declares the capability now; a link told of no provider, or of one no longer
+  /// running, reads it as declaring nothing.
+  fn declares(&self, capability: ChatCapability) -> bool {
+    let provider = self.0.as_ref().and_then(Weak::upgrade);
+    provider.is_some_and(|provider| provider.can().contains(&capability))
+  }
+}
+
+impl fmt::Debug for Declarer {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let told = self.0.as_ref().map(|provider| provider.strong_count() > 0);
+    f.debug_tuple("Declarer").field(&told).finish()
+  }
 }
 
 impl ChatReceiverLink {
@@ -141,12 +165,36 @@ impl ChatReceiverLink {
       token: token.into(),
       patience: ChatPatience::default(),
       client,
+      declarer: Declarer::default(),
     }
   }
 
   pub fn with_patience(mut self, patience: ChatPatience) -> Self {
     self.patience = patience;
     self
+  }
+
+  /// The link for `provider`, whose declaration as it stands at each call decides whether a typing mark or
+  /// a presence change is sent or dropped. A link never told its provider drops both.
+  pub fn declared_by<P: ChatProvider + 'static>(mut self, provider: &Arc<P>) -> Self {
+    let provider: Weak<P> = Arc::downgrade(provider);
+    self.declarer = Declarer(Some(provider));
+    self
+  }
+
+  /// Posts what `capability` hears to its route where the provider declares it, and drops it unsent where
+  /// it does not.
+  async fn tell(
+    &self,
+    capability: ChatCapability,
+    route: &str,
+    body: &impl Serialize,
+  ) -> Result<(), ChatFailure> {
+    if !self.declarer.declares(capability) {
+      return Ok(());
+    }
+    let (_, IgnoredAny) = self.call(Method::POST, route, Call::body(body)).await?;
+    Ok(())
   }
 
   /// Makes the call behind the receiving side's token, offering it again only while the connection is
@@ -299,6 +347,14 @@ impl ChatReceiver for ChatReceiverLink {
     let call = Call::body(&deletion);
     let (_, IgnoredAny) = self.call(Method::POST, "deletions", call).await?;
     Ok(())
+  }
+
+  async fn typing_marked(&self, mark: TypingMark) -> Result<(), ChatFailure> {
+    self.tell(ChatCapability::PeopleTyping, "typing-marks", &mark).await
+  }
+
+  async fn presence_changed(&self, change: PresenceChange) -> Result<(), ChatFailure> {
+    self.tell(ChatCapability::Presence, "presence-changes", &change).await
   }
 
   async fn room(&self, room_id: i64, query: RoomQuery) -> Result<Option<ReceiverRoom>, ChatFailure> {

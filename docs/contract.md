@@ -112,7 +112,7 @@ whether an answer to that message can be pinned to it.
 `ChatVerb` names the twelve kinds of send: `text`, `photo`, `album`, `document`, `audio`, `voice`, `sticker`,
 `reaction`, `pin`, `typing`, `edit`, `delete`.
 
-`ChatCapability` is the twelve kinds plus nine answers that are not sends:
+`ChatCapability` is the twelve kinds plus eleven answers that are not sends:
 
 | Capability | Meaning |
 |---|---|
@@ -125,8 +125,10 @@ whether an answer to that message can be pinned to it.
 | `memberList` | the provider can list the members of a room |
 | `startChat` | the provider can start a one-to-one with a contact of its account |
 | `startGroup` | the provider can start a room of several contacts of its account, under a title |
+| `peopleTyping` | the provider tells when a person is writing in a room (see "Typing and presence") |
+| `presence` | the provider tells whether a person is reachable (see "Typing and presence") |
 
-The full capability set is all twenty-one, taken from the type itself, so a reader handed a capability's name
+The full capability set is all twenty-three, taken from the type itself, so a reader handed a capability's name
 checks it against that set and keeps no list of its own. A provider declares the capabilities it has as `can`.
 A send of a kind it does not declare is refused (see Refusals).
 
@@ -423,6 +425,8 @@ hands the bytes over:
 | avatars changed | the rooms and people whose kept profile picture changed, as an `AvatarChange` |
 | reactions changed | the reactions on one message as the platform shows them now, as a `ReactionChange` |
 | deleted | messages of one room deleted on the platform, as a `Deletion` |
+| typing marked | a person writing in a room now, or no longer, as a `TypingMark` (see "Typing and presence") |
+| presence changed | whether people are reachable now, as a `PresenceChange` (see "Typing and presence") |
 | room | one room as the receiving side holds it, a `ReceiverRoom`: whether it listens to the room, whether it asked for the room to be read, and the oldest message it holds of it; none where it holds nothing of the room |
 | rooms | a page of the provider's rooms whose past it may read back, each a `ReceiverRoom` |
 
@@ -462,6 +466,71 @@ say answers false, so no room is opened to reading by a side that never asked fo
 A provider that reads rooms' past back, one that declares `history`, asks which rooms it may read back and
 from where, and hands each past message over as `history`, never as `live`, so nothing is woken for words said
 long ago. Its provider key, `via`, names the provider in every call that is not about a message it carries.
+
+## Typing and presence
+
+Who is writing in a room now, and who is reachable now. Neither is a message: a provider hands neither over as
+one, and the receiving side keeps neither in a room's record. `presence.md` states the design across every side;
+this section states what a provider tells.
+
+### A typing mark
+
+A `TypingMark` is a person writing in a room now: `via`, `roomId`, `personId` (a number of the provider's
+`people` space), `on`, and `lastsMs`, how long the mark stands unless it is told again.
+
+- **A mark ends by itself.** A mark told `on` and not told again ends when its life runs out, so a lost off
+  never leaves anybody shown typing. Told `on` again, it stands for a new life from then, so a platform that
+  tells a mark again while a person keeps writing has each one told as it comes.
+- **It ends at once** when it is told off, when the same person's message reaches the same room, and when the
+  provider that told it stops being ready. A platform that tells no off leaves the mark to end by its life.
+- **Its life is the platform's own.** A provider names the life its platform gives a mark as `lastsMs`; one that
+  names none (`lastsMs` null) gets the base's default of six seconds, which both libraries carry as
+  `TYPING_MARK_LASTS_MS`.
+- **The life ends a mark's showing, not any work.** Nothing waits on a mark and nothing is stopped by one.
+
+### Presence
+
+`ChatPresence` is whether a person is reachable now: `state`, a `ChatPresenceState`, and `lastSeenAt`.
+
+| `ChatPresenceState` | Meaning |
+|---|---|
+| `online` | the person is at the platform now, busy or not |
+| `away` | the person is signed in but idle, or stepped away |
+| `offline` | the person is not at the platform, or hides being there |
+
+- **A platform's own states are mapped by its provider:** a busy or do-not-disturb state is `online`, an idle or
+  be-right-back state is `away`, an invisible one is `offline`. Nothing outside the provider reads the platform's
+  own words.
+- **`lastSeenAt`** is the moment the platform says the person was last at it, or null where it does not say. A
+  platform's coarse word in place of a moment (recently, within a week) is no moment, and crosses as null.
+- **Presence stands until it is told again.** It is never worn out by time. A provider that stops being ready
+  leaves the presence it told unknown, not `offline`, until it tells again.
+
+A `PresenceChange` tells it: `via`; `people`, each a `PersonPresence` of `personId` beside the person's
+`ChatPresence`; and `whole`, true where the list is every person the provider tells presence of, so a person not
+listed is then unknown. A provider tells a whole list each time it becomes ready, so a receiving side that
+restarted, or a provider back from an outage, stands on the present at once.
+
+### What a provider tells
+
+- **A provider declares `peopleTyping` and `presence` only while the road that hears each runs,** as it declares
+  any capability that stands on one road. One that hears neither declares neither and tells nothing.
+- **The link drops a mark or a change whose capability the provider does not declare,** without sending it, so
+  a provider never has to check its own declaration before telling. The link reads the declaration of the
+  provider it is told it serves, as that provider declares now; a link told of no provider, or of one no longer
+  running, takes it as declaring neither.
+- **A provider tells only of rooms the receiving side listens to.** In a read-only room it tells only where the
+  receiving side asked for the room to be read (`read`), since a person's typing there is as much theirs as their
+  words.
+- **It tells the presence only of people who stand in such a room,** as a sender of its messages or one of its
+  members. A person the account knows only from elsewhere (its contacts, a room nobody listens to) is never told
+  of.
+- **The account a provider reads by is never told of.** Its typing and its presence are known to the side that
+  drives it already.
+- **A mark or a change about a room the receiving side holds nothing of is passed over,** and still answered as
+  taken: neither is anything a provider can repair.
+- **The account's own typing goes out as the `typing` send** (see "Sends"); no presence goes out, since a
+  person's presence on a platform is set by that person's own use of it.
 
 ## Sends
 
@@ -581,6 +650,8 @@ The capability words:
 | `memberList` | list the members of a room |
 | `startChat` | start a conversation with a contact |
 | `startGroup` | start a group conversation |
+| `peopleTyping` | tell who is typing in a room |
+| `presence` | tell who is online |
 
 `MissedPictureReason`, the `reason` of a missed picture:
 

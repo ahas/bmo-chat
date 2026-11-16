@@ -17,6 +17,7 @@ use crate::members::ChatMembersResult;
 use crate::message::{GatheredPatch, HandedMessage};
 use crate::modes::{ChatModeStanding, ChatReadMode, ChatVoice};
 use crate::numbering::ChatNumbering;
+use crate::presence::{PresenceChange, TypingMark};
 use crate::receiver_bodies::{
   AvatarChange, Deletion, HeldMessage, ReactionChange, ReceiverRoom, RoomQuery, RoomsQuery,
 };
@@ -56,6 +57,16 @@ pub trait ChatReceiver: Send + Sync {
 
   /// Messages of one room deleted on the platform.
   async fn deleted(&self, deletion: Deletion) -> Result<(), ChatFailure>;
+
+  /// A person writing in a room now, or no longer. A receiving side that shows no typing passes it over.
+  async fn typing_marked(&self, _mark: TypingMark) -> Result<(), ChatFailure> {
+    Ok(())
+  }
+
+  /// Whether people are reachable now. A receiving side that shows no presence passes it over.
+  async fn presence_changed(&self, _change: PresenceChange) -> Result<(), ChatFailure> {
+    Ok(())
+  }
 
   /// The room as the receiving side holds it, or null where it holds nothing of it, which reads as a room
   /// not listened to.

@@ -6,10 +6,10 @@ use std::collections::BTreeSet;
 use bmo_chat_client::{
   AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
   ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatHealth, ChatMarkup, ChatModeStanding,
-  ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode, ChatVerb,
-  ChatVoice, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, InboundChatContext, MessageFile,
-  MessageOrigin, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
-  RoomsQuery, WireError,
+  ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatPresenceState, ChatReach,
+  ChatReadMode, ChatVerb, ChatVoice, ErrorCode, FilesQuery, GatheredPatch, HandedMessage,
+  InboundChatContext, MessageFile, MessageOrigin, Page, ProviderOwner, ProviderRoom, ReceiverRoom,
+  RoomFacts, RoomKind, RoomQuery, RoomsQuery, TYPING_MARK_LASTS_MS, TypingMark, WireError,
 };
 use serde_json::{Value, json};
 
@@ -89,6 +89,10 @@ fn every_enum_member_by_its_wire_name() {
     ["live", "edit", "history"]
   );
   assert_eq!(names(&[ChatAvatarKind::Room, ChatAvatarKind::Person]), ["room", "person"]);
+  assert_eq!(
+    names(&[ChatPresenceState::Online, ChatPresenceState::Away, ChatPresenceState::Offline]),
+    ["online", "away", "offline"]
+  );
   use ChatFileKind as F;
   assert_eq!(
     names(&[
@@ -554,4 +558,18 @@ fn a_room_from_a_side_that_does_not_say_takes_every_mode_and_is_not_asked_to_be_
   }))
   .expect("a held room without read decodes");
   assert!(!held.read);
+}
+
+#[test]
+fn a_typing_mark_stands_for_its_own_life_or_six_seconds() {
+  let mark = |lasts_ms| TypingMark {
+    via: "stand-in".into(),
+    room_id: -100,
+    person_id: 42,
+    on: true,
+    lasts_ms,
+  };
+  assert_eq!(TYPING_MARK_LASTS_MS, 6_000);
+  assert_eq!(mark(None).lasts(), std::time::Duration::from_secs(6));
+  assert_eq!(mark(Some(10_000)).lasts(), std::time::Duration::from_secs(10));
 }

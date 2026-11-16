@@ -248,6 +248,26 @@
           }
         ]
       },
+      "ChatPresenceState": {
+        "description": "Whether a person is reachable now, as the provider maps its platform's own states.",
+        "oneOf": [
+          {
+            "const": "online",
+            "description": "At the platform now, busy or not.",
+            "type": "string"
+          },
+          {
+            "const": "away",
+            "description": "Signed in but idle, or stepped away.",
+            "type": "string"
+          },
+          {
+            "const": "offline",
+            "description": "Not at the platform, or hiding being there.",
+            "type": "string"
+          }
+        ]
+      },
       "ChatVoice": {
         "description": "Whose account speaks on a provider. One axis of a read mode; `ChatReach` is the other.",
         "oneOf": [
@@ -638,6 +658,32 @@
         ],
         "type": "object"
       },
+      "PersonPresence": {
+        "description": "One person's presence, by their number in the provider's `people` space.",
+        "properties": {
+          "lastSeenAt": {
+            "description": "Epoch milliseconds; null where the platform names no moment.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "personId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ChatPresenceState"
+          }
+        },
+        "required": [
+          "personId",
+          "state",
+          "lastSeenAt"
+        ],
+        "type": "object"
+      },
       "PersonReactions": {
         "description": "One person's reactions on a message: their number, or none for the account itself, and their emoji, empty\nwhere they took theirs off.",
         "properties": {
@@ -658,6 +704,31 @@
         "required": [
           "personId",
           "emojis"
+        ],
+        "type": "object"
+      },
+      "PresenceChange": {
+        "description": "The body of `POST /presence-changes`: whether people are reachable now.",
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonPresence"
+            },
+            "type": "array"
+          },
+          "via": {
+            "type": "string"
+          },
+          "whole": {
+            "default": false,
+            "description": "Whether the list is every person the provider tells presence of, so a person not listed is unknown.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "via",
+          "people",
+          "whole"
         ],
         "type": "object"
       },
@@ -816,6 +887,43 @@
           }
         ]
       },
+      "TypingMark": {
+        "description": "The body of `POST /typing-marks`: a person writing in a room now, or no longer.",
+        "properties": {
+          "lastsMs": {
+            "description": "How long the mark stands unless told again, in milliseconds; null takes the six-second default.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "on": {
+            "type": "boolean"
+          },
+          "personId": {
+            "description": "A number of the provider's `people` space.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "roomId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "via": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "via",
+          "roomId",
+          "personId",
+          "on",
+          "lastsMs"
+        ],
+        "type": "object"
+      },
       "WireError": {
         "description": "The error shape: a code to match on and an English sentence saying what went wrong.",
         "properties": {
@@ -842,9 +950,9 @@
     }
   },
   "info": {
-    "description": "The routes the receiving side serves and a provider calls, as the chat protocol defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the files a gathering message promised, the rooms a provider may read back and whether one is listened to, and word that kept pictures changed. Paths are relative to the base address the provider is configured with, and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of epoch milliseconds. Every failure is answered in the error shape with its status.",
+    "description": "The routes the receiving side serves and a provider calls, as the chat protocol defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the files a gathering message promised, the rooms a provider may read back and whether one is listened to, word that kept pictures, a message's reactions or its deletion changed, and who is typing or reachable now. Paths are relative to the base address the provider is configured with, and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of epoch milliseconds. Every failure is answered in the error shape with its status.",
     "title": "bmo-chat receiving-side routes",
-    "version": "0.1.0-rev.8"
+    "version": "0.1.0-rev.9"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -937,6 +1045,55 @@
         "summary": "Messages of one room deleted on the platform.",
         "tags": [
           "deletions"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
+    },
+    "/presence-changes": {
+      "post": {
+        "operationId": "createPresenceChanges",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresenceChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresenceChange"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "Whether people are reachable now; where the change is `whole`, a person not listed is unknown.",
+        "tags": [
+          "presence-changes"
         ],
         "x-codes": [
           "bad-request",
@@ -1293,6 +1450,55 @@
           "failed"
         ]
       }
+    },
+    "/typing-marks": {
+      "post": {
+        "operationId": "createTypingMarks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TypingMark"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypingMark"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/Failed"
+          },
+          "503": {
+            "$ref": "#/components/responses/NotReady"
+          }
+        },
+        "summary": "A person writing in a room now, or no longer, standing for `lastsMs` unless told again, six seconds where it is null; a mark about a room nothing is held of is passed over.",
+        "tags": [
+          "typing-marks"
+        ],
+        "x-codes": [
+          "bad-request",
+          "unauthorized",
+          "not-ready",
+          "failed"
+        ]
+      }
     }
   },
   "security": [
@@ -1318,6 +1524,12 @@
     },
     {
       "name": "deletions"
+    },
+    {
+      "name": "typing-marks"
+    },
+    {
+      "name": "presence-changes"
     }
   ],
   "x-calls": [],

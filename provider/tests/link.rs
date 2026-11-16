@@ -3,6 +3,7 @@
 //! connection is refused. No test waits on the real clock, and every listener a test starts is taken down
 //! before it ends.
 
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,9 +17,12 @@ use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{any, put};
 use bmo_chat::{
-  AvatarChange, ChatFailure, ChatPatience, ChatReceiver, ChatReceiverLink, ChatVoice, ChatWait, ErrorCode,
-  GatheredPatch, HandedMessage, HeldMessage, InboundChatContext, LinkFailure, MessageFile, MessageOrigin,
-  Page, ReceiverRoom, RoomFacts, RoomQuery, RoomsQuery, WireError,
+  AvatarChange, ChatCapability, ChatDialect, ChatFailure, ChatNumberRanges, ChatNumberSpace, ChatNumbering,
+  ChatPatience, ChatPresence, ChatPresenceState, ChatProvider, ChatReadMode, ChatReceiver,
+  ChatReceiverLink, ChatSendRequest, ChatSendResult, ChatVoice, ChatWait, ErrorCode, GatheredPatch,
+  HandedMessage, HeldMessage, InboundChatContext, LinkFailure, MessageFile, MessageOrigin, Page,
+  PersonPresence, PlainDialect, PresenceChange, ProviderRoom, ReceiverRoom, RoomFacts, RoomQuery,
+  RoomsQuery, TypingMark, WireError,
 };
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -46,8 +50,8 @@ fn held_room() -> Value {
 
 /// A receiving side that takes every call under `/receiving` and keeps it. A hand-over is answered with the
 /// message as handed, 200 for an edit and 201 for any other origin; a gathered patch with the message holding
-/// the patch's files; word of pictures with itself; room `ROOM` as held and any other room as not found; and
-/// the rooms with a page of that one room.
+/// the patch's files; word of pictures, a typing mark and a presence change each with itself; room `ROOM`
+/// as held and any other room as not found; and the rooms with a page of that one room.
 fn receiving(handed: Handed) -> Router {
   async fn take(
     State(handed): State<Handed>,
@@ -76,7 +80,9 @@ fn receiving(handed: Handed) -> Router {
         message["gathering"] = json!(false);
         Json(message).into_response()
       }
-      ("POST", "avatar-changes") => (StatusCode::CREATED, Json(body.clone())).into_response(),
+      ("POST", "avatar-changes" | "typing-marks" | "presence-changes") => {
+        (StatusCode::CREATED, Json(body.clone())).into_response()
+      }
       ("GET", "rooms") => Json(json!({ "items": [held_room()], "more": true })).into_response(),
       ("GET", "rooms/-100") => Json(held_room()).into_response(),
       _ => (
@@ -486,4 +492,135 @@ fn the_default_patience_is_two_minutes_every_two_seconds() {
   let patience = ChatPatience::default();
   assert_eq!(patience.window, Duration::from_secs(120));
   assert_eq!(patience.every, Duration::from_secs(2));
+}
+
+/// A provider that declares only the capabilities it is set to, as they stand at each call.
+struct Declaring(Mutex<BTreeSet<ChatCapability>>);
+
+impl Declaring {
+  fn declare(&self, can: &[ChatCapability]) {
+    *self.0.lock().unwrap() = can.iter().copied().collect();
+  }
+}
+
+#[async_trait]
+impl ChatProvider for Declaring {
+  fn key(&self) -> &str {
+    "stand-in"
+  }
+  fn label(&self) -> &str {
+    "Stand-in"
+  }
+  fn version(&self) -> &str {
+    "1.0.0"
+  }
+  fn configured(&self) -> Option<String> {
+    None
+  }
+  async fn start(&self, _receiver: Arc<dyn ChatReceiver>) -> Result<(), ChatFailure> {
+    Ok(())
+  }
+  async fn stop(&self) {}
+  fn modes(&self) -> Vec<ChatReadMode> {
+    Vec::new()
+  }
+  fn can(&self) -> BTreeSet<ChatCapability> {
+    self.0.lock().unwrap().clone()
+  }
+  fn dialect(&self) -> &dyn ChatDialect {
+    &PlainDialect
+  }
+  fn numbering(&self) -> ChatNumbering {
+    ChatNumbering {
+      rooms: ChatNumberSpace::Native,
+      people: ChatNumberSpace::Native,
+      messages: ChatNumberSpace::Native,
+      ranges: ChatNumberRanges {
+        rooms: None,
+        people: None,
+      },
+    }
+  }
+  async fn room(&self, _room_id: i64) -> Result<Option<ProviderRoom>, ChatFailure> {
+    Ok(None)
+  }
+  async fn owner_room(&self) -> Result<Option<i64>, ChatFailure> {
+    Ok(None)
+  }
+  async fn send(&self, request: ChatSendRequest) -> Result<ChatSendResult, ChatFailure> {
+    Ok(ChatSendResult::Refused(self.unsupported(request.send.kind().into())))
+  }
+}
+
+#[tokio::test]
+async fn a_mark_or_a_change_goes_only_while_the_provider_declares_what_hears_it() {
+  let handed = Handed::default();
+  let listening = Listening::start(receiving(handed.clone())).await;
+  let waiter = Arc::new(Recording::default());
+  let mark = TypingMark {
+    via: "stand-in".into(),
+    room_id: ROOM,
+    person_id: 42,
+    on: true,
+    lasts_ms: None,
+  };
+  let change = PresenceChange {
+    via: "stand-in".into(),
+    people: vec![PersonPresence {
+      person_id: 42,
+      presence: ChatPresence {
+        state: ChatPresenceState::Away,
+        last_seen_at: Some(1_700_000_000_000),
+      },
+    }],
+    whole: true,
+  };
+  let tell = |link: ChatReceiverLink| {
+    let (mark, change) = (mark.clone(), change.clone());
+    async move {
+      link.typing_marked(mark).await.expect("a mark is never refused for being undeclared");
+      link
+        .presence_changed(change)
+        .await
+        .expect("a change is never refused for being undeclared");
+    }
+  };
+  let link = ChatReceiverLink::new(listening.base(), TOKEN).with_patience(patience(waiter.clone(), 6, 2));
+  tell(link.clone()).await;
+
+  let provider = Arc::new(Declaring(Mutex::default()));
+  let told = link.declared_by(&provider);
+  tell(told.clone()).await;
+  provider.declare(&[ChatCapability::PeopleTyping]);
+  tell(told.clone()).await;
+  provider.declare(&[ChatCapability::Presence]);
+  tell(told.clone()).await;
+  drop(provider);
+  tell(told).await;
+  listening.close().await;
+
+  let bearer = Some(format!("Bearer {TOKEN}"));
+  assert_eq!(
+    *handed.lock().unwrap(),
+    [
+      Took {
+        method: "POST".into(),
+        path: "typing-marks".into(),
+        authorization: bearer.clone(),
+        body: json!({ "via": "stand-in", "roomId": ROOM, "personId": 42, "on": true, "lastsMs": null }),
+      },
+      Took {
+        method: "POST".into(),
+        path: "presence-changes".into(),
+        authorization: bearer,
+        body: json!({
+          "via": "stand-in",
+          "people": [{ "personId": 42, "state": "away", "lastSeenAt": 1_700_000_000_000_i64 }],
+          "whole": true,
+        }),
+      },
+    ],
+    "a link told of no provider, one declaring neither, or one no longer running sends nothing"
+  );
+  assert_eq!(waiter.waits(), [], "nothing was refused, so nothing waited");
 }
