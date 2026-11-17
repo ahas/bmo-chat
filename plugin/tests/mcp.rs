@@ -1,6 +1,6 @@
 //! The `bmo-chat` command: `bmo-chat mcp --provider <url>` starts an MCP server on standard input and output
-//! that lists exactly the protocol's thirteen tools, and each call reaches the provider at the address through
-//! the client, behind the token. The command runs as its own process, spoken to over its pipes, and is taken
+//! that lists exactly the protocol's twelve tools, none of which sends, and each call reaches the provider at the
+//! address through the client, behind the token. The command runs as its own process, spoken to over its pipes, and is taken
 //! down before each test ends.
 
 use std::process::Stdio;
@@ -61,8 +61,8 @@ impl Server {
     self.input.flush().await.expect("the server reads its input");
   }
 
-  /// One request, answered with the result of the answer bearing its id.
-  async fn ask(&mut self, method: &str, params: Value) -> Value {
+  /// One request, answered with the whole answer bearing its id, its result or its protocol error.
+  async fn answer(&mut self, method: &str, params: Value) -> Value {
     let id = self.next;
     self.next += 1;
     self
@@ -76,10 +76,16 @@ impl Server {
         .expect("the server answers before it closes its output");
       let answer: Value = serde_json::from_str(&line).expect("the server writes JSON lines");
       if answer["id"] == id {
-        assert!(answer["error"].is_null(), "{method} is answered without a protocol error: {answer}");
-        return answer["result"].clone();
+        return answer;
       }
     }
+  }
+
+  /// One request, answered with the result of the answer bearing its id.
+  async fn ask(&mut self, method: &str, params: Value) -> Value {
+    let answer = self.answer(method, params).await;
+    assert!(answer["error"].is_null(), "{method} is answered without a protocol error: {answer}");
+    answer["result"].clone()
   }
 
   async fn initialized(arguments: &[&str], token: Option<&str>) -> Self {
@@ -116,8 +122,8 @@ impl Server {
 /// the body.
 type Asked = Arc<Mutex<Vec<(String, String, Option<String>, Value)>>>;
 
-/// A stand-in provider on the loopback: its declaration, a send it refuses, and a picture page; anything else
-/// is no route.
+/// A stand-in provider on the loopback, keeping every request it was asked: its declaration, a start it
+/// refuses, and a picture page; anything else is no route.
 struct Stand {
   address: std::net::SocketAddr,
   asked: Asked,
@@ -144,9 +150,9 @@ impl Stand {
       }
       match (method.as_str(), uri.path()) {
         ("GET", "/declaration") => Json(declaration()).into_response(),
-        ("POST", "/sends") => {
+        ("POST", "/rooms") => {
           let refused =
-            json!({ "code": "unsupported-capability", "error": "Stand-in cannot send a sticker." });
+            json!({ "code": "unsupported-capability", "error": "Stand-in cannot start a group." });
           (StatusCode::UNPROCESSABLE_ENTITY, Json(refused)).into_response()
         }
         ("GET", "/avatars") => Json(json!({ "items": [], "more": false })).into_response(),
@@ -215,7 +221,7 @@ fn text_of(result: &Value) -> Value {
 }
 
 #[tokio::test]
-async fn the_server_starts_and_lists_exactly_the_thirteen_tools_each_standing_alone() {
+async fn the_server_starts_and_lists_exactly_the_twelve_tools_each_standing_alone() {
   let mut server = Server::initialized(&["mcp", "--provider", "http://[::1]:9"], None).await;
   let listed = server.ask("tools/list", json!({})).await;
   server.stop().await;
@@ -227,7 +233,6 @@ async fn the_server_starts_and_lists_exactly_the_thirteen_tools_each_standing_al
     [
       "chat_declaration",
       "chat_health",
-      "chat_send",
       "chat_rooms",
       "chat_start",
       "chat_contacts",
@@ -273,8 +278,8 @@ async fn a_tool_answers_with_its_route_and_a_refusal_comes_back_as_a_tool_error_
   let stand = Stand::start().await;
   let mut server = Server::initialized(&["mcp", "--provider", &stand.url()], Some(TOKEN)).await;
   let declared = server.call("chat_declaration", json!({})).await;
-  let send = json!({ "body": { "kind": "sticker", "roomId": -100, "fields": { "emoji": "\u{1f44d}" } } });
-  let refused = server.call("chat_send", send).await;
+  let start = json!({ "body": { "title": "Testers", "contactIds": [5, 6] } });
+  let refused = server.call("chat_start", start).await;
   let page = server.call("chat_avatars", json!({ "after": 1000, "limit": 5 })).await;
   let wrong = server.call("chat_room", json!({ "room": "seven" })).await;
   server.stop().await;
@@ -288,7 +293,7 @@ async fn a_tool_answers_with_its_route_and_a_refusal_comes_back_as_a_tool_error_
   assert!(refused["structuredContent"].is_null(), "a tool error carries no structured content");
   assert_eq!(
     text_of(&refused),
-    json!({ "status": 422, "code": "unsupported-capability", "error": "Stand-in cannot send a sticker." })
+    json!({ "status": 422, "code": "unsupported-capability", "error": "Stand-in cannot start a group." })
   );
   assert_eq!(page["structuredContent"], json!({ "items": [], "more": false }));
   assert_eq!(wrong["isError"], true);
@@ -300,14 +305,29 @@ async fn a_tool_answers_with_its_route_and_a_refusal_comes_back_as_a_tool_error_
       ("GET".to_owned(), "/declaration".to_owned(), bearer.clone(), Value::Null),
       (
         "POST".to_owned(),
-        "/sends".to_owned(),
+        "/rooms".to_owned(),
         bearer.clone(),
-        json!({ "kind": "sticker", "roomId": -100, "fields": { "emoji": "\u{1f44d}" } }),
+        json!({ "title": "Testers", "contactIds": [5, 6] }),
       ),
       ("GET".to_owned(), "/avatars?after=1000&limit=5".to_owned(), bearer, Value::Null),
     ],
     "arguments not of the tool's shape reach no route"
   );
+}
+
+#[tokio::test]
+async fn no_tool_sends_so_a_send_asked_of_the_server_reaches_no_provider() {
+  let stand = Stand::start().await;
+  let mut server = Server::initialized(&["mcp", "--provider", &stand.url()], Some(TOKEN)).await;
+  let send = json!({ "body": { "kind": "text", "roomId": -100, "fields": { "text": "Hello" } } });
+  let answer = server.answer("tools/call", json!({ "name": "chat_send", "arguments": send })).await;
+  server.stop().await;
+  let asked = stand.asked.lock().unwrap().clone();
+  stand.close().await;
+
+  assert!(answer["result"].is_null(), "a send is no tool's call: {answer}");
+  assert_eq!(answer["error"]["message"], "There is no tool chat_send.");
+  assert_eq!(asked, [], "the provider is asked nothing");
 }
 
 #[tokio::test]

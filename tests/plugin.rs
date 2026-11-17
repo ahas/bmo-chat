@@ -1,4 +1,4 @@
-//! The harness plugin's MCP server over the real provider router: each of the thirteen tools, called as a harness
+//! The harness plugin's MCP server over the real provider router: each of the twelve tools, called as a harness
 //! calls it, answers exactly what the client answers for its route, from a stand-in provider served by
 //! bmo-chat. The server is spoken to over an in-process pipe, and every listener is taken down before the
 //! test ends.
@@ -256,8 +256,6 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   };
   harness.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
 
-  let send = json!({ "kind": "text", "roomId": -100, "fields": { "text": "Hello **there**" } });
-  let send_request: bmo_chat_client::ChatSendRequest = serde_json::from_value(send.clone()).unwrap();
   let media = bmo_chat_client::ChatMediaRequest {
     room_id: -100,
     message_id: 5,
@@ -283,7 +281,6 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   let calls = [
     ("chat_declaration", json!({}), as_json(client.declaration().await.unwrap())),
     ("chat_health", json!({}), as_json(client.health().await.unwrap())),
-    ("chat_send", json!({ "body": send }), as_json(client.send(&send_request).await.unwrap())),
     (
       "chat_rooms",
       json!({ "after": -200, "limit": 5 }),
@@ -340,7 +337,6 @@ async fn each_tool_answers_what_the_client_answers_for_its_route() {
   assert_eq!(
     by_tools,
     [
-      "send Text to -100",
       "rooms",
       "start OneToOne { contact_id: 42 } for Some(77)",
       "contacts for Some(77)",

@@ -506,7 +506,6 @@ through the client:
 |---|---|---|
 | `chat_declaration` | `GET /declaration` | none |
 | `chat_health` | `GET /health` | none |
-| `chat_send` | `POST /sends` | `body`: a send |
 | `chat_rooms` | `GET /rooms` | optional `after` and `limit` |
 | `chat_start` | `POST /rooms` | `body`: a start |
 | `chat_contacts` | `GET /contacts` | optional `after`, `limit` and `accountId` |
@@ -518,6 +517,9 @@ through the client:
 | `chat_dialect_check` | `POST /dialect/checks` | `body`: `markup` |
 | `chat_avatars` | `GET /avatars` | optional `after` and `limit` |
 
+No tool sends. `POST /sends` has no tool, so words reach a room only through the receiving side, never from a
+harness past it.
+
 A tool answers with the route's answer as JSON, both as its structured content and as its text. A tool's answer
 is JSON alone, so `chat_message_files` answers every file's bytes inline, read from where the provider client
 kept a file that came as a part. A route answered with an error, or a provider that could not be reached, is a
@@ -528,7 +530,7 @@ each request once, so a provider nothing listens at is answered at once with tha
 asks again when it chooses. The server sends no notifications: the provider routes publish no events.
 
 The `bmo-chat` skill tells a harness building or testing a chat provider when and how to use the server:
-read the declaration first, then send through the provider and check its dialect, all with no receiving side
+read the declaration first, then read the provider's rooms and check its dialect, all with no receiving side
 running.
 
 ## Not in the protocol

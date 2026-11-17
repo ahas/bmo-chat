@@ -1,13 +1,13 @@
 //! The harness tools: one for each provider route a harness drives a provider through, each a thin call of
 //! one method of the provider client. The MCP server lists them and the provider document states them under
-//! `x-tools`, both from this one table.
+//! `x-tools`, both from this one table. No tool sends: words reach a room only through the receiving side.
 
 use std::future::Future;
 use std::pin::Pin;
 
 use bmo_chat_client::{
-  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ChatStartRequest,
-  ClientFailure, ContactsQuery, DialectCheck, DialectRead, FileBody, MessageFile, Page,
+  AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatStartRequest, ClientFailure,
+  ContactsQuery, DialectCheck, DialectRead, FileBody, MessageFile, Page,
 };
 use schemars::generate::SchemaGenerator;
 use schemars::{JsonSchema, Schema};
@@ -166,7 +166,7 @@ struct Files {
   sent_at: Option<i64>,
 }
 
-/// The thirteen tools, in the order the protocol lists their routes.
+/// The twelve tools, in the order the protocol lists their routes.
 pub fn tools() -> Vec<ChatTool> {
   vec![
     tool(
@@ -180,13 +180,6 @@ pub fn tools() -> Vec<ChatTool> {
       "Whether the provider is ready, why not where it is not, and its version.",
       "GET /health",
       |client, Nothing {}| async move { client.health().await },
-    ),
-    tool(
-      "chat_send",
-      "Performs one send on the platform; the kind, not the route, carries the difference. A send the \
-       provider does not perform answers with its refusal.",
-      "POST /sends",
-      |client, Body { body }: Body<ChatSendRequest>| async move { client.send(&body).await },
     ),
     tool(
       "chat_rooms",

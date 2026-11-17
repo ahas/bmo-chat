@@ -1,7 +1,7 @@
 //! The OpenAPI documents: each committed document is what the code generates, the provider document lists
 //! exactly the routes the client calls and the receiving-side document exactly those the router serves,
 //! every body the client crate writes is valid against the schema of its route, and the tools stated under
-//! `x-tools` are the thirteen the MCP server lists, each on a route of the document.
+//! `x-tools` are the twelve the MCP server lists, each on a route of the document.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -32,11 +32,10 @@ use tower::ServiceExt;
 
 const TOKEN: &str = "the-token";
 
-/// The thirteen tools the protocol's harness plugin serves, in the order the protocol lists their routes.
-const TOOLS: [&str; 13] = [
+/// The twelve tools the protocol's harness plugin serves, in the order the protocol lists their routes.
+const TOOLS: [&str; 12] = [
   "chat_declaration",
   "chat_health",
-  "chat_send",
   "chat_rooms",
   "chat_start",
   "chat_contacts",
@@ -958,7 +957,7 @@ fn every_reference_points_at_what_it_holds_and_every_schema_is_a_json_schema() {
 }
 
 #[test]
-fn the_documents_state_the_plugin_and_the_provider_document_its_thirteen_tools_each_on_a_route() {
+fn the_documents_state_the_plugin_and_the_provider_document_its_twelve_tools_each_on_a_route() {
   for side in [Side::Provider, Side::Receiver] {
     let document = openapi(side);
     assert_eq!(document["openapi"], "3.1.0");
