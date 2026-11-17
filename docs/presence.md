@@ -137,11 +137,13 @@ flowchart TD
 ## The console as a messenger of its own
 
 - **An account's presence in the console** comes from the report a console tab makes of the rooms it shows
-  and whether it is visible, on opening a room, on being hidden or shown, and every half minute while visible.
-  Every signed-in account's tabs make it, whatever the account may read:
+  and whether it is visible, on opening a room, on being hidden or shown, and every half minute while it is
+  open, hidden or not, so a tab left open in the background keeps its account standing. Every signed-in
+  account's tabs make it, whatever the account may read:
   - `online` while a tab of the account is open and visible;
-  - `away` while its tabs are open and none is visible;
-  - `offline` once no tab reports, a tab silent for longer than a few of its reports being taken as gone;
+  - `away` while its tabs are open and none is visible, for as long as one of them stays open;
+  - `offline` once no tab reports, a tab silent for longer than a few of its reports being taken as gone; a tab
+    the browser freezes in the background stops reporting, and is taken as gone like a closed one;
   - `lastSeenAt` the last moment a visible tab of it reported.
 - **The console tells the receiving side the account's presence as it changes,** one source among the
   account's sources, and the receiving side tells it per room as any presence.
