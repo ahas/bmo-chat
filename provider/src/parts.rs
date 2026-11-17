@@ -1,9 +1,9 @@
-//! A body that carries files, as it is sent and as it arrives: JSON, or multipart with each stored file as a
-//! part of its own (`docs/protocol.md`, "Files carried as parts").
+//! A body that carries files, as it is sent, as it is answered and as it arrives: JSON, or multipart with each
+//! stored file as a part of its own (`docs/protocol.md`, "Files carried as parts").
 //!
 //! The multipart body is written here rather than by reqwest's multipart form: the registry line every unit
-//! shares for reqwest carries no multipart feature. Only the writing is the library's own; an arriving
-//! multipart body is read by axum's reader.
+//! shares for reqwest carries no multipart feature, and an answer is no reqwest body. Only the writing is the
+//! library's own; an arriving multipart body is read by axum's reader.
 
 use std::collections::BTreeMap;
 use std::io::{self, Cursor};
@@ -12,9 +12,10 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::{FromRequest, Multipart, Request};
 use axum::http::header::CONTENT_TYPE;
+use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -26,7 +27,7 @@ use crate::file_body::{StoredFile, part_name, read_with_parts, written};
 /// The part of a multipart body that carries its JSON.
 const BODY_PART: &str = "body";
 
-/// A body ready to be sent: its JSON, and the stored files that cross as its parts.
+/// A body ready to be sent or answered: its JSON, and the stored files that cross as its parts.
 pub(crate) struct Outgoing {
   json: Vec<u8>,
   files: Vec<StoredFile>,
@@ -59,6 +60,26 @@ impl Outgoing {
     if self.files.is_empty() {
       return Ok(reqwest::Body::from(self.json.clone()));
     }
+    Ok(reqwest::Body::wrap_stream(ReaderStream::new(self.parts().await?)))
+  }
+
+  /// The body as an answer, its stored files read from the disk as it is sent; a file that cannot be opened
+  /// fails the answer.
+  pub(crate) async fn answer(self) -> Result<Response, WireError> {
+    let content_type = self.content_type();
+    let body = if self.files.is_empty() {
+      Body::from(self.json)
+    } else {
+      let parts = self.parts().await.map_err(|error| {
+        WireError::new(ErrorCode::Failed, format!("A file the answer carries could not be read: {error}."))
+      })?;
+      Body::from_stream(ReaderStream::new(parts))
+    };
+    Ok(([(CONTENT_TYPE, content_type)], body).into_response())
+  }
+
+  /// The multipart body as a stream, each stored file opened now and read as the stream reaches it.
+  async fn parts(&self) -> io::Result<Pin<Box<dyn AsyncRead + Send + Sync>>> {
     let boundary = &self.boundary;
     let mut head = format!(
       "--{boundary}\r\nContent-Disposition: form-data; name=\"{BODY_PART}\"\r\n\
@@ -77,8 +98,7 @@ impl Outgoing {
       stream = Box::pin(stream.chain(Cursor::new(opening.into_bytes())).chain(bytes));
     }
     let closing = format!("\r\n--{boundary}--\r\n");
-    let stream = stream.chain(Cursor::new(closing.into_bytes()));
-    Ok(reqwest::Body::wrap_stream(ReaderStream::new(stream)))
+    Ok(Box::pin(stream.chain(Cursor::new(closing.into_bytes()))))
   }
 }
 

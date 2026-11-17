@@ -253,7 +253,7 @@ impl Route {
 }
 
 /// A body as a multipart form: the JSON body as the part `body`, and each file it names by `part` as the part
-/// of that name, its bytes as they are.
+/// of that name, its bytes as they are. A request body and an answer that carry files take this form alike.
 fn parts_body(body: Schema) -> Value {
   json!({
     "schema": {
@@ -269,6 +269,15 @@ fn parts_body(body: Schema) -> Value {
 /// A JSON answer of this type.
 fn json_answer<Answer: JsonSchema>(generator: &mut SchemaGenerator) -> Value {
   json!({ "application/json": { "schema": generator.subschema_for::<Answer>() } })
+}
+
+/// An answer that carries files: JSON, or a multipart form with its files as parts.
+fn parts_answer<Answer: JsonSchema>(generator: &mut SchemaGenerator) -> Value {
+  let answer = generator.subschema_for::<Answer>();
+  json!({
+    "application/json": { "schema": answer.clone() },
+    "multipart/form-data": parts_body(answer),
+  })
 }
 
 /// An answer of bytes, typed by `Content-Type`.
@@ -508,7 +517,7 @@ fn provider_routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       .concat(),
       body: None,
       parts: false,
-      answers: vec![(200, json_answer::<Page<MessageFile>>(generator))],
+      answers: vec![(200, parts_answer::<Page<MessageFile>>(generator))],
       codes: codes(true, FILES_REFUSALS),
     },
     Route {

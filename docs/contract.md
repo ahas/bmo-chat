@@ -426,9 +426,10 @@ A file's bytes are a `FileBody`, held one of three ways:
   first, so a side that keeps it moves it where it keeps files.
 - **A side reads a file's bytes as it needs them:** whole, or as a stream read from the disk. Reading a
   withheld file is an error.
-- **Every body that carries files takes them both ways:** a send's files, a hand-over's and a gathering's
-  patch's. The answers of a hand-over and of a patch name their files withheld, and a fetch of a message's
-  files answers them inline.
+- **Every body that carries files takes them both ways:** a send's files, a hand-over's, a gathering's patch's
+  and the answer of a fetch of a message's files, which the provider answers as it holds them and the caller
+  receives as they cross: a part stored in its own spool, an inline file in memory. The answers of a
+  hand-over and of a patch name their files withheld.
 
 A provider gathers a file from its platform. Where it is kept is the receiving side's concern, so the provider
 hands the bytes over:

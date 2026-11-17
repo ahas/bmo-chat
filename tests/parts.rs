@@ -1,7 +1,7 @@
 //! Files carried as parts across the real routes (`docs/protocol.md`, "Files carried as parts"): a file stored
-//! on the sender's disk crosses as a part of a multipart body, arrives stored in the receiving end's spool,
-//! and is gone from the spool once the receiving end lets it go; a file in memory still crosses inline. Each
-//! side is served on a socket of its own, taken down before the test ends.
+//! on the sender's disk crosses as a part of a multipart body, a request's or a fetch's answer, arrives stored
+//! in the receiving end's spool, and is gone from the spool once the receiving end lets it go; a file in
+//! memory still crosses inline. Each side is served on a socket of its own, taken down before the test ends.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -77,10 +77,12 @@ impl Served {
 /// What a stand-in was handed: for each file, whether it arrived stored in the spool, and its bytes.
 type Handed = Mutex<Vec<(bool, Vec<u8>)>>;
 
-/// A provider that sends documents, telling what each send carried.
+/// A provider that sends documents, telling what each send carried, and fetches a message's files: the file
+/// at `fetched`, stored, and one in memory.
 struct Provider {
   spool: PathBuf,
   handed: Handed,
+  fetched: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -105,7 +107,7 @@ impl bmo_chat::ChatProvider for Provider {
     Vec::new()
   }
   fn can(&self) -> BTreeSet<bmo_chat::ChatCapability> {
-    [bmo_chat::ChatCapability::Document].into()
+    [bmo_chat::ChatCapability::Document, bmo_chat::ChatCapability::FetchMedia].into()
   }
   fn dialect(&self) -> &dyn bmo_chat::ChatDialect {
     &bmo_chat::PlainDialect
@@ -141,6 +143,23 @@ impl bmo_chat::ChatProvider for Provider {
       message_id: Some(40),
       missed: Vec::new(),
     }))
+  }
+  async fn fetch_media(
+    &self,
+    _: bmo_chat::ChatMediaRequest,
+  ) -> Result<bmo_chat::ChatMediaResult, bmo_chat::ChatFailure> {
+    let path = self.fetched.clone().expect("the stand-in is asked for files only where it holds one");
+    let file = |id: &str, bytes: bmo_chat::FileBody| bmo_chat::MessageFile {
+      id: id.into(),
+      name: "scan.pdf".into(),
+      mime: "application/pdf".into(),
+      bytes,
+      kind: Some(bmo_chat::ChatFileKind::Document),
+    };
+    Ok(bmo_chat::ChatMediaResult::Fetched(vec![
+      file("0", bmo_chat::FileBody::stored(path)),
+      file("1", vec![9].into()),
+    ]))
   }
 }
 
@@ -225,6 +244,7 @@ async fn a_send_carries_a_stored_file_as_a_part_that_arrives_stored_and_leaves_t
   let provider = Arc::new(Provider {
     spool: spool.0.clone(),
     handed: Mutex::default(),
+    fetched: None,
   });
   let served = Served::on(bmo_chat::provider_router(provider.clone(), TOKEN)).await;
   let client = bmo_chat_client::ChatProviderClient::new(&served.base, TOKEN);
@@ -293,6 +313,52 @@ async fn a_hand_over_carries_a_stored_file_as_a_part_and_is_answered_with_its_fi
     .collect();
   assert_eq!(ids, [("0", true), ("1", true)], "the answer names each file without its bytes");
   assert_eq!(*receiver.handed.lock().unwrap(), [(true, bytes.clone()), (false, vec![9])]);
+  assert_eq!(spool.entries(), 0, "a part let go of is removed from the spool");
+  assert_eq!(std::fs::read(&path).unwrap(), bytes, "the provider's own file is left where it lies");
+}
+
+#[tokio::test]
+async fn a_fetch_answers_a_stored_file_as_a_part_that_arrives_stored_in_the_callers_spool() {
+  let sources = Scratch::new("sources");
+  let spool = Scratch::new("caller-spool");
+  let (path, bytes) = source(&sources, "scan.pdf");
+  let provider = Arc::new(Provider {
+    spool: sources.0.clone(),
+    handed: Mutex::default(),
+    fetched: Some(path.clone()),
+  });
+  let served = Served::on(bmo_chat::provider_router(provider, TOKEN)).await;
+  let client = bmo_chat_client::ChatProviderClient::new(&served.base, TOKEN).with_spool(&spool.0);
+  let request = bmo_chat_client::ChatMediaRequest {
+    room_id: ROOM,
+    message_id: 7,
+    sent_at: None,
+  };
+  let tool = bmo_chat_plugin::tools()
+    .into_iter()
+    .find(|tool| tool.name == "chat_message_files")
+    .expect("the plugin lists the fetch of a message's files");
+
+  let fetched = client.message_files(&request).await.unwrap();
+  let answered = tool.call(client.clone(), serde_json::json!({ "roomId": ROOM, "messageId": 7 })).await;
+  served.take_down().await;
+
+  let mut held = Vec::new();
+  for file in &fetched.items {
+    let stored =
+      matches!(&file.bytes, bmo_chat_client::FileBody::Stored(kept) if kept.path().starts_with(&spool.0));
+    held.push((file.id.as_str(), stored, file.bytes.read().await.unwrap()));
+  }
+  assert_eq!(held, [("0", true, bytes.clone()), ("1", false, vec![9])]);
+  let answered: bmo_chat_client::Page<bmo_chat_client::MessageFile> =
+    serde_json::from_value(answered.expect("the tool answers")).unwrap();
+  let inline: Vec<_> = answered.items.iter().map(|file| file.bytes.clone()).collect();
+  let expected = [
+    bmo_chat_client::FileBody::Inline(bytes.clone()),
+    bmo_chat_client::FileBody::Inline(vec![9]),
+  ];
+  assert_eq!(inline, expected, "the tool answers every file inline");
+  drop(fetched);
   assert_eq!(spool.entries(), 0, "a part let go of is removed from the spool");
   assert_eq!(std::fs::read(&path).unwrap(), bytes, "the provider's own file is left where it lies");
 }

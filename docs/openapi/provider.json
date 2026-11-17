@@ -2617,6 +2617,28 @@
                 "schema": {
                   "$ref": "#/components/schemas/MessageFilePage"
                 }
+              },
+              "multipart/form-data": {
+                "encoding": {
+                  "body": {
+                    "contentType": "application/json"
+                  }
+                },
+                "schema": {
+                  "additionalProperties": {
+                    "contentMediaType": "application/octet-stream",
+                    "type": "string"
+                  },
+                  "properties": {
+                    "body": {
+                      "$ref": "#/components/schemas/MessageFilePage"
+                    }
+                  },
+                  "required": [
+                    "body"
+                  ],
+                  "type": "object"
+                }
               }
             },
             "description": "Answered."

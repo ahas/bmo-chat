@@ -3,10 +3,11 @@
 
 use std::fmt;
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -18,10 +19,11 @@ use crate::bodies::{
 use crate::contacts::{ChatContact, ChatStartRequest, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
+use crate::file_body::read_with_parts;
 use crate::media::{ChatMediaRequest, FilesQuery};
 use crate::members::ChatMembers;
 use crate::message::MessageFile;
-use crate::parts::Outgoing;
+use crate::parts::{Outgoing, Unread, multipart_boundary, spooled};
 use crate::patience::ChatPatience;
 use crate::send::{ChatSendRequest, ChatSent};
 
@@ -89,18 +91,19 @@ impl ClientFailure {
 
 /// One provider as a caller reaches it: the provider routes at a base address, behind the provider's token.
 /// The caller's own configuration gives both, and a receiving side holds one client for each provider it
-/// lists.
+/// lists. A file an answer carries as a part is written into the client's spool as it arrives.
 #[derive(Debug, Clone)]
 pub struct ChatProviderClient {
   base: String,
   token: String,
   patience: ChatPatience,
+  spool: PathBuf,
   client: Client,
 }
 
 impl ChatProviderClient {
-  /// A client for the provider at `base`, with the default patience. It reads no environment of its own, so
-  /// no proxy is taken from it.
+  /// A client for the provider at `base`, with the default patience and the system's temporary directory for
+  /// its spool. It reads no environment of its own, so no proxy is taken from it.
   pub fn new(base: impl Into<String>, token: impl Into<String>) -> Self {
     let client = Client::builder()
       .no_proxy()
@@ -110,12 +113,20 @@ impl ChatProviderClient {
       base: base.into().trim_end_matches('/').to_owned(),
       token: token.into(),
       patience: ChatPatience::default(),
+      spool: std::env::temp_dir(),
       client,
     }
   }
 
   pub fn with_patience(mut self, patience: ChatPatience) -> Self {
     self.patience = patience;
+    self
+  }
+
+  /// The directory a file an answer carries as a part is written into as it arrives (`docs/contract.md`,
+  /// "A file's bytes").
+  pub fn with_spool(mut self, spool: impl Into<PathBuf>) -> Self {
+    self.spool = spool.into();
     self
   }
 
@@ -179,8 +190,9 @@ impl ChatProviderClient {
     self.get("owner").await
   }
 
-  /// `GET /rooms/{roomId}/messages/{messageId}/files`. Files the platform would not give come back as
-  /// `ClientFailure::Answered` with `unavailable`, and a refusal with the refusal's code.
+  /// `GET /rooms/{roomId}/messages/{messageId}/files`. A file the provider answers as a part comes back stored
+  /// in the client's spool, and one it answers inline in memory. Files the platform would not give come back
+  /// as `ClientFailure::Answered` with `unavailable`, and a refusal with the refusal's code.
   pub async fn message_files(
     &self,
     request: &ChatMediaRequest,
@@ -218,10 +230,14 @@ impl ChatProviderClient {
       ChatAvatarKind::Person => self.url(&format!("people/{id}/avatar")),
     };
     match self.exchange(&url, self.client.get(&url)).await {
-      Ok(Exchanged { mime, bytes }) => Ok(Some(ChatPicture {
-        mime: mime.unwrap_or_else(|| "application/octet-stream".into()),
-        bytes,
-      })),
+      Ok(answer) => {
+        let mime = content_type(&answer).unwrap_or("application/octet-stream").to_owned();
+        let bytes = answer.bytes().await.map_err(|error| transport(&url, &error))?;
+        Ok(Some(ChatPicture {
+          mime,
+          bytes: bytes.to_vec(),
+        }))
+      }
       Err(ClientFailure::Answered {
         answer: Some(WireError {
           code: ErrorCode::NotFound,
@@ -257,8 +273,8 @@ impl ChatProviderClient {
       url: url.clone(),
       why: error.to_string(),
     })?;
-    let Exchanged { bytes, .. } = self.exchange_with(&url, self.client.post(&url), Some(&body)).await?;
-    decoded(&url, &bytes)
+    let answer = self.exchange_with(&url, self.client.post(&url), Some(&body)).await?;
+    self.decoded(&url, answer).await
   }
 
   fn url(&self, route: &str) -> String {
@@ -271,24 +287,54 @@ impl ChatProviderClient {
     url: &str,
     request: RequestBuilder,
   ) -> Result<T, ClientFailure> {
-    let Exchanged { bytes, .. } = self.exchange(url, request).await?;
-    decoded(url, &bytes)
+    let answer = self.exchange(url, request).await?;
+    self.decoded(url, answer).await
+  }
+
+  /// A successful answer decoded as the route's: its JSON, or its multipart body with each file part written
+  /// into the spool as it arrives.
+  async fn decoded<T: DeserializeOwned>(&self, url: &str, answer: Response) -> Result<T, ClientFailure> {
+    let undecodable = |why: String| ClientFailure::Undecodable {
+      url: url.to_owned(),
+      why,
+    };
+    let boundary = multipart_boundary(content_type(&answer)).map_err(|unread| self.unread(url, unread))?;
+    let Some(boundary) = boundary else {
+      let bytes = answer.bytes().await.map_err(|error| transport(url, &error))?;
+      return serde_json::from_slice(&bytes).map_err(|error| undecodable(error.to_string()));
+    };
+    let form = multer::Multipart::new(answer.bytes_stream(), boundary);
+    let (json, parts) = spooled(form, &self.spool).await.map_err(|unread| self.unread(url, unread))?;
+    read_with_parts(&json, parts).map_err(undecodable)
+  }
+
+  /// A multipart answer that could not be taken.
+  fn unread(&self, url: &str, unread: Unread) -> ClientFailure {
+    let url = url.to_owned();
+    match unread {
+      Unread::Shape(why) => ClientFailure::Undecodable { url, why },
+      Unread::Broken(why) => ClientFailure::Transport { url, why },
+      Unread::Unkept(error) => ClientFailure::Transport {
+        url,
+        why: format!("a part of the answer could not be written to {}: {error}", self.spool.display()),
+      },
+    }
   }
 
   /// Makes a call that carries no body of its own.
-  async fn exchange(&self, url: &str, request: RequestBuilder) -> Result<Exchanged, ClientFailure> {
+  async fn exchange(&self, url: &str, request: RequestBuilder) -> Result<Response, ClientFailure> {
     self.exchange_with(url, request, None).await
   }
 
   /// Makes the call behind the provider's token, offering it again only while the connection is refused and
-  /// the patience window lasts, and gives a successful answer's type and bytes. A body is taken anew for
-  /// each offer, so a file it carries as a part is read from the disk again.
+  /// the patience window lasts, and gives a successful answer, its body not yet read. A body is taken anew
+  /// for each offer, so a file it carries as a part is read from the disk again.
   async fn exchange_with(
     &self,
     url: &str,
     request: RequestBuilder,
     body: Option<&Outgoing>,
-  ) -> Result<Exchanged, ClientFailure> {
+  ) -> Result<Response, ClientFailure> {
     let url = url.to_owned();
     let request = request.bearer_auth(&self.token);
     let ChatPatience {
@@ -309,25 +355,14 @@ impl ChatProviderClient {
       let error = match offered.send().await {
         Ok(answer) => {
           let status = answer.status();
-          let mime = answer
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-          let bytes = answer.bytes().await.map_err(|error| ClientFailure::Transport {
-            url: url.clone(),
-            why: chain(&error),
-          })?;
-          if !status.is_success() {
-            return Err(ClientFailure::Answered {
-              url,
-              status: status.as_u16(),
-              answer: serde_json::from_slice(&bytes).ok(),
-            });
+          if status.is_success() {
+            return Ok(answer);
           }
-          return Ok(Exchanged {
-            mime,
-            bytes: bytes.to_vec(),
+          let bytes = answer.bytes().await.map_err(|error| transport(&url, &error))?;
+          return Err(ClientFailure::Answered {
+            url,
+            status: status.as_u16(),
+            answer: serde_json::from_slice(&bytes).ok(),
           });
         }
         Err(error) => error,
@@ -351,18 +386,17 @@ impl ChatProviderClient {
   }
 }
 
-/// A successful answer decoded as the route's.
-fn decoded<T: DeserializeOwned>(url: &str, bytes: &[u8]) -> Result<T, ClientFailure> {
-  serde_json::from_slice(bytes).map_err(|error| ClientFailure::Undecodable {
-    url: url.to_owned(),
-    why: error.to_string(),
-  })
+/// The answer's `Content-Type`, where it gave one.
+fn content_type(answer: &Response) -> Option<&str> {
+  answer.headers().get(CONTENT_TYPE).and_then(|value| value.to_str().ok())
 }
 
-/// A successful answer: its `Content-Type`, where it gave one, and its bytes.
-struct Exchanged {
-  mime: Option<String>,
-  bytes: Vec<u8>,
+/// An answer whose body broke off while it was read.
+fn transport(url: &str, error: &reqwest::Error) -> ClientFailure {
+  ClientFailure::Transport {
+    url: url.to_owned(),
+    why: chain(error),
+  }
 }
 
 /// Whether the connection was refused, so nothing listened and the request cannot have been received.

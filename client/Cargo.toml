@@ -12,6 +12,7 @@ async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 headers.workspace = true
+multer.workspace = true
 reqwest.workspace = true
 schemars.workspace = true
 serde.workspace = true

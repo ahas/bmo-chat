@@ -67,8 +67,9 @@ every failure in the error shape. Beside it:
 
 ### Files carried as parts
 
-Three bodies carry files: a send (`POST /sends`), a hand-over (`PUT /rooms/{roomId}/messages/{messageId}`)
-and a gathering's patch (`PATCH` of the same path). Each of those routes takes its body in either of two forms:
+Three request bodies carry files: a send (`POST /sends`), a hand-over (`PUT /rooms/{roomId}/messages/{messageId}`)
+and a gathering's patch (`PATCH` of the same path), and one answer does: the fetch of a message's files
+(`GET /rooms/{roomId}/messages/{messageId}/files`). Each of those bodies comes in either of two forms:
 
 - **JSON** (`Content-Type: application/json`): every file's bytes inline, as a base64 string.
 - **Multipart** (`Content-Type: multipart/form-data`): the part named `body` is the JSON body, typed
@@ -76,8 +77,9 @@ and a gathering's patch (`PATCH` of the same path). Each of those routes takes i
   base64 string would stand, and its bytes are the part of that name, as they are, with no encoding. A file
   may still be inline in a multipart body.
 
-A multipart body is answered 400 `bad-request` where it has no `body` part, carries two parts of one name,
-names a part it does not carry, or carries a part no file names.
+A multipart request body is answered 400 `bad-request` where it has no `body` part, carries two parts of one
+name, names a part it does not carry, or carries a part no file names. A multipart answer of that kind is not
+the route's answer, and the caller takes it as such.
 
 ```mermaid
 flowchart TD
@@ -85,18 +87,20 @@ flowchart TD
   S --> M["multipart body: files on disk as parts, read from disk as sent"]
   J --> R["receiving end: inline files in memory"]
   M --> D["receiving end: each part written to its disk as it arrives"]
-  R --> H["handed on to the provider or the receiving side"]
+  R --> H["handed on to the provider, the receiving side or the caller of a fetch"]
   D --> H
 ```
 
 - **The sender chooses the form, file by file.** The libraries send a file held in memory inline and a file
   kept on disk as a part, read from the disk while it is sent; a body with no file on disk goes as JSON. A
-  file in memory is meant to be small; a large one is kept on disk, so neither side holds it whole.
+  file in memory is meant to be small; a large one is kept on disk, so neither side holds it whole. For the
+  fetch of a message's files the sender is the provider, which answers the files its platform gave it as it
+  holds them.
 - **The receiving end never holds a part whole.** It writes each part to its own disk as it arrives and hands
-  the file on as a file kept there (`contract.md`, "Files").
-- **The answers stay JSON.** The answer of a hand-over and of a gathering's patch names each file without its
-  bytes, since the provider that sent them holds them. The fetch of a message's files answers each file's
-  bytes inline.
+  the file on as a file kept there (`contract.md`, "Files"). For a fetch's answer the receiving end is the
+  caller, and the provider client writes each part to the caller's spool.
+- **The other answers stay JSON.** The answer of a hand-over and of a gathering's patch names each file without
+  its bytes, since the provider that sent them holds them.
 
 ### Error codes
 
@@ -309,8 +313,9 @@ speak into to reach the owner unprompted.
 The pictures and files a message carried, fetched again from the platform. Gated by the `fetchMedia`
 capability. The query takes `sentAt` (number, epoch milliseconds), optional, for a platform that finds an old
 message by its time. The answer is a page whose `items` are message files, each `id`, `name`, `mime`, `bytes`
-(base64, always inline) and optionally `kind`, in the order the message carried them; `more` is always false, since a
-message's files come in one page.
+(base64 inline, or a part of a multipart answer; see "Files carried as parts") and optionally `kind`, in the
+order the message carried them; `more` is always false, since a message's files come in one page. A provider
+that fetched a file without its bytes is answered 500 `failed`.
 
 Files the platform would not give are answered 404 `unavailable`, and a fetch the provider refuses is
 answered with its refusal (see Refusals). A provider that does not declare `fetchMedia` is refused
@@ -513,9 +518,12 @@ through the client:
 | `chat_dialect_check` | `POST /dialect/checks` | `body`: `markup` |
 | `chat_avatars` | `GET /avatars` | optional `after` and `limit` |
 
-A tool answers with the route's answer as JSON, both as its structured content and as its text. A route
-answered with an error, or a provider that could not be reached, is a tool error whose text is the error shape
-the provider answered with, `status` beside it, or the sentence saying why nothing answered. The server offers
+A tool answers with the route's answer as JSON, both as its structured content and as its text. A tool's answer
+is JSON alone, so `chat_message_files` answers every file's bytes inline, read from where the provider client
+kept a file that came as a part. A route answered with an error, or a provider that could not be reached, is a
+tool error whose text is the error shape the provider answered with, `status` beside it, or the sentence saying
+why nothing answered; a file kept on disk that could not be read is a tool error whose text is the sentence
+saying why. The server offers
 each request once, so a provider nothing listens at is answered at once with that sentence, and the harness
 asks again when it chooses. The server sends no notifications: the provider routes publish no events.
 
