@@ -25,11 +25,9 @@ use crate::capability::ChatCapability;
 use crate::contacts::{ChatContact, ChatStartRequest, ChatStartResult, ContactsQuery};
 use crate::declaration::ChatDeclaration;
 use crate::error::{ErrorCode, WireError};
-use crate::file_body::FileBody;
 use crate::media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
 use crate::members::{ChatMembers, ChatMembersResult};
-use crate::message::MessageFile;
-use crate::parts::arrived;
+use crate::parts::{Outgoing, arrived};
 use crate::provider::{ChatFailure, ChatProvider};
 use crate::send::{ChatSendRequest, ChatSendResult, ChatSent};
 
@@ -248,14 +246,15 @@ async fn owner(State(served): State<Served>) -> Answered<ProviderOwner> {
   Ok(Json(ProviderOwner { room_id }))
 }
 
-/// The fetched files are answered as one page; files the platform would not give, and a refusal, in the
-/// error shape.
+/// The fetched files are answered as one page, each as the provider holds it: a file in memory inline and a
+/// file on disk as a part, read from the disk as the answer is sent. Files the platform would not give, and a
+/// refusal, are answered in the error shape.
 async fn files(
   State(served): State<Served>,
   uri: Uri,
   path: Result<Path<(i64, i64)>, PathRejection>,
   asked: Result<Query<FilesQuery>, QueryRejection>,
-) -> Answered<Page<MessageFile>> {
+) -> Result<Response, WireError> {
   let (room_id, message_id) = keys(&uri, path)?;
   let FilesQuery { sent_at } = query(asked)?;
   let provider = ready(&served)?;
@@ -268,25 +267,15 @@ async fn files(
     sent_at,
   };
   match provider.fetch_media(request).await? {
-    ChatMediaResult::Fetched(files) => Ok(Json(Page::whole(inline(files).await?))),
+    ChatMediaResult::Fetched(files) => {
+      let page = Outgoing::of(&Page::whole(files)).map_err(|error| {
+        WireError::new(ErrorCode::Failed, format!("The fetched files could not be answered: {error}."))
+      })?;
+      page.answer().await
+    }
     ChatMediaResult::Unavailable { reason } => Err(WireError::new(ErrorCode::Unavailable, reason)),
     ChatMediaResult::Refused(refusal) => Err(refusal.into()),
   }
-}
-
-/// The files with their bytes inline, as the fetch answers them; a stored file is read whole, and a file
-/// fetched without its bytes is a failure.
-async fn inline(mut files: Vec<MessageFile>) -> Result<Vec<MessageFile>, WireError> {
-  for file in &mut files {
-    if matches!(file.bytes, FileBody::Inline(_)) {
-      continue;
-    }
-    let bytes = file.bytes.read().await.map_err(|error| {
-      WireError::new(ErrorCode::Failed, format!("The file {} could not be read: {error}", file.id))
-    })?;
-    file.bytes = FileBody::Inline(bytes);
-  }
-  Ok(files)
 }
 
 async fn dialect_reading(State(served): State<Served>, body: Bytes) -> Answered<DialectReading> {

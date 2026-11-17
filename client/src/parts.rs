@@ -1,9 +1,9 @@
-//! A body that carries files, as it is sent and as it arrives: JSON, or multipart with each stored file as a
-//! part of its own (`docs/protocol.md`, "Files carried as parts").
+//! A body that carries files, as it is sent and as it arrives, a request's or an answer's: JSON, or multipart
+//! with each stored file as a part of its own (`docs/protocol.md`, "Files carried as parts").
 //!
 //! The multipart body is written here rather than by reqwest's multipart form: the registry line every unit
 //! shares for reqwest carries no multipart feature. Only the writing is the library's own; an arriving
-//! multipart body is read by axum's reader.
+//! multipart body, a request's and an answer's alike, is read by multer, the reader axum's own is built on.
 
 use std::collections::BTreeMap;
 use std::io::{self, Cursor};
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::Bytes;
-use axum::extract::{FromRequest, Multipart, Request};
+use axum::extract::{FromRequest, Request};
 use axum::http::header::CONTENT_TYPE;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -90,53 +90,79 @@ fn boundary() -> String {
   format!("bmo-chat-{nanos:032x}-{:08x}-{count:016x}", std::process::id())
 }
 
+/// Why an arriving multipart body could not be taken.
+pub(crate) enum Unread {
+  /// The body is not a multipart body of the shape a body that carries files takes.
+  Shape(String),
+  /// The stream the body came on broke off.
+  Broken(String),
+  /// A part could not be written into the spool.
+  Unkept(io::Error),
+}
+
+impl From<multer::Error> for Unread {
+  fn from(error: multer::Error) -> Self {
+    match error {
+      multer::Error::StreamReadFailed(why) => Self::Broken(why.to_string()),
+      error => Self::Shape(error.to_string()),
+    }
+  }
+}
+
+/// The boundary of a multipart body of this `Content-Type`, or none where the body is not multipart.
+pub(crate) fn multipart_boundary(content_type: Option<&str>) -> Result<Option<String>, Unread> {
+  match content_type {
+    Some(value) if value.trim_start().to_ascii_lowercase().starts_with("multipart/form-data") => {
+      multer::parse_boundary(value).map(Some).map_err(Unread::from)
+    }
+    _ => Ok(None),
+  }
+}
+
+/// A multipart body's JSON, and each of its other parts written into `spool` by its name as it arrives.
+pub(crate) async fn spooled(
+  mut form: multer::Multipart<'_>,
+  spool: &Path,
+) -> Result<(Bytes, BTreeMap<String, StoredFile>), Unread> {
+  let mut json = None;
+  let mut parts = BTreeMap::new();
+  while let Some(mut field) = form.next_field().await? {
+    let name = field.name().unwrap_or_default().to_owned();
+    if (name == BODY_PART && json.is_some()) || parts.contains_key(&name) {
+      return Err(Unread::Shape(format!("it carries two parts named {name}")));
+    }
+    if name == BODY_PART {
+      json = Some(field.bytes().await?);
+      continue;
+    }
+    let (file, mut out) = spool_file(spool).await.map_err(Unread::Unkept)?;
+    while let Some(chunk) = field.chunk().await? {
+      out.write_all(&chunk).await.map_err(Unread::Unkept)?;
+    }
+    out.flush().await.map_err(Unread::Unkept)?;
+    parts.insert(name, file);
+  }
+  let json = json.ok_or_else(|| Unread::Shape(format!("it has no part named {BODY_PART}")))?;
+  Ok((json, parts))
+}
+
 /// The body of `request` read as `T`: its JSON, or its multipart body with each file part written into
 /// `spool` as it arrives.
 pub(crate) async fn arrived<T: DeserializeOwned>(request: Request, spool: &Path) -> Result<T, WireError> {
-  let multipart = request
-    .headers()
-    .get(CONTENT_TYPE)
-    .and_then(|value| value.to_str().ok())
-    .is_some_and(|value| value.trim_start().to_ascii_lowercase().starts_with("multipart/form-data"));
-  let (json, parts) = if multipart {
-    spooled(request, spool).await?
-  } else {
-    let body = Bytes::from_request(request, &()).await.map_err(|rejection| unreadable(&rejection))?;
-    (body, BTreeMap::new())
+  let content_type = request.headers().get(CONTENT_TYPE).and_then(|value| value.to_str().ok());
+  let (json, parts) = match multipart_boundary(content_type).map_err(refused)? {
+    Some(boundary) => {
+      let form = multer::Multipart::new(request.into_body().into_data_stream(), boundary);
+      spooled(form, spool).await.map_err(refused)?
+    }
+    None => {
+      let body = Bytes::from_request(request, &()).await.map_err(|rejection| unreadable(&rejection))?;
+      (body, BTreeMap::new())
+    }
   };
   read_with_parts(&json, parts).map_err(|why| {
     WireError::new(ErrorCode::BadRequest, format!("The body is not the shape this route takes: {why}."))
   })
-}
-
-/// A multipart body's JSON, and each of its other parts written into `spool` by its name.
-async fn spooled(
-  request: Request,
-  spool: &Path,
-) -> Result<(Bytes, BTreeMap<String, StoredFile>), WireError> {
-  let mut form = Multipart::from_request(request, &())
-    .await
-    .map_err(|rejection| unreadable(&rejection))?;
-  let mut json = None;
-  let mut parts = BTreeMap::new();
-  while let Some(mut field) = form.next_field().await.map_err(|error| unreadable(&error))? {
-    let name = field.name().unwrap_or_default().to_owned();
-    if (name == BODY_PART && json.is_some()) || parts.contains_key(&name) {
-      return Err(bad(format!("The body carries two parts named {name}.")));
-    }
-    if name == BODY_PART {
-      json = Some(field.bytes().await.map_err(|error| unreadable(&error))?);
-      continue;
-    }
-    let (file, mut out) = spool_file(spool).await.map_err(unkept)?;
-    while let Some(chunk) = field.chunk().await.map_err(|error| unreadable(&error))? {
-      out.write_all(&chunk).await.map_err(unkept)?;
-    }
-    out.flush().await.map_err(unkept)?;
-    parts.insert(name, file);
-  }
-  let json = json.ok_or_else(|| bad(format!("The multipart body has no part named {BODY_PART}.")))?;
-  Ok((json, parts))
 }
 
 /// A new file in `spool`, removed once the part written to it is let go.
@@ -154,14 +180,17 @@ async fn spool_file(spool: &Path) -> io::Result<(StoredFile, tokio::fs::File)> {
   }
 }
 
-fn bad(error: String) -> WireError {
-  WireError::new(ErrorCode::BadRequest, error)
+/// A request body that could not be taken, in the error shape.
+fn refused(unread: Unread) -> WireError {
+  match unread {
+    Unread::Shape(why) | Unread::Broken(why) => unreadable(&why),
+    Unread::Unkept(error) => WireError::new(
+      ErrorCode::Failed,
+      format!("A part of the body could not be written to disk: {error}."),
+    ),
+  }
 }
 
 fn unreadable(why: &impl std::fmt::Display) -> WireError {
-  bad(format!("The body could not be read: {why}."))
-}
-
-fn unkept(error: io::Error) -> WireError {
-  WireError::new(ErrorCode::Failed, format!("A part of the body could not be written to disk: {error}."))
+  WireError::new(ErrorCode::BadRequest, format!("The body could not be read: {why}."))
 }

@@ -7,7 +7,7 @@ use std::pin::Pin;
 
 use bmo_chat_client::{
   AccountRoomsQuery, AvatarsQuery, ChatMediaRequest, ChatProviderClient, ChatSendRequest, ChatStartRequest,
-  ClientFailure, ContactsQuery, DialectCheck, DialectRead,
+  ClientFailure, ContactsQuery, DialectCheck, DialectRead, FileBody, MessageFile, Page,
 };
 use schemars::generate::SchemaGenerator;
 use schemars::{JsonSchema, Schema};
@@ -22,6 +22,14 @@ pub enum ToolFailure {
   Arguments(String),
   /// The call reached no answer of the route's shape.
   Client(ClientFailure),
+  /// A file the answer carried could not be read from where the provider client kept it.
+  File(String),
+}
+
+impl From<ClientFailure> for ToolFailure {
+  fn from(failure: ClientFailure) -> Self {
+    Self::Client(failure)
+  }
 }
 
 impl ToolFailure {
@@ -30,6 +38,7 @@ impl ToolFailure {
   pub fn content(&self) -> Value {
     match self {
       Self::Arguments(why) => json!({ "code": "bad-request", "error": why }),
+      Self::File(why) => json!({ "error": why }),
       Self::Client(ClientFailure::Answered {
         status,
         answer: Some(answer),
@@ -77,7 +86,7 @@ impl ChatTool {
 }
 
 /// A tool whose input is `I` and whose answer is `O`, calling `call` with the arguments read as `I`.
-fn tool<I, O, F, Fut>(
+fn tool<I, O, E, F, Fut>(
   name: &'static str,
   description: &'static str,
   route: &'static str,
@@ -86,8 +95,9 @@ fn tool<I, O, F, Fut>(
 where
   I: DeserializeOwned + JsonSchema,
   O: Serialize + JsonSchema,
+  E: Into<ToolFailure>,
   F: Fn(ChatProviderClient, I) -> Fut + Send + Sync + 'static,
-  Fut: Future<Output = Result<O, ClientFailure>> + Send + 'static,
+  Fut: Future<Output = Result<O, E>> + Send + 'static,
 {
   ChatTool {
     name,
@@ -105,11 +115,25 @@ where
       };
       let answer = call(client, input);
       Box::pin(async move {
-        let answer = answer.await.map_err(ToolFailure::Client)?;
+        let answer = answer.await.map_err(Into::into)?;
         Ok(serde_json::to_value(answer).expect("a route's answer always renders as JSON"))
       })
     }),
   }
+}
+
+/// The files with every one's bytes inline, since a tool answers JSON alone: a file the answer carried as a
+/// part is read whole from where the provider client kept it.
+async fn inline(mut files: Page<MessageFile>) -> Result<Page<MessageFile>, ToolFailure> {
+  for file in &mut files.items {
+    if let FileBody::Stored(_) = file.bytes {
+      let bytes = file.bytes.read().await.map_err(|error| {
+        ToolFailure::File(format!("The file {} could not be read where it was kept: {error}.", file.id))
+      })?;
+      file.bytes = FileBody::Inline(bytes);
+    }
+  }
+  Ok(files)
 }
 
 /// No input.
@@ -224,7 +248,7 @@ pub fn tools() -> Vec<ChatTool> {
           message_id,
           sent_at,
         };
-        client.message_files(&request).await
+        inline(client.message_files(&request).await?).await
       },
     ),
     tool(
