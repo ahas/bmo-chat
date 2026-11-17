@@ -22,7 +22,7 @@ is whether it can be offered to a harness as an MCP server and be of use there: 
 | Side | Units |
 |---|---|
 | Upstream libraries | bmo-chat (the chat protocol and the console face), bmo-text, bmo-ui |
-| Upstream services | bmo-job (todo), bmo-brain, bmo-graph, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
+| Upstream services | bmo-job (todo), bmo-brain, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
 | Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-kakaotalk, bmo-discord, bmo-ms-teams, bmo-remote, bmo-cli, bmo-web |
 | Downstream content | bmo-gate-harvest, bmo-persona |
 | Skills | a unit's harness plugin carries the `bmo-<unit>` skill, its product name |
@@ -65,7 +65,7 @@ The units whose side needs a reason:
   `watch.fired`, `lease.expired`). Work reaches whoever does it two ways, side by side: pushed, as the
   events of a subscription the one doing it registered, and pulled, by a lease. `POST /leases` takes the next
   member of a queue, or the member it names, for a holder for a span, `PATCH` renews it, `DELETE` gives it
-  back, and a lease that runs out gives its member back. bmo-job, bmo-brain and bmo-graph are middleware.
+  back, and a lease that runs out gives its member back. bmo-job and bmo-brain are middleware.
 - **It calls only upstreams,** by their clients, and imports no downstream's crate or package.
 
 ### What a downstream is
@@ -500,7 +500,7 @@ flowchart TD
 - **Stage 2.** None of these calls another upstream service, so they are fixed side by side. The cache-warmer
   crate moves into bmo-cache-warmer here, since an upstream imports no downstream.
 - **Stage 3.** bmo-arbiter calls bmo-node, bmo-artifact calls bmo-explorer for page imports, and bmo-review
-  calls bmo-job and bmo-graph.
+  calls bmo-job.
 - **Stage 4.** bmo-voice and bmo-song take card turns through bmo-arbiter, and bmo-song reaches its node
   through bmo-node; bmo-news calls bmo-explorer, bmo-stock-index and bmo-artifact.
 - **Stage 5.** bmo-agency calls upstreams only, and never bmo-job: it assigns a worker to an item and runs it
