@@ -62,9 +62,9 @@ pub fn openapi(side: Side) -> Value {
       "bmo-chat provider routes",
       PROVIDER,
       "a chat provider",
-      "A harness building or testing a chat provider reads its declaration with chat_declaration, sends \
-       through it with chat_send and checks its dialect with chat_dialect_check, with no receiving side \
-       running.",
+      "A harness building or testing a chat provider reads its declaration with chat_declaration, reads its \
+       rooms and checks its dialect with chat_dialect_check, with no receiving side running. No tool sends: \
+       words reach a room only through the receiving side.",
     ),
     Side::Receiver => (
       receiver_routes(&mut generator),

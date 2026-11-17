@@ -17,9 +17,10 @@ use crate::tools::{ChatTool, ToolFailure, tools};
 
 /// What the server tells a harness of itself when it starts.
 const INSTRUCTIONS: &str = "Drives one chat provider through the chat protocol's provider routes. Read the \
-  provider's declaration with chat_declaration first: its capabilities say which sends it takes and its \
-  dialect what markdown becomes in its rooms. Then send with chat_send and check what the dialect makes of \
-  markdown with chat_dialect_reading and chat_dialect_check. A refusal comes back as a tool error carrying the \
+  provider's declaration with chat_declaration first: its capabilities say what it answers and its dialect \
+  what markdown becomes in its rooms. Then read its rooms and check what the dialect makes of markdown with \
+  chat_dialect_reading and chat_dialect_check. No tool sends: words reach a room only through the receiving \
+  side. A refusal comes back as a tool error carrying the \
   provider's code and sentence.";
 
 /// The server over the provider the client reaches.
