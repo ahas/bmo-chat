@@ -1,7 +1,0 @@
-repository = "bmo-chat"
-base = true
-
-[coverage]
-# The three crates' src/, but their roots, which only list modules and re-export them.
-layout = "bmo-next"
-unindexed = ["client/src/lib.rs", "plugin/src/lib.rs", "provider/src/lib.rs"]

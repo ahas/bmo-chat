@@ -38,8 +38,6 @@ in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/bmo-chat/SKILL.md`
 ## Layout
 
 - `provider/`, `client/`, `plugin/`, `console-face/`: the four crates, each with its own `src/` and `tests/`.
-- `.graph/`: the code dependency graph. Its area files are generated in the checkout and untracked, so a
-  fresh checkout builds them again, while `settings.toml` is the repository's configuration and stays tracked.
 - `tests/`: checks that span the repository, run as the root package's tests.
 - `shared-versions.toml`: the registry crates every Rust unit takes at one version and one feature set, the
   versions they build on, and the one release of bmo-ui every consumer vendors (`docs/conventions.md`,
