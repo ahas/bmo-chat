@@ -172,9 +172,9 @@ zmij = "1.0.23"
 # The release of each package a consumer moves onto: the version, the packed file the package's release verb
 # wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
-version = "0.1.0-rev.45"
-file = "bmo-ui-0.1.0-rev.45.tgz"
-sha256 = "f2438a40a91a3e861d716f5d23a75aaf2c7a2578f27f17e0fb87c67a9c16d240"
+version = "0.1.0-rev.46"
+file = "bmo-ui-0.1.0-rev.46.tgz"
+sha256 = "e7adc9635aa787532ff7d0260315bfe06aba98531464bebf64546d9244589c79"
 
 # The earlier releases each pinned release stays compatible with, from the bound its ledger line names up,
 # which a consumer that needs nothing of the pinned release may still vendor, each as the pin is written. A
@@ -284,3 +284,8 @@ sha256 = "873c250c60b7956ab2d08c70f575e521361d8122898e392b878a2620c47f9081"
 version = "0.1.0-rev.44"
 file = "bmo-ui-0.1.0-rev.44.tgz"
 sha256 = "20ffd7d1c720def01d9e7b7cf8f0cc81418586dab95d4eaedd53d7609f42a8a7"
+
+[[compatible.bmo-ui]]
+version = "0.1.0-rev.45"
+file = "bmo-ui-0.1.0-rev.45.tgz"
+sha256 = "f2438a40a91a3e861d716f5d23a75aaf2c7a2578f27f17e0fb87c67a9c16d240"
