@@ -128,4 +128,5 @@ route of its own, a share head among them, speaks in the bundle's words without 
 
 The crate's own tests read bmo-ui's release that `shared-versions.toml` pins (`conventions.md`, 「Shared
 versions」), from bmo-ui's `releases/` in the bmo-ui checkout beside this repository's, and hold the file to the
-pinned sha256 first.
+pinned sha256 first. The declaration names that checkout among its sibling trees, so a run the testbed places
+on another machine reads the release as it stands here.
