@@ -388,7 +388,6 @@ dependencies = [
  "bmo-chat",
  "bmo-chat-client",
  "bmo-chat-plugin",
- "regex",
  "reqwest",
  "rmcp",
  "serde",

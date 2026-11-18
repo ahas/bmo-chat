@@ -4,5 +4,4 @@
 mod layout;
 mod parity;
 mod parts;
-mod personal_data;
 mod plugin;
