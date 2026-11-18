@@ -1,7 +1,7 @@
 //! A message as it crosses from a provider to the receiving side, and what crosses with it.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 use crate::file_body::FileBody;
 use crate::modes::ChatVoice;
@@ -108,6 +108,58 @@ pub struct MessageFile {
   pub kind: Option<ChatFileKind>,
 }
 
+/// A person as a line names them: who they are in the room's sender numbering, and the name the platform
+/// shows for them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinePerson {
+  pub sender_id: i64,
+  pub name: String,
+}
+
+impl LinePerson {
+  pub fn new(sender_id: i64, name: impl Into<String>) -> Self {
+    Self {
+      sender_id,
+      name: name.into(),
+    }
+  }
+}
+
+/// What a message is where it is no one's words but a line the platform said of the room: a kebab-case code
+/// and the fields it carries, which a reader renders in its own words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageLine {
+  pub code: String,
+  pub fields: Map<String, Value>,
+}
+
+impl MessageLine {
+  /// People came into the room; `by` is who brought them in, where that is someone else.
+  pub fn people_joined(people: &[LinePerson], by: Option<&LinePerson>) -> Self {
+    let mut fields = Map::new();
+    fields.insert("people".into(), json!(people));
+    Self::with_by("people-joined", fields, by)
+  }
+
+  /// A person went out of the room; `by` is who took them out, where that is someone else.
+  pub fn person_left(person: &LinePerson, by: Option<&LinePerson>) -> Self {
+    let mut fields = Map::new();
+    fields.insert("person".into(), json!(person));
+    Self::with_by("person-left", fields, by)
+  }
+
+  fn with_by(code: &str, mut fields: Map<String, Value>, by: Option<&LinePerson>) -> Self {
+    if let Some(by) = by {
+      fields.insert("by".into(), json!(by));
+    }
+    Self {
+      code: code.into(),
+      fields,
+    }
+  }
+}
+
 /// A message as a provider hands it over, under the room and the number the route's path names. Nothing
 /// platform-shaped crosses, and no file path.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -119,8 +171,12 @@ pub struct HandedMessage {
   pub sender_name: String,
   /// When, in epoch milliseconds.
   pub sent_at: i64,
-  /// Its words, or a placeholder the provider wrote for what was sent.
+  /// Its words, or a placeholder the provider wrote for what was sent; on a line, the sentence that says it
+  /// to a reader that does not render the line.
   pub text: String,
+  /// The line the platform said, where the message is one rather than anyone's words.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub line: Option<MessageLine>,
   pub reply_to_message_id: Option<i64>,
   /// The key of the provider that took it in.
   pub via: String,
