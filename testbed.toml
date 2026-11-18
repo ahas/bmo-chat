@@ -10,7 +10,9 @@ languages = ["cargo"]
 # Korean in the code, the dependencies the manifests name, and the shared versions the manifests and the
 # lock hold to. The repository lists its crates in the README's own table, so the folder-table sweep does
 # not apply.
-quick = ["korean", "dependencies", "cargo-profile", "shared-versions"]
+quick = ["korean", "dependencies", "cargo-profile", "shared-versions", "personal-data"]
+# The one address docs/PERSONAL-DATA.md allows.
+personal_data_allowed = ["dev@ahas.io"]
 korean_ledger = "korean-ledger.json"
 # A base library stands on registry crates and packages alone.
 base_libraries = []

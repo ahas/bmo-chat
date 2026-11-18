@@ -25,9 +25,11 @@ address `dev@ahas.io`. The check admits them and no other personal value.
 
 ## The check
 
-The repository test reads every file of the checkout and fails where it finds a mail address, a home
-path, a phone number, a token or a private address. It reports the file, the line and the kind, never the
-value it found. Files git ignores, such as the build output, are not read.
+The testbed's `personal-data` check, which the declaration enables, reads every file git tracks or would
+track and fails where it finds a mail address, a home path, a phone number, a token or a private address.
+It reports the file, the line and the kind, never the value it found. Files git ignores, such as the build
+output, are not read.
 
-The repository holds the forms, not a list of terms. A word that names a person or a company is never
+The check holds the forms, which are the testbed's policy, not a list of terms; the declaration names the
+allowed address. A word that names a person or a company is never
 written here for a scan to look for; a writer follows the rule itself.
