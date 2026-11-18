@@ -432,7 +432,8 @@ each package a consumer may vendor, and every unit that builds with Cargo or ven
   packed file: `version`, the release's version; `file`, the packed file's name as the package's release verb
   wrote it; and `sha256`, that file's sha256 in lowercase hexadecimal, as the package's own ledger holds it.
   Its `[[compatible.<name>]]` lists name, for a pinned package, each earlier release the pinned release stays
-  compatible with, as the package's own ledger states the pinned release's range, by the same three keys; a
+  compatible with, as the package's own ledger states the pinned release's range, by the same three keys,
+  less any release of that range no consumer may vendor for a fault it carries, so the check refuses it; a
   package whose pinned release is its own bound has none. bmo-ui is pinned there. The file names crates,
   packages, files and versions only, never a unit.
 - **A unit's manifests carry the listed lines byte for byte.** A unit with a workspace writes each listed
@@ -461,7 +462,7 @@ each package a consumer may vendor, and every unit that builds with Cargo or ven
 - **The file changes here alone,** every line and the snapshot together, the snapshot taken from one
   resolution of the lines; the units then copy the lines and move their locks. A package's pin moves to a
   release its own repository has published, and its compatible list to the releases of that release's range
-  below it, each with the sha256 the package's ledger holds.
+  below it, less a release no consumer may vendor, each with the sha256 the package's ledger holds.
 - **The testbed holds the rule** by its `shared-versions` quick check, which a unit enables in its
   `testbed.toml` (bmo-testbed's `docs/checks.md`, 「The quick checks」).
 
