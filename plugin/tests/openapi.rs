@@ -420,6 +420,7 @@ fn handed() -> HandedMessage {
     sender_name: "A person".into(),
     sent_at: 1_760_000_000_000,
     text: "Hello".into(),
+    line: None,
     reply_to_message_id: None,
     via: "stand-in".into(),
     album: None,

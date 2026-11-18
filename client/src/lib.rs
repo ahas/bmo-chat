@@ -42,8 +42,8 @@ pub use inbound::{ChatReceiver, receiver_router};
 pub use media::{ChatMediaRequest, FilesQuery};
 pub use members::{ChatMember, ChatMembers};
 pub use message::{
-  ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, MessageFile, MessageOrigin,
-  RoomFacts, RoomKind,
+  ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, MessageFile, MessageLine,
+  MessageOrigin, RoomFacts, RoomKind,
 };
 pub use missed::{MissedPicture, MissedPictureReason};
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};

@@ -290,6 +290,7 @@ async fn a_hand_over_carries_a_stored_file_as_a_part_and_is_answered_with_its_fi
     sender_name: "A Person".into(),
     sent_at: 1_760_000_000_000,
     text: "two photos".into(),
+    line: None,
     reply_to_message_id: None,
     via: "stand-in".into(),
     album: None,

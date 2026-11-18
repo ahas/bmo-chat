@@ -206,6 +206,7 @@ fn message(origin: MessageOrigin, text: &str) -> HandedMessage {
     sender_name: "A Person".into(),
     sent_at: 1_760_000_000_000,
     text: text.into(),
+    line: None,
     reply_to_message_id: None,
     via: "stand-in".into(),
     album: None,

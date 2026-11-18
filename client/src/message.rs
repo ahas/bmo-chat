@@ -2,7 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::file_body::FileBody;
 use crate::modes::ChatVoice;
@@ -109,6 +109,14 @@ pub struct MessageFile {
   pub kind: Option<ChatFileKind>,
 }
 
+/// What a message is where it is no one's words but a line the platform said of the room: a kebab-case code
+/// and the fields it carries, which a reader renders in its own words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MessageLine {
+  pub code: String,
+  pub fields: Map<String, Value>,
+}
+
 /// A message as a provider hands it over, under the room and the number the route's path names. Nothing
 /// platform-shaped crosses, and no file path.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -120,8 +128,12 @@ pub struct HandedMessage {
   pub sender_name: String,
   /// When, in epoch milliseconds.
   pub sent_at: i64,
-  /// Its words, or a placeholder the provider wrote for what was sent.
+  /// Its words, or a placeholder the provider wrote for what was sent; on a line, the sentence that says it
+  /// to a reader that does not render the line.
   pub text: String,
+  /// The line the platform said, where the message is one rather than anyone's words.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub line: Option<MessageLine>,
   pub reply_to_message_id: Option<i64>,
   /// The key of the provider that took it in.
   pub via: String,

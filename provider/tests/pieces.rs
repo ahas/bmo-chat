@@ -7,9 +7,9 @@ use bmo_chat::{
   AvatarChange, AvatarsQuery, ChatAvatar, ChatAvatarKind, ChatCapability, ChatDeclaration,
   ChatDialectDeclaration, ChatDialectLimits, ChatFileKind, ChatHealth, ChatMarkup, ChatModeStanding,
   ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering, ChatReach, ChatReadMode, ChatVerb,
-  ChatVoice, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, InboundChatContext, MessageFile,
-  MessageOrigin, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts, RoomKind, RoomQuery,
-  RoomsQuery, WireError,
+  ChatVoice, ErrorCode, FilesQuery, GatheredPatch, HandedMessage, InboundChatContext, LinePerson,
+  MessageFile, MessageLine, MessageOrigin, Page, ProviderOwner, ProviderRoom, ReceiverRoom, RoomFacts,
+  RoomKind, RoomQuery, RoomsQuery, WireError,
 };
 use serde_json::{Value, json};
 
@@ -28,6 +28,7 @@ fn message() -> HandedMessage {
     sender_name: "A Person".into(),
     sent_at: 1_760_000_000_000,
     text: "hello".into(),
+    line: None,
     reply_to_message_id: None,
     via: "platform".into(),
     album: None,
@@ -194,6 +195,51 @@ fn a_message_with_context_room_and_files() {
   wire["files"] =
     json!([{ "id": "file-1", "name": "a.png", "mime": "image/png", "bytes": "iVA=", "kind": "photo" }]);
   crosses(&message, wire);
+}
+
+#[test]
+fn a_joining_line_names_its_people_and_who_brought_them_where_that_is_someone_else() {
+  let newcomers = [LinePerson::new(43, "A newcomer"), LinePerson::new(44, "Another newcomer")];
+  let message = HandedMessage {
+    sender_id: Some(43),
+    text: "[Joined] A newcomer, Another newcomer".into(),
+    line: Some(MessageLine::people_joined(&newcomers, None)),
+    ..message()
+  };
+  let mut wire = message_wire();
+  wire["senderId"] = json!(43);
+  wire["text"] = json!("[Joined] A newcomer, Another newcomer");
+  wire["line"] = json!({
+    "code": "people-joined",
+    "fields": { "people": [{ "senderId": 43, "name": "A newcomer" }, { "senderId": 44, "name": "Another newcomer" }] },
+  });
+  crosses(&message, wire);
+
+  let brought = MessageLine::people_joined(&newcomers[..1], Some(&LinePerson::new(42, "A Person")));
+  assert_eq!(
+    serde_json::to_value(&brought).expect("the line encodes"),
+    json!({
+      "code": "people-joined",
+      "fields": { "people": [{ "senderId": 43, "name": "A newcomer" }], "by": { "senderId": 42, "name": "A Person" } },
+    })
+  );
+}
+
+#[test]
+fn a_leaving_line_names_its_person_and_who_took_them_out_where_that_is_someone_else() {
+  let leaver = LinePerson::new(43, "A newcomer");
+  assert_eq!(
+    serde_json::to_value(MessageLine::person_left(&leaver, None)).expect("the line encodes"),
+    json!({ "code": "person-left", "fields": { "person": { "senderId": 43, "name": "A newcomer" } } })
+  );
+  assert_eq!(
+    serde_json::to_value(MessageLine::person_left(&leaver, Some(&LinePerson::new(42, "A Person"))))
+      .expect("the line encodes"),
+    json!({
+      "code": "person-left",
+      "fields": { "person": { "senderId": 43, "name": "A newcomer" }, "by": { "senderId": 42, "name": "A Person" } },
+    })
+  );
 }
 
 #[test]

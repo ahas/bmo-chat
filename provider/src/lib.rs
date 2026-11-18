@@ -44,8 +44,8 @@ pub use link::{ChatPatience, ChatReceiverLink, ChatWait, LinkFailure, RealClock}
 pub use media::{ChatMediaRequest, ChatMediaResult, FilesQuery};
 pub use members::{ChatMember, ChatMembers, ChatMembersResult};
 pub use message::{
-  ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, MessageFile, MessageOrigin,
-  RoomFacts, RoomKind,
+  ChatFileKind, FileItem, GatheredPatch, HandedMessage, InboundChatContext, LinePerson, MessageFile,
+  MessageLine, MessageOrigin, RoomFacts, RoomKind,
 };
 pub use modes::{ChatModeStanding, ChatReach, ChatReadMode, ChatVoice};
 pub use numbering::{ChatNumberRange, ChatNumberRanges, ChatNumberSpace, ChatNumbering};

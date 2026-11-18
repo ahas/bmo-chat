@@ -60,6 +60,7 @@ macro_rules! fixtures {
           sender_name: "A person".into(),
           sent_at: 1_760_000_000_000,
           text: text.into(),
+          line: None,
           reply_to_message_id: None,
           via: "stand-in".into(),
           album: None,
@@ -652,6 +653,13 @@ macro_rules! fixtures {
               identity: Some(7001),
               private_to: Some(42),
             },
+            line: Some(MessageLine {
+              code: "people-joined".into(),
+              fields: json!({ "people": [{ "senderId": 43, "name": "A newcomer" }], "by": { "senderId": 42, "name": "Another person" } })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            }),
             ..handed(MessageOrigin::Edit, "[picture]")
           },
           HandedMessage {
@@ -1119,6 +1127,7 @@ fn the_fixtures_hold_every_member_of_every_set() {
   }
   assert!(handed.iter().any(|message| !message.files.is_empty()));
   assert!(handed.iter().any(|message| message.gather_failure.is_some()));
+  assert!(handed.iter().any(|message| message.line.is_some()));
   let kinds: Vec<Option<ChatFileKind>> = on_provider::kinded_files().iter().map(|file| file.kind).collect();
   let every_kind = [
     ChatFileKind::Photo,

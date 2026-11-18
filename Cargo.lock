@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-chat"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "async-trait",
  "axum",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-chat-client"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "async-trait",
  "axum",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-chat-plugin"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "async-trait",
  "axum",
@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-console-face"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "axum",
  "headers",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "chat-repository-checks"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "async-trait",
  "axum",

@@ -346,7 +346,8 @@ number. Nothing platform-shaped crosses:
 | `senderId` | number or null | who said it |
 | `senderName` | string | the name the platform shows for who said it |
 | `sentAt` | number | when, in epoch milliseconds |
-| `text` | string | its words, or a placeholder the provider wrote for what was sent |
+| `text` | string | its words, or a placeholder the provider wrote for what was sent; on a line, the sentence that says it to a reader that does not render the line |
+| `line` | `MessageLine`, optional | the line the platform said, where the message is one rather than anyone's words (see Lines) |
 | `replyToMessageId` | number or null | the message it answers |
 | `via` | string | the key of the provider that took it in |
 | `album` | number or null | the number of the first message of the send of several this one came in |
@@ -359,6 +360,27 @@ number. Nothing platform-shaped crosses:
 
 A message carries no file path. The files a message carries cross the wire as their bytes, inline or as parts
 (see Files).
+
+### Lines
+
+Some messages are no one's words but a line the platform says of the room, such as people coming in or going
+out. A provider hands such a message over with `line`, a `MessageLine`: `code`, a kebab-case string naming the
+line, and `fields`, an object of what it carries. A reader renders the line in its own words from the code and
+the fields; `text` still carries a plain sentence saying the same, which a reader that does not render the line,
+or does not know its code, shows instead. A message with no `line` is someone's words, and a reader keeps a code
+it does not know as it came, with its fields, rather than refusing the message.
+
+A person a line names crosses as `senderId`, the person's number in the room's sender numbering as `senderId`
+on a message, and `name`, the name the platform shows for them. The protocol states these codes, and a provider
+whose platform tells of such an event hands it over under them:
+
+| Code | Fields | When |
+|---|---|---|
+| `people-joined` | `people`: a list of persons, at least one; `by`: a person, optional | people came into the room; `by` is who brought them in, given only where that is someone other than the people who came |
+| `person-left` | `person`: a person; `by`: a person, optional | a person went out of the room; `by` is who took them out, given only where that is someone other than the person who went |
+
+The provider library builds each of these with its own constructor, so a provider writes no field names of its
+own.
 
 ### Context
 
