@@ -172,14 +172,15 @@ zmij = "1.0.23"
 # The release of each package a consumer moves onto: the version, the packed file the package's release verb
 # wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
-version = "0.1.0-rev.46"
-file = "bmo-ui-0.1.0-rev.46.tgz"
-sha256 = "e7adc9635aa787532ff7d0260315bfe06aba98531464bebf64546d9244589c79"
+version = "0.1.0-rev.49"
+file = "bmo-ui-0.1.0-rev.49.tgz"
+sha256 = "6ea94d59efb13d1ec9c668f459466e32fc02ce8713981b14825646affeb84195"
 
 # The earlier releases each pinned release stays compatible with, from the bound its ledger line names up,
 # which a consumer that needs nothing of the pinned release may still vendor, each as the pin is written. A
 # release of that range no consumer may vendor for a fault it carries is left out, so the check refuses it:
-# bmo-ui 0.1.0-rev.43, whose one select types the slots it hands on as unknown.
+# bmo-ui 0.1.0-rev.43, whose one select types the slots it hands on as unknown, and 0.1.0-rev.47 and
+# 0.1.0-rev.48, which carry a stale catalogue of the select's separators and takeOnClose.
 [[compatible.bmo-ui]]
 version = "0.1.0-rev.23"
 file = "bmo-ui-0.1.0-rev.23.tgz"
@@ -289,3 +290,8 @@ sha256 = "20ffd7d1c720def01d9e7b7cf8f0cc81418586dab95d4eaedd53d7609f42a8a7"
 version = "0.1.0-rev.45"
 file = "bmo-ui-0.1.0-rev.45.tgz"
 sha256 = "f2438a40a91a3e861d716f5d23a75aaf2c7a2578f27f17e0fb87c67a9c16d240"
+
+[[compatible.bmo-ui]]
+version = "0.1.0-rev.46"
+file = "bmo-ui-0.1.0-rev.46.tgz"
+sha256 = "e7adc9635aa787532ff7d0260315bfe06aba98531464bebf64546d9244589c79"
