@@ -5,6 +5,8 @@ name = "bmo-chat"
 
 [test]
 languages = ["cargo"]
+# The console face's tests read bmo-ui's pinned release from the bmo-ui checkout beside this one.
+sibling_trees = ["../ui"]
 
 [check]
 # Korean in the code, the dependencies the manifests name, and the shared versions the manifests and the
