@@ -4,5 +4,6 @@
 mod dependencies;
 mod face;
 mod guard;
+mod reading;
 mod schema;
 mod support;
