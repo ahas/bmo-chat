@@ -111,9 +111,16 @@ route of its own, a share head among them, speaks in the bundle's words without 
   contract's JSON Schema the same way, whether each of a list of method and path pairs is a share read of a
   manifest, as bmo-ui's `shareRead` answers it, and the contract's own terms: the manifest's route, the two
   headers and which role allows which. A service's running code never calls it.
-- **What it needs.** Bun on the machine and the release file. It unpacks the file into a scratch folder of its
-  own, which it removes after, and needs nothing of the release installed; Bun brings the one package the
-  reading imports. It unpacks with the system's `tar`.
+- **What it needs.** Bun on the machine, the release file and the system's `tar`. It unpacks the file into a
+  scratch folder of its own, which it removes after, and needs nothing of the release installed. The one
+  package the shared module imports when it runs, `zod`, it installs with `bun install` at the range the
+  release's own `package.json` declares, once for each such range, into a folder under the system's temporary
+  folder named by that range's digest, and links that folder's modules into every unpacked release that
+  declares the same range. The install takes the package from Bun's cache alone where the cache holds it, and
+  reaches the package registry only where it does not; every reading after the first of a range reaches
+  neither. The reading so never counts on Bun's install on the fly, which Bun drops wherever a `node_modules`
+  folder stands anywhere above the scratch folder or its configuration turns it off, and which fails the
+  reading on a machine whose registry does not answer.
 - **Who uses it.** The crate's own tests read the manifest it serves through it. A service using the face reads
   the manifest its own face serves through it in a test of its own, handing it the release file it vendors, so
   its test holds its own declaration to the whole reading.
