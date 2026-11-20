@@ -172,16 +172,17 @@ zmij = "1.0.23"
 # The release of each package a consumer moves onto: the version, the packed file the package's release verb
 # wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
-version = "0.1.0-rev.54"
-file = "bmo-ui-0.1.0-rev.54.tgz"
-sha256 = "47eb6e2a5c868ee1812241b9cb17c719c46ae239a32992decdd856d9c4fba747"
+version = "0.1.0-rev.55"
+file = "bmo-ui-0.1.0-rev.55.tgz"
+sha256 = "8d200529bd0b7bfc4a518e18f53184f36d9568e8c8d89ee4dfa2a84d9ac61d74"
 
 # The earlier releases each pinned release stays compatible with, from the bound its ledger line names up,
 # which a consumer that needs nothing of the pinned release may still vendor, each as the pin is written. A
 # release of that range no consumer may vendor for a fault it carries is left out, so the check refuses it:
 # bmo-ui 0.1.0-rev.43, whose one select types the slots it hands on as unknown, 0.1.0-rev.47 and
-# 0.1.0-rev.48, which carry a stale catalogue of the select's separators and takeOnClose, and 0.1.0-rev.53,
-# whose folded window's pill a mouse drag lets go of after its first move.
+# 0.1.0-rev.48, which carry a stale catalogue of the select's separators and takeOnClose, 0.1.0-rev.53,
+# whose folded window's pill a mouse drag lets go of after its first move, and 0.1.0-rev.54, whose tooltip stands
+# on over a pill being dragged.
 [[compatible.bmo-ui]]
 version = "0.1.0-rev.23"
 file = "bmo-ui-0.1.0-rev.23.tgz"
