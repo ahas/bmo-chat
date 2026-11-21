@@ -104,6 +104,19 @@
         "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
       }
     },
+    "pushPlaces": {
+      "default": {},
+      "description": "The place on the screen a notice of a kind under pushKinds opens, by kind: a path pattern at or below the screen path, its placeholders filled from the event's member.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
+      }
+    },
     "sidebarUnread": {
       "description": "The route a console reads a sidebar unread count from, and the field of its answer that holds it.",
       "type": "object",
