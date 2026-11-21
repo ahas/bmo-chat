@@ -172,9 +172,9 @@ zmij = "1.0.23"
 # The release of each package a consumer moves onto: the version, the packed file the package's release verb
 # wrote for it, and that file's sha256 as the package's own ledger holds it.
 [packages.bmo-ui]
-version = "0.1.0-rev.62"
-file = "bmo-ui-0.1.0-rev.62.tgz"
-sha256 = "f5d62d0a82ca4161cf94574565ea4de614ad580cea02b6a8dd227d6147aeea99"
+version = "0.1.0-rev.65"
+file = "bmo-ui-0.1.0-rev.65.tgz"
+sha256 = "1efa064bb1b1dd7d182e89375206af38262aa1567201ffeaf3d0cb1489d48a07"
 
 # The earlier releases each pinned release stays compatible with, from the bound its ledger line names up,
 # which a consumer that needs nothing of the pinned release may still vendor, each as the pin is written. A
@@ -182,7 +182,9 @@ sha256 = "f5d62d0a82ca4161cf94574565ea4de614ad580cea02b6a8dd227d6147aeea99"
 # bmo-ui 0.1.0-rev.43, whose one select types the slots it hands on as unknown, 0.1.0-rev.47 and
 # 0.1.0-rev.48, which carry a stale catalogue of the select's separators and takeOnClose, 0.1.0-rev.53,
 # whose folded window's pill a mouse drag lets go of after its first move, 0.1.0-rev.54, whose tooltip stands
-# on over a pill being dragged, and 0.1.0-rev.57, whose side list draws its body again as the list comes or goes.
+# on over a pill being dragged, 0.1.0-rev.57, whose side list draws its body again as the list comes or goes, and
+# 0.1.0-rev.63 and 0.1.0-rev.64, which carry a stale catalogue of the video player's props, the first also leaving
+# its full screen's back layer at the address a host moved away from.
 [[compatible.bmo-ui]]
 version = "0.1.0-rev.23"
 file = "bmo-ui-0.1.0-rev.23.tgz"
@@ -347,3 +349,8 @@ sha256 = "3e797f4a0c227cca94eac901e1f63900e52334f4878f7701cad1c90f16185e38"
 version = "0.1.0-rev.61"
 file = "bmo-ui-0.1.0-rev.61.tgz"
 sha256 = "d52a56604df71c0108d941d35c4bd9495a82ed4767d0eec818d1731d6acd831e"
+
+[[compatible.bmo-ui]]
+version = "0.1.0-rev.62"
+file = "bmo-ui-0.1.0-rev.62.tgz"
+sha256 = "f5d62d0a82ca4161cf94574565ea4de614ad580cea02b6a8dd227d6147aeea99"
