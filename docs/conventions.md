@@ -480,6 +480,13 @@ repository (`console-face.md`), taken by path, and keeps no manifest, bundle rou
 The crate holds the face to bmo-ui's contract, and a unit's test reads the manifest its face serves through
 bmo-ui's own reading, as `console-face.md` states.
 
+## The secret shapes
+
+A Rust unit that takes a secret's runs out of words reads them through the `bmo-secret-shapes` crate of this
+repository (`secret-shapes.md`), taken by path, and keeps no list of shapes or reading of them of its own. The
+marker a run is replaced by is the unit's word; a shape every unit should take out is added to the crate's
+list.
+
 ## The order units are fixed in
 
 A unit's API is fixed before the units that call it take it, and each stage takes what the stages before it

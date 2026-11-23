@@ -1,7 +1,7 @@
-# The workspace: the two base libraries, the harness plugin, and the repository's own package at the root,
-# which publishes nothing and holds the checks that span the crates in `tests/`.
+# The workspace: the base libraries, the harness plugin, and the repository's own package at the root, which
+# publishes nothing and holds the checks that span the crates in `tests/`.
 [workspace]
-members = ["provider", "client", "plugin", "console-face"]
+members = ["provider", "client", "plugin", "console-face", "secret-shapes"]
 resolver = "3"
 
 [workspace.package]
@@ -20,6 +20,7 @@ mime_guess = "2.0.5"
 multer = "3.1.0"
 percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.0", default-features = false }
+regex = { version = "1.13.1", default-features = false, features = ["std", "unicode"] }
 reqwest = { version = "0.13.5", features = ["json", "query", "stream"] }
 rmcp = { version = "3.5.0", default-features = false, features = ["server", "transport-io"] }
 schemars = "1.0.4"
