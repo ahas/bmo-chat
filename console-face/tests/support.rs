@@ -16,7 +16,7 @@ use tower::ServiceExt;
 pub const CONSOLE: &str = "console-credential";
 
 /// The layer every bundle of the tests names.
-pub const LAYER: &str = "0.1.0-rev.73";
+pub const LAYER: &str = "0.2.0-nightly.20261123";
 
 /// A bundle build's folder in a scratch folder of its own, removed when it is let go of.
 pub struct Built {
