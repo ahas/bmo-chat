@@ -59,5 +59,5 @@ on it; `bmo-review` may assist. A merge moves no version (`docs/conventions.md` 
 
 - Static: `cargo check --workspace --all-targets`, then `cargo clippy --workspace --all-targets` and
   `cargo fmt --all --check` (108 columns, 2-space indentation, as `rustfmt.toml` sets).
-- Tests: `cargo test --workspace`, the command `deploy.toml` declares.
+- Tests: `cargo test --workspace`, the command `testbed.toml` declares.
 - The version is the workspace's, in semver, shared by every crate.
