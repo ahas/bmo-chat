@@ -22,9 +22,9 @@ is whether it can be offered to a harness as an MCP server and be of use there: 
 | Side | Units |
 |---|---|
 | Upstream libraries | bmo-chat (the chat protocol and the console face), bmo-text, bmo-ui |
-| Upstream services | bmo-job (todo), bmo-brain, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
+| Upstream services | bmo-job (todo), bmo-brain, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
 | Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-discord, bmo-remote, bmo-cli, bmo-web |
-| Downstream content | bmo-gate-harvest, bmo-persona |
+| Downstream content | bmo-persona |
 | Skills | a unit's harness plugin carries the `bmo-<unit>` skill, its product name |
 
 The units whose side needs a reason:
@@ -37,9 +37,9 @@ The units whose side needs a reason:
 - **bmo-artifact is upstream as keeping, search and share links.** A research run and a spoken narration are
   agent work, so they are downstream's: each is an agency session that files what it makes through
   bmo-artifact's MCP server.
-- **bmo-song, bmo-news and bmo-review are upstream as the work they compute**: a song made in a named voice, a
-  morning's material gathered and an edition filed, a review of a checkout. Choosing the agent, the room and
-  the morning, and sending the result, are downstream's.
+- **bmo-review is upstream as the work it computes**: a review of a checkout. Choosing the agent and the room,
+  and sending the result, are downstream's; a unit of the owner's own that computes work for an agent stands on
+  the same side.
 - **bmo-remote is downstream.** It relays a terminal and a desktop to a console screen; a harness already
   has a shell, so offered as an MCP server it adds nothing.
 - **bmo-gate is downstream.** Its gates judge the turns of BMO's agents.
@@ -498,13 +498,13 @@ changing it again.
 flowchart TD
   S0["0: common format, API design<br/>and the split"]
   S1["1: upstream libraries<br/>bmo-chat, bmo-text, bmo-ui"]
-  S2["2: upstreams calling no service<br/>job, brain, graph, node, testbed,<br/>pocket, drive, mail, cache-siren,<br/>cache-warmer, explorer, stock-index"]
+  S2["2: upstreams calling no service<br/>job, brain, node, testbed,<br/>pocket, drive, mail, cache-siren,<br/>cache-warmer, explorer"]
   S3["3: upstreams calling stage 2<br/>arbiter, artifact, review"]
-  S4["4: upstreams calling stage 3<br/>voice, song, news"]
+  S4["4: upstreams calling stage 3<br/>voice"]
   S5["5: downstreams calling only upstreams<br/>agency, remote"]
   S6["6: gate"]
   S7["7: receiver"]
-  S8["8: telegram, kakaotalk, discord,<br/>ms-teams, briefing"]
+  S8["8: telegram, discord,<br/>briefing"]
   S9["9: cli, web"]
   S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9
 ```
@@ -516,12 +516,11 @@ flowchart TD
   crate moves into bmo-cache-warmer here, since an upstream imports no downstream.
 - **Stage 3.** bmo-arbiter calls bmo-node, bmo-artifact calls bmo-explorer for page imports, and bmo-review
   calls bmo-job.
-- **Stage 4.** bmo-voice and bmo-song take card turns through bmo-arbiter, and bmo-song reaches its node
-  through bmo-node; bmo-news calls bmo-explorer, bmo-stock-index and bmo-artifact.
+- **Stage 4.** bmo-voice takes card turns through bmo-arbiter.
 - **Stage 5.** bmo-agency calls upstreams only, and never bmo-job: it assigns a worker to an item and runs it
   there when the harness holding the item asks, taking the item's content and lease from that harness. Its
   runs with a fixed prompt are sessions that call upstreams through their MCP servers, so it calls none of
-  bmo-artifact, bmo-explorer, bmo-song, bmo-news or bmo-voice. bmo-remote calls nothing.
+  bmo-artifact, bmo-explorer or bmo-voice. bmo-remote calls nothing.
 - **Stage 6.** bmo-gate registers at the agency's hook points.
 - **Stage 7.** bmo-receiver calls the chat protocol, the agency, the gate and the upstreams whose events it
   brings into rooms.
