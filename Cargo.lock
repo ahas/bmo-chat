@@ -321,6 +321,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-secret-shapes"
+version = "0.1.0-rev.10"
+dependencies = [
+ "regex",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "borrow-or-share"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

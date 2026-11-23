@@ -4,8 +4,9 @@
 
 The chat protocol, and what every Rust unit shares. Chat services (providers) and the receiving side are
 separate services that reach each other over HTTP with JSON bodies; two crates are the two ends of that wire,
-and a third is the protocol's harness plugin. A fourth serves a unit's console face, and the conventions and
-the shared versions every unit follows stand here too.
+and a third is the protocol's harness plugin. A fourth serves a unit's console face, a fifth holds the secret
+shapes every unit reads words for, and the conventions and the shared versions every unit follows stand here
+too.
 
 | Crate | Directory | Imported or run by | Supplies |
 |---|---|---|---|
@@ -13,6 +14,7 @@ the shared versions every unit follows stand here too.
 | `bmo-chat-client` | `client/` | the receiving side, and the plugin | one client for every provider, and the server for the routes a provider hands messages to |
 | `bmo-chat-plugin` | `plugin/` | a coding harness | the `bmo-chat` command, whose `mcp` verb serves the harness tools over MCP for any provider, the `bmo-chat` skill, and the OpenAPI documents |
 | `bmo-console-face` | `console-face/` | a service that brings a console screen | its manifest, its bundle's files and the guard around them, by bmo-ui's console contract, and the reading of a manifest through bmo-ui's release for tests |
+| `bmo-secret-shapes` | `secret-shapes/` | a unit that keeps or forwards words a person or an agent wrote | the shapes a secret's run is written in, and the reading that replaces each such run by the reader's marker |
 
 No library depends on another. Each states the wire shapes on its own, and the root package's tests
 check that the two agree. The plugin depends on bmo-chat-client alone.
@@ -29,6 +31,8 @@ check that the two agree. The plugin depends on bmo-chat-client alone.
 - `docs/presence.md`: presence and typing, who is writing in a room now and who is reachable now, and what
   the receiving side and the console do with them.
 - `docs/console-face.md`: what the console face takes from a service, what it fills in and what it answers.
+- `docs/secret-shapes.md`: the secret shapes, the order they are read in, and what the reading takes and
+  answers.
 - `docs/conventions.md`: the common wire format, the API design and the upstream and downstream rules every
   bmo repository follows.
 - `docs/PERSONAL-DATA.md`: what personal data never goes into the repository, and the check that reads every
@@ -41,7 +45,8 @@ in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/bmo-chat/SKILL.md`
 
 ## Layout
 
-- `provider/`, `client/`, `plugin/`, `console-face/`: the four crates, each with its own `src/` and `tests/`.
+- `provider/`, `client/`, `plugin/`, `console-face/`, `secret-shapes/`: the five crates, each with its own `src/`
+  and `tests/`.
 - `tests/`: checks that span the repository, run as the root package's tests.
 - `shared-versions.toml`: the registry crates every Rust unit takes at one version and one feature set, the
   versions they build on, and the one release of bmo-ui every consumer vendors (`docs/conventions.md`,
