@@ -1,83 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
+  "additionalProperties": false,
   "properties": {
-    "name": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "The bundle's name: its words' namespace."
+    "apiPrefix": {
+      "default": "/",
+      "description": "The path of the service's API every call the screens make stands under.",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "type": "string"
     },
-    "title": {
-      "type": "string",
-      "minLength": 1,
-      "description": "The key, in the bundle's words, its screen is named by in the console's menu; under the bundle's namespace."
+    "bundle": {
+      "description": "The path of the service's API the bundle's module is answered at.",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "type": "string"
     },
-    "icon": {
-      "type": "string",
-      "pattern": "^i-[a-z0-9]+(?:-[a-z0-9]+)+$",
-      "description": "The icon drawn beside the screen's name."
+    "calls": {
+      "default": [],
+      "description": "The other services the screens call through the console, each by the service name its own manifest gives it, or people, the company's members the console answers itself.",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+        "type": "string"
+      },
+      "type": "array"
     },
-    "screenPath": {
-      "type": "string",
-      "pattern": "^(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+$",
-      "description": "The path the bundle's screens stand under."
+    "events": {
+      "default": false,
+      "description": "Whether the screens read the service's event stream.",
+      "type": "boolean"
     },
     "formerScreenPaths": {
       "default": [],
       "description": "The paths the bundle's screens stood under before; a console answers every address under one as moved to the screen path.",
-      "type": "array",
       "items": {
-        "type": "string",
+        "description": "A path the bundle's screens stood under before.",
         "pattern": "^(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+$",
-        "description": "A path the bundle's screens stood under before."
-      }
+        "type": "string"
+      },
+      "type": "array"
     },
-    "serviceName": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
-      "description": "The service's name, which the console relays it under; never people, the name the console answers the company's members under itself."
+    "icon": {
+      "description": "The icon drawn beside the screen's name.",
+      "pattern": "^i-[a-z0-9]+(?:-[a-z0-9]+)+$",
+      "type": "string"
     },
     "layer": {
-      "type": "string",
+      "description": "The version of the layer the bundle was built on, as the bundle build wrote it.",
       "minLength": 1,
-      "description": "The version of the layer the bundle was built on, as the bundle build wrote it."
+      "type": "string"
     },
-    "bundle": {
-      "type": "string",
-      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-      "description": "The path of the service's API the bundle's module is answered at."
-    },
-    "stylesheet": {
-      "type": "string",
-      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-      "description": "The path of the service's API the bundle's stylesheet is answered at."
-    },
-    "words": {
-      "type": "string",
-      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-      "description": "The path of the service's API the bundle's words are answered at."
-    },
-    "apiPrefix": {
-      "default": "/",
-      "type": "string",
-      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-      "description": "The path of the service's API every call the screens make stands under."
-    },
-    "role": {
-      "type": "string",
-      "enum": [
-        "administrator",
-        "member"
-      ],
-      "description": "The least role a reader holds to open the screen."
-    },
-    "sidebarSection": {
-      "default": "application",
-      "description": "The section of a console's sidebar the bundle's entry stands in: administration, among the services an administrator runs the system with, or application, among the applications a reader works in.",
-      "enum": [
-        "administration",
-        "application"
-      ],
+    "name": {
+      "description": "The bundle's name: its words' namespace.",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
       "type": "string"
     },
     "ownerKey": {
@@ -85,77 +57,80 @@
       "description": "Whether every call the screens make needs the reader's owner key.",
       "type": "boolean"
     },
-    "events": {
-      "default": false,
-      "description": "Whether the screens read the service's event stream.",
-      "type": "boolean"
-    },
-    "websocket": {
-      "default": false,
-      "description": "Whether the screens open a WebSocket to the service.",
-      "type": "boolean"
-    },
     "pushKinds": {
       "default": [],
       "description": "The event kinds a console may raise as a notice to a reader not on the screen.",
-      "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
-      }
+        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$",
+        "type": "string"
+      },
+      "type": "array"
     },
     "pushPlaces": {
+      "additionalProperties": {
+        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$",
+        "type": "string"
+      },
       "default": {},
       "description": "The place on the screen a notice of a kind under pushKinds opens, by kind: a path pattern at or below the screen path, its placeholders filled from the event's member.",
-      "type": "object",
       "propertyNames": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
+        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$",
+        "type": "string"
       },
+      "type": "object"
+    },
+    "pushReaders": {
       "additionalProperties": {
-        "type": "string",
-        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
-      }
-    },
-    "sidebarUnread": {
-      "description": "The route a console reads a sidebar unread count from, and the field of its answer that holds it.",
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string",
-          "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-          "description": "The path of the service's API the count is answered at."
-        },
-        "field": {
-          "type": "string",
-          "pattern": "^[a-z][A-Za-z0-9]*$",
-          "description": "The answer's field holding the count, a whole number nought or more."
-        }
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "role": {
+                "description": "The role every reader the notice rings holds.",
+                "enum": [
+                  "administrator",
+                  "member"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "description": "The member's field holding the account key of the one reader the notice rings.",
+                "pattern": "^[a-z][A-Za-z0-9]*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "field"
+            ],
+            "type": "object"
+          }
+        ]
       },
-      "required": [
-        "path",
-        "field"
-      ],
-      "additionalProperties": false
-    },
-    "calls": {
-      "default": [],
-      "description": "The other services the screens call through the console, each by the service name its own manifest gives it, or people, the company's members the console answers itself.",
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
-      }
+      "default": {},
+      "description": "The readers a notice of a kind under pushKinds rings, by kind: those holding a role, or the one account a field of the event's member names; every reader the manifest's role allows where a kind names none.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$",
+        "type": "string"
+      },
+      "type": "object"
     },
     "relays": {
       "default": [],
       "description": "The service's own routes outside the API prefix that a console relays as well.",
-      "type": "array",
       "items": {
-        "type": "object",
+        "additionalProperties": false,
         "properties": {
           "method": {
-            "type": "string",
+            "description": "The route's method.",
             "enum": [
               "GET",
               "POST",
@@ -163,34 +138,124 @@
               "PATCH",
               "DELETE"
             ],
-            "description": "The route's method."
+            "type": "string"
           },
           "path": {
-            "type": "string",
+            "description": "The route's whole path on the service's API.",
             "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
-            "description": "The route's whole path on the service's API."
+            "type": "string"
           }
         },
         "required": [
           "method",
           "path"
         ],
-        "additionalProperties": false
-      }
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "role": {
+      "description": "The least role a reader holds to open the screen.",
+      "enum": [
+        "administrator",
+        "member"
+      ],
+      "type": "string"
+    },
+    "screenPath": {
+      "description": "The path the bundle's screens stand under.",
+      "pattern": "^(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)+$",
+      "type": "string"
+    },
+    "serviceName": {
+      "description": "The service's name, which the console relays it under; never people, the name the console answers the company's members under itself.",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "shareHead": {
+      "description": "The read a console asks for what a share address reads as before it is opened: a path pattern under the API prefix holding {token} once.",
+      "pattern": "^(?:\\/(?:\\{token\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$",
+      "type": "string"
     },
     "shareReads": {
       "default": [],
       "description": "The reads a share token alone permits: path patterns under the API prefix, each holding {token} once.",
-      "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
-      }
+        "pattern": "^(?:\\/(?:\\{[a-z][A-Za-z0-9]*\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$",
+        "type": "string"
+      },
+      "type": "array"
     },
-    "shareHead": {
-      "description": "The read a console asks for what a share address reads as before it is opened: a path pattern under the API prefix holding {token} once.",
-      "type": "string",
-      "pattern": "^(?:\\/(?:\\{token\\}|(?!\\.\\.?(?:\\/|$))[\\w.~-]+))+$"
+    "sidebarSection": {
+      "default": "application",
+      "description": "The section of a console's sidebar the bundle's entry stands in: administration, among the services an administrator runs the system with, application, among the applications a reader works in, or account, in the reader's own menu.",
+      "enum": [
+        "administration",
+        "application",
+        "account"
+      ],
+      "type": "string"
+    },
+    "sidebarSections": {
+      "additionalProperties": {
+        "enum": [
+          "administration",
+          "application",
+          "account"
+        ],
+        "type": "string"
+      },
+      "default": {},
+      "description": "The section the entry stands in for a reader by the role they hold, where it is not the sidebarSection: each key a role, each value a section.",
+      "propertyNames": {
+        "enum": [
+          "administrator",
+          "member"
+        ],
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "sidebarUnread": {
+      "additionalProperties": false,
+      "description": "The route a console reads a sidebar unread count from, and the field of its answer that holds it.",
+      "properties": {
+        "field": {
+          "description": "The answer's field holding the count, a whole number nought or more.",
+          "pattern": "^[a-z][A-Za-z0-9]*$",
+          "type": "string"
+        },
+        "path": {
+          "description": "The path of the service's API the count is answered at.",
+          "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "field"
+      ],
+      "type": "object"
+    },
+    "stylesheet": {
+      "description": "The path of the service's API the bundle's stylesheet is answered at.",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "type": "string"
+    },
+    "title": {
+      "description": "The key, in the bundle's words, its screen is named by in the console's menu; under the bundle's namespace.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "websocket": {
+      "default": false,
+      "description": "Whether the screens open a WebSocket to the service.",
+      "type": "boolean"
+    },
+    "words": {
+      "description": "The path of the service's API the bundle's words are answered at.",
+      "pattern": "^\\/(?:(?!\\.\\.?(?:\\/|$))[\\w.~-]+(?:\\/(?!\\.\\.?(?:\\/|$))[\\w.~-]+)*)?$",
+      "type": "string"
     }
   },
   "required": [
@@ -204,5 +269,5 @@
     "words",
     "role"
   ],
-  "additionalProperties": false
+  "type": "object"
 }
