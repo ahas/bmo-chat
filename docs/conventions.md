@@ -23,7 +23,7 @@ is whether it can be offered to a harness as an MCP server and be of use there: 
 |---|---|
 | Upstream libraries | bmo-chat (the chat protocol and the console face), bmo-text, bmo-ui |
 | Upstream services | bmo-job (todo), bmo-brain, bmo-pocket, bmo-node, bmo-arbiter, bmo-testbed, bmo-cache-siren, bmo-cache-warmer, bmo-explorer, bmo-news, bmo-stock-index, bmo-song, bmo-review, bmo-voice (the speech engine), bmo-drive, bmo-mail, bmo-artifact (keeping, search and share links) |
-| Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-kakaotalk, bmo-discord, bmo-ms-teams, bmo-remote, bmo-cli, bmo-web |
+| Downstream services | bmo-agency (one service), bmo-receiver, bmo-gate, bmo-briefing (the voice briefings), bmo-telegram, bmo-discord, bmo-remote, bmo-cli, bmo-web |
 | Downstream content | bmo-gate-harvest, bmo-persona |
 | Skills | a unit's harness plugin carries the `bmo-<unit>` skill, its product name |
 
