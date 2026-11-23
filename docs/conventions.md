@@ -335,19 +335,25 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   added to the set takes the set's version; no unit counts a version of its own.
 - **A version moves only at a release, and a release is the owner's word for the whole set.** A commit, a
   deploy, a fix, a document change or a contract change moves no version by itself. When the owner declares a
-  release, every unit takes the next version in one commit of its own that releases it, its documents' "Fixed
-  at" line names that version, and each repository is tagged `v<version>` on that commit, a unit with no change
-  since the last release included. The release notes stand once, on the index repository's release, unit by
+  release, every unit that declares a version takes the next one in one commit of its own that releases it, its
+  documents' "Fixed at" line names that version, and each repository is tagged `v<version>` on that commit, or on
+  its main's head where it declares none, a unit with no change since the last release included. The testbed's
+  release verb makes those commits and tags across the set (bmo-testbed's `docs/deploy.md`). The release notes stand once, on the index repository's release, unit by
   unit.
 - **The next version follows semver over the whole set since the last release:** a removed or renamed route,
   field, verb or flag of any unit, or a field that becomes required, makes it a major release; a new route,
   field, verb, screen or setting a minor one; fixes alone a patch. The release verb proposes the step from the
   changes and the owner's word settles it.
 - **The deployed state between releases is the nightly,** named `<next minor>-nightly.<YYYYMMDD>`: the minor
-  above the last release, then the day the deployment was laid, in the platform's time zone, as
+  above the last release, then the day the deployment was laid in the platform's time zone, Asia/Seoul, as
   `1.1.0-nightly.20261124` after `1.0.0`. It is a name the deployment computes, never written into a manifest
   and never tagged; semver orders every nightly before the release it leads to. Which change is live is still
   the commit, everywhere a person reads it.
+- **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and the
+  nightly between is `0.2.0-nightly.<YYYYMMDD>`. The first release is `1.0.0`, for every unit at once.
+- **A declaration's `testbed` number is its format's, not the set's version:** a unit's `testbed.toml` names
+  the major of the declaration's schema, which moves only when that format breaks (bmo-testbed's
+  `docs/declaration.md`).
 - **A consumer never pins a sibling's version.** A dependency on another unit of the set is by path (a path
   dependency, a workspace member, a client package taken from its checkout), with no exact version
   requirement; the testbed builds each unit against the sibling checkouts and that build is the compatibility
@@ -429,7 +435,7 @@ each package a consumer may vendor, and every unit that builds with Cargo or ven
   dev-dependency's features into the build it tests. Its `[snapshot]` table holds the version that every
   registry crate the listed crates build on for x86_64-unknown-linux-gnu resolves to, the listed crates
   included: one version for each semver line, and a list where the closure holds a crate on more than one
-  line. Its `[packages.<name>]` tables each pin the release of a package a consumer moves onto, vendored as a
+  line. Its `[packages.<name>]` tables each pin the pack of a package a consumer moves onto, a release's or a nightly's,, vendored as a
   packed file: `version`, the release's version; `file`, the packed file's name as the package's release verb
   wrote it; and `sha256`, that file's sha256 in lowercase hexadecimal, as the package's own ledger holds it.
   Its `[[compatible.<name>]]` lists name, for a pinned package, each earlier release the pinned release stays
