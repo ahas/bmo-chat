@@ -330,35 +330,36 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 
 ### Versions
 
-- **A unit has one version,** in semver, shared by every crate and package it publishes, and its health, its
-  OpenAPI document and its plugin all answer it, beside the commit that runs.
-- **A version moves only at a release, and a release is the owner's word.** A commit, a deploy, a fix, a
-  document change or a contract change moves no version by itself: the deployment is told apart by its
-  commit, which the deployment record, `GET /health` and the deployment briefing all name. When the owner
-  declares a release of a unit, or of the set with the units named, each named unit takes its next version in
-  the commit that releases it, and its documents' "Fixed at" line names that version.
-- **Before its first release a unit is `0.1.0` and counts revisions.** Its first version, `0.1.0`, is the
-  base and is no revision. Every release before the first is one revision, written `0.1.0-rev.<n>` with `n`
-  counting the releases since the base from 1. Major, minor and patch never move before the first release,
-  whatever the change, a breaking one included; a unit that moved them anyway is brought back to the revision
-  form at its next release.
-- **The first release drops the suffix,** and the unit is `0.1.0`. It is the owner's own decision, taken for
-  the unit by name, never a side effect of a change. Semver orders every revision before it, and the revisions
-  by their number.
-- **From the first release on, the version moves by semver,** still only at a release: a removed or renamed
-  route or field, or a field that becomes required, makes the next release a major one.
+- **The set has one version,** in semver, and every unit stands at it: every crate and package a unit
+  publishes, its health, its OpenAPI document and its plugin answer it, beside the commit that runs. A unit
+  added to the set takes the set's version; no unit counts a version of its own.
+- **A version moves only at a release, and a release is the owner's word for the whole set.** A commit, a
+  deploy, a fix, a document change or a contract change moves no version by itself. When the owner declares a
+  release, every unit takes the next version in one commit of its own that releases it, its documents' "Fixed
+  at" line names that version, and each repository is tagged `v<version>` on that commit, a unit with no change
+  since the last release included. The release notes stand once, on the index repository's release, unit by
+  unit.
+- **The next version follows semver over the whole set since the last release:** a removed or renamed route,
+  field, verb or flag of any unit, or a field that becomes required, makes it a major release; a new route,
+  field, verb, screen or setting a minor one; fixes alone a patch. The release verb proposes the step from the
+  changes and the owner's word settles it.
+- **The deployed state between releases is the nightly,** named `<next minor>-nightly.<YYYYMMDD>`: the minor
+  above the last release, then the day the deployment was laid, in the platform's time zone, as
+  `1.1.0-nightly.20261124` after `1.0.0`. It is a name the deployment computes, never written into a manifest
+  and never tagged; semver orders every nightly before the release it leads to. Which change is live is still
+  the commit, everywhere a person reads it.
 - **A consumer never pins a sibling's version.** A dependency on another unit of the set is by path (a path
   dependency, a workspace member, a client package taken from its checkout), with no exact version
-  requirement, so a release of one unit forces no commit in another; the testbed builds each unit against the
-  sibling checkouts and that build is the compatibility check. A client pack a consumer vendors is named by
-  the commit it was packed from, not by a version.
+  requirement; the testbed builds each unit against the sibling checkouts and that build is the compatibility
+  check. A client pack a consumer vendors is named by the commit it was packed from, not by a version.
 - **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle stands on a
-  release inside the range its console's release declares (bmo-ui's `docs/console-bundles.md`, 「The layer a
-  bundle is built on」). Every consumer vendors a packed file bmo-ui's release verb wrote, for the release
-  `shared-versions.toml` pins or for one of the earlier releases it names compatible with it (「Shared
-  versions」), never a pack of its own.
-- **What a version says** is therefore only which release a running unit stands at; which change is live is
-  the commit, everywhere a person reads it.
+  pack inside the range its console's pack declares (bmo-ui's `docs/console-bundles.md`, 「The layer a bundle
+  is built on」). bmo-ui packs at every set release under the set's version, and between releases as the day's
+  nightly, `<next minor>-nightly.<YYYYMMDD>`, with `.<n>` from 2 for a second pack the same day. Every consumer
+  vendors a packed file bmo-ui's release verb wrote, for the pack `shared-versions.toml` pins or for one of the
+  earlier packs it names compatible with it (「Shared versions」), never a pack of its own.
+- **What a version says** is therefore which release or which day's nightly a running unit stands at; which
+  change is live is the commit.
 
 ## Service documents
 
