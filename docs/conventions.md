@@ -333,24 +333,57 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **The set has one version,** in semver, and every unit stands at it: every crate and package a unit
   publishes, its health, its OpenAPI document and its plugin answer it, beside the commit that runs. A unit
   added to the set takes the set's version; no unit counts a version of its own.
+- **Five kinds of version, ordered by semver for the same `X.Y.Z`:**
+
+  | Kind | Form | What it is |
+  |---|---|---|
+  | nightly | `X.Y.Z-0.nightly.<YYYYMMDD>`, `.<n>` from 2 for a second the same day | main as it stands that day; made daily, never declared |
+  | alpha | `X.Y.Z-alpha.<N>` | a milestone on main; its features may be incomplete |
+  | beta | `X.Y.Z-beta.<N>` | the feature freeze of `X.Y.Z` |
+  | rc | `X.Y.Z-rc.<N>` | a candidate; only fixes follow it, and any change makes the next `N` |
+  | stable | `X.Y.Z` | the release |
+
+  So `1.1.0-0.nightly.20261124` < `1.1.0-alpha.1` < `1.1.0-beta.1` < `1.1.0-rc.1` < `1.1.0`: the leading `0`
+  of a nightly's pre-release is numeric, and semver orders a numeric identifier before every alphanumeric
+  one. `N` counts from 1 within its kind and its `X.Y.Z`.
 - **A version moves only at a release, and a release is the owner's word for the whole set.** A commit, a
-  deploy, a fix, a document change or a contract change moves no version by itself. When the owner declares a
-  release, every unit that declares a version takes the next one in one commit of its own that releases it, its
-  documents' "Fixed at" line names that version, and each repository is tagged `v<version>` on that commit, or on
-  its main's head where it declares none, a unit with no change since the last release included. The testbed's
-  release verb makes those commits and tags across the set (bmo-testbed's `docs/deploy.md`). The release notes stand once, on the index repository's release, unit by
-  unit.
-- **The next version follows semver over the whole set since the last release:** a removed or renamed route,
-  field, verb or flag of any unit, or a field that becomes required, makes it a major release; a new route,
-  field, verb, screen or setting a minor one; fixes alone a patch. The release verb proposes the step from the
-  changes and the owner's word settles it.
-- **The deployed state between releases is the nightly,** named `<next minor>-nightly.<YYYYMMDD>`: the minor
-  above the last release, then the day the deployment was laid in the platform's time zone, Asia/Seoul, as
-  `1.1.0-nightly.20261124` after `1.0.0`. It is a name the deployment computes, never written into a manifest
-  and never tagged; semver orders every nightly before the release it leads to. Which change is live is still
-  the commit, everywhere a person reads it.
+  deploy, a fix, a document change or a contract change moves no version by itself. When the owner declares an
+  alpha, a beta, a release candidate, a stable release or a patch, every unit that declares a version takes it
+  in one commit of its own that releases it, its documents' "Fixed at" line names that version, and each
+  repository is tagged `v<version>` on that commit, or on the head it was cut from where it declares none, a
+  unit with no change since the last release included. The release notes stand once, on the index
+  repository's release, unit by unit, and the project's site lists them. Releases are cut by the set's
+  maintainer; no unit of the set carries the means.
+- **The next version follows semver over the whole set since the last stable release:** a removed or renamed
+  route, field, verb or flag of any unit, or a field that becomes required, makes it a major release; a new
+  route, field, verb, screen or setting a minor one; fixes alone a patch. The owner's word settles the step.
+- **A release line has a branch of its own.** The first beta of `X.Y.0` cuts `release/X.Y` in every repository
+  at its release commit, and main moves on towards the next minor. Every later beta, every release candidate,
+  the stable release and every patch `X.Y.(Z+1)` is made on `release/X.Y`. A fix lands on main first and is
+  then taken onto the release branch, never the other way round.
+- **What each kind must pass before it is made:**
+  - a nightly: each unit's check;
+  - an alpha: what a nightly passes;
+  - a beta: every unit's whole suite, its browser tests among it, and an install rehearsal of each of the
+    three presets;
+  - a release candidate: what a beta passes, no open blocker, an upgrade from the last stable release with
+    every database migration it carries, signed desktop builds, and the documents, the site and the release
+    notes done;
+  - a stable release: the release candidate unchanged for three days, and the owner's approval;
+  - a patch: what a release candidate passes.
+- **The deployed state between releases is the nightly.** A deployment of a commit no release tag names is
+  named for the day's nightly of the version its main leads to, the day the deployment was laid in the
+  platform's time zone, Asia/Seoul. Main leads to the minor above a stable release, as
+  `1.1.0-0.nightly.20261124` after `1.0.0`; to `X.Y.Z` itself while an alpha of `X.Y.Z` is main's last release;
+  and to the minor above once a beta of `X.Y.Z` has cut its release branch, as `1.2.0-0.nightly.20261201` after
+  `1.1.0-beta.1`. A nightly is a name the deployment computes, never written into a manifest and never tagged.
+  Which change is live is still the commit, everywhere a person reads it.
 - **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and the
-  nightly between is `0.2.0-nightly.<YYYYMMDD>`. The first release is `1.0.0`, for every unit at once.
+  nightly between is `0.2.0-0.nightly.<YYYYMMDD>`. The first release is `1.0.0`, for every unit at once.
+- **Where each kind runs.** The owner's own deployment runs the nightly track, and may be pinned to a beta or a
+  release candidate. The desktop apps take their updates on one of three channels: `stable`, stable releases
+  alone; `preview`, alphas, betas, release candidates and stable releases; and `nightly`, every kind. A
+  self-hosted installation chooses its track when it is installed, stable unless it chooses otherwise.
 - **A declaration's `testbed` number is its format's, not the set's version:** a unit's `testbed.toml` names
   the major of the declaration's schema, which moves only when that format breaks (bmo-testbed's
   `docs/declaration.md`).
@@ -361,9 +394,10 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 - **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle stands on a
   pack inside the range its console's pack declares (bmo-ui's `docs/console-bundles.md`, 「The layer a bundle
   is built on」). bmo-ui packs at every set release under the set's version, and between releases as the day's
-  nightly, `<next minor>-nightly.<YYYYMMDD>`, with `.<n>` from 2 for a second pack the same day. Every consumer
-  vendors a packed file bmo-ui's release verb wrote, for the pack `shared-versions.toml` pins or for one of the
-  earlier packs it names compatible with it (「Shared versions」), never a pack of its own.
+  nightly, `X.Y.Z-0.nightly.<YYYYMMDD>`, with `.<n>` from 2 for a second pack the same day. A pack named in the
+  earlier nightly form, `X.Y.Z-nightly.<YYYYMMDD>[.<n>]`, is ordered as the same day's pack of the present
+  form. Every consumer vendors a packed file bmo-ui's release verb wrote, for the pack `shared-versions.toml` pins
+  or for one of the earlier packs it names compatible with it (「Shared versions」), never a pack of its own.
 - **What a version says** is therefore which release or which day's nightly a running unit stands at; which
   change is live is the commit.
 
@@ -435,7 +469,7 @@ each package a consumer may vendor, and every unit that builds with Cargo or ven
   dev-dependency's features into the build it tests. Its `[snapshot]` table holds the version that every
   registry crate the listed crates build on for x86_64-unknown-linux-gnu resolves to, the listed crates
   included: one version for each semver line, and a list where the closure holds a crate on more than one
-  line. Its `[packages.<name>]` tables each pin the pack of a package a consumer moves onto, a release's or a nightly's,, vendored as a
+  line. Its `[packages.<name>]` tables each pin the pack of a package a consumer moves onto, a release's or a nightly's, vendored as a
   packed file: `version`, the release's version; `file`, the packed file's name as the package's release verb
   wrote it; and `sha256`, that file's sha256 in lowercase hexadecimal, as the package's own ledger holds it.
   Its `[[compatible.<name>]]` lists name, for a pinned package, each earlier release the pinned release stays
