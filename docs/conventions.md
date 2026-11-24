@@ -371,15 +371,18 @@ A code means one thing in every service. Each route's document and OpenAPI entry
     notes done;
   - a stable release: the release candidate unchanged for three days, and the owner's approval;
   - a patch: what a release candidate passes.
+- **A nightly names the next unreleased version,** the one main leads to: the minor above a stable release, as
+  `1.1.0-0.nightly.20261124` after `1.0.0`; `X.Y.Z` itself while an alpha of `X.Y.Z` is main's last release; the
+  minor above once a beta of `X.Y.Z` has cut its release branch, as `1.2.0-0.nightly.20261201` after
+  `1.1.0-beta.1`; and `1.0.0` before the set's first release, as `1.0.0-0.nightly.20261124`. The day is the one
+  it was made on in the platform's time zone, Asia/Seoul.
 - **The deployed state between releases is the nightly.** A deployment of a commit no release tag names is
-  named for the day's nightly of the version its main leads to, the day the deployment was laid in the
-  platform's time zone, Asia/Seoul. Main leads to the minor above a stable release, as
-  `1.1.0-0.nightly.20261124` after `1.0.0`; to `X.Y.Z` itself while an alpha of `X.Y.Z` is main's last release;
-  and to the minor above once a beta of `X.Y.Z` has cut its release branch, as `1.2.0-0.nightly.20261201` after
-  `1.1.0-beta.1`. A nightly is a name the deployment computes, never written into a manifest and never tagged.
-  Which change is live is still the commit, everywhere a person reads it.
-- **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and the
-  nightly between is `0.2.0-0.nightly.<YYYYMMDD>`. The first release is `1.0.0`, for every unit at once.
+  named for the day's nightly, the day the deployment was laid. A nightly is a name the deployment computes,
+  never written into a manifest and never tagged. Which change is live is still the commit, everywhere a person
+  reads it.
+- **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and its
+  nightly is `1.0.0-0.nightly.<YYYYMMDD>`, above every version the set numbered before it. The first release is
+  `1.0.0`, for every unit at once.
 - **Where each kind runs.** The owner's own deployment runs the nightly track, and may be pinned to a beta or a
   release candidate. The desktop apps take their updates on one of three channels: `stable`, stable releases
   alone; `preview`, alphas, betas, release candidates and stable releases; and `nightly`, every kind. A
