@@ -216,6 +216,22 @@
       },
       "type": "object"
     },
+    "sidebarTitles": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "default": {},
+      "description": "The key, in the bundle's words, the entry is named by for a reader by the role they hold, where it is not the title: each key a role, each value a key under the bundle's namespace.",
+      "propertyNames": {
+        "enum": [
+          "administrator",
+          "member"
+        ],
+        "type": "string"
+      },
+      "type": "object"
+    },
     "sidebarUnread": {
       "additionalProperties": false,
       "description": "The route a console reads a sidebar unread count from, and the field of its answer that holds it.",
