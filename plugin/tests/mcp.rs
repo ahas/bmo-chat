@@ -101,7 +101,7 @@ impl Server {
       )
       .await;
     assert_eq!(info["serverInfo"]["name"], "bmo-chat");
-    assert_eq!(info["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(info["serverInfo"]["version"], bmo_chat_plugin::VERSION);
     assert!(info["capabilities"]["tools"].is_object(), "the server serves tools: {info}");
     server.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
     server

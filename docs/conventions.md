@@ -330,9 +330,23 @@ A code means one thing in every service. Each route's document and OpenAPI entry
 
 ### Versions
 
-- **The set has one version,** in semver, and every unit stands at it: every crate and package a unit
-  publishes, its health, its OpenAPI document and its plugin answer it, beside the commit that runs. A unit
-  added to the set takes the set's version; no unit counts a version of its own.
+- **The set has one version,** in semver, and every unit stands at it: a unit's health, its MCP server, its
+  command's `--version` and every other place a person or a protocol reads the version of a running build
+  answer it, beside the commit that runs. A unit added to the set takes the set's version; no unit counts a
+  version of its own.
+- **The tag is the version; nothing committed holds it.** A release is the tag `v<version>` on a commit, and a
+  build reads its version off the tags at the moment it is made: the version of the release tag on the commit
+  it builds where one stands, else the day's nightly of the version main leads to from the newest release tag
+  the commit reaches, `1.0.0`'s before any. A release tag is a `v` before a version of major 1 or above, stable
+  or an alpha, a beta or a release candidate of the forms below; any other tag, an upstream's kept in a fork
+  among them, counts for nothing. The testbed works the version out for every deployment and hands it to
+  everything the deployment builds and runs as `BMO_VERSION`, so a Rust unit compiles it in as
+  `option_env!("BMO_VERSION")`, and a packing or bundling program reads it from its environment or works it out
+  from the tags the same way. No `VERSION` file stands in any repository.
+- **A manifest's own version field is a placeholder.** Where a format must name a version, as a
+  `Cargo.toml`'s `[package]`, a `package.json`, a `pyproject.toml`, a Tauri configuration or the committed
+  OpenAPI document's `info.version`, it names a fixed placeholder that never moves and that nothing shows as
+  the running version; a build made without `BMO_VERSION` names that placeholder and nothing else.
 - **Five kinds of version, ordered by semver for the same `X.Y.Z`:**
 
   | Kind | Form | What it is |
@@ -348,17 +362,17 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   one. `N` counts from 1 within its kind and its `X.Y.Z`.
 - **A version moves only at a release, and a release is the owner's word for the whole set.** A commit, a
   deploy, a fix, a document change or a contract change moves no version by itself. When the owner declares an
-  alpha, a beta, a release candidate, a stable release or a patch, every unit that declares a version takes it
-  in one commit of its own that releases it, its documents' "Fixed at" line names that version, and each
-  repository is tagged `v<version>` on that commit, or on the head it was cut from where it declares none, a
-  unit with no change since the last release included. The release notes stand once, on the index
-  repository's release, unit by unit, and the project's site lists them. Releases are cut by the set's
-  maintainer; no unit of the set carries the means.
+  alpha, a beta, a release candidate, a stable release or a patch, every repository of the set is tagged
+  `v<version>` on the head of the branch the release is made on, a unit with no change since the last release
+  included, and the release makes no commit: the commit that is live and on main is the one tagged, so nothing
+  is deployed again for it. The release notes stand once, on the index repository's release, unit by unit, and
+  the project's site lists them. Releases are cut by the set's maintainer; no unit of the set carries the
+  means.
 - **The next version follows semver over the whole set since the last stable release:** a removed or renamed
   route, field, verb or flag of any unit, or a field that becomes required, makes it a major release; a new
   route, field, verb, screen or setting a minor one; fixes alone a patch. The owner's word settles the step.
 - **A release line has a branch of its own.** The first beta of `X.Y.0` cuts `release/X.Y` in every repository
-  at its release commit, and main moves on towards the next minor. Every later beta, every release candidate,
+  at the commit it tags, and main moves on towards the next minor. Every later beta, every release candidate,
   the stable release and every patch `X.Y.(Z+1)` is made on `release/X.Y`. A fix lands on main first and is
   then taken onto the release branch, never the other way round.
 - **What each kind must pass before it is made:**
@@ -377,9 +391,10 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   `1.1.0-beta.1`; and `1.0.0` before the set's first release, as `1.0.0-0.nightly.20261124`. The day is the one
   it was made on in the platform's time zone, Asia/Seoul.
 - **The deployed state between releases is the nightly.** A deployment of a commit no release tag names is
-  named for the day's nightly, the day the deployment was laid. A nightly is a name the deployment computes,
-  never written into a manifest and never tagged. Which change is live is still the commit, everywhere a person
-  reads it.
+  named for the day's nightly, the day the deployment was laid, and its build carries that name. A nightly is
+  a name the deployment computes, never written into a manifest and never tagged. A build made before its
+  commit was tagged keeps the name it was made with until it is built again. Which change is live is still the
+  commit, everywhere a person reads it.
 - **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and its
   nightly is `1.0.0-0.nightly.<YYYYMMDD>`, above every version the set numbered before it. The first release is
   `1.0.0`, for every unit at once.
@@ -396,8 +411,11 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   check. A client pack a consumer vendors is named by the commit it was packed from, not by a version.
 - **bmo-ui is the one exception.** A bundle runs on its console's own copy of the layer, so a bundle stands on a
   pack inside the range its console's pack declares (bmo-ui's `docs/console-bundles.md`, 「The layer a bundle
-  is built on」). bmo-ui packs at every set release under the set's version, and between releases as the day's
-  nightly, `X.Y.Z-0.nightly.<YYYYMMDD>`, with `.<n>` from 2 for a second pack the same day. A pack named in the
+  is built on」). bmo-ui's pack is named off the tags as a build is: a pack made on a release's tagged commit is
+  that release, any other the day's nightly, `X.Y.Z-0.nightly.<YYYYMMDD>`, with `.<n>` from 2 for a second
+  pack the same day. Writing a pack is a commit of bmo-ui's own and moving the pin onto it a commit of this
+  repository's, each a change like any other and neither a part of a release, so a release leaves the pin
+  where it stands. A pack named in the
   earlier nightly form, `X.Y.Z-nightly.<YYYYMMDD>[.<n>]`, is ordered as the same day's pack of the present
   form. Every consumer vendors a packed file bmo-ui's release verb wrote, for the pack `shared-versions.toml` pins
   or for one of the earlier packs it names compatible with it (「Shared versions」), never a pack of its own.
