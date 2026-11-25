@@ -12,7 +12,7 @@ use rmcp::ServiceExt;
 use rmcp::transport::stdio;
 
 #[derive(Parser)]
-#[command(name = "bmo-chat", version, about = "The chat protocol's harness plugin.")]
+#[command(name = "bmo-chat", version = bmo_chat_plugin::VERSION, about = "The chat protocol's harness plugin.")]
 struct Command {
   #[command(subcommand)]
   verb: Verb,
