@@ -345,8 +345,9 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   from the tags the same way. No `VERSION` file stands in any repository.
 - **A manifest's own version field is a placeholder.** Where a format must name a version, as a
   `Cargo.toml`'s `[package]`, a `package.json`, a `pyproject.toml`, a Tauri configuration or the committed
-  OpenAPI document's `info.version`, it names a fixed placeholder that never moves and that nothing shows as
-  the running version; a build made without `BMO_VERSION` names that placeholder and nothing else.
+  OpenAPI document's `info.version`, it names the set's one placeholder, `0.0.0`, which never moves and which
+  nothing shows as the running version; a build made without `BMO_VERSION` names that placeholder and nothing
+  else.
 - **Five kinds of version, ordered by semver for the same `X.Y.Z`:**
 
   | Kind | Form | What it is |
@@ -396,9 +397,8 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   commit was tagged keeps the name it was made with until it is built again. Which change is live is still the
   commit, everywhere a person reads it.
 - **The set is released:** its first release is the beta `1.0.0-beta.1`, and every unit stands at the set's
-  version from it. No unit counts revisions of its own: a `-rev.<n>` a manifest still names is a placeholder like
-  any other, never raised, and a contract change, a client's among them, moves no manifest's version; a consumer
-  tells one build of a sibling from another by its commit.
+  version from it. No unit counts revisions of its own: a contract change, a client's among them, moves no
+  manifest's version, and a consumer tells one build of a sibling from another by its commit.
 - **Where each kind runs.** The owner's own deployment runs the nightly track, and may be pinned to a beta or a
   release candidate. The desktop apps take their updates on one of three channels: `stable`, stable releases
   alone; `preview`, alphas, betas, release candidates and stable releases; and `nightly`, every kind. A
