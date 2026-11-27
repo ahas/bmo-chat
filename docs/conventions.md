@@ -395,9 +395,10 @@ A code means one thing in every service. Each route's document and OpenAPI entry
   a name the deployment computes, never written into a manifest and never tagged. A build made before its
   commit was tagged keeps the name it was made with until it is built again. Which change is live is still the
   commit, everywhere a person reads it.
-- **Before the set's first release** a unit stands at `0.1.0` or one of its `0.1.0-rev.<n>` revisions, and its
-  nightly is `1.0.0-0.nightly.<YYYYMMDD>`, above every version the set numbered before it. The first release is
-  `1.0.0`, for every unit at once.
+- **The set is released:** its first release is the beta `1.0.0-beta.1`, and every unit stands at the set's
+  version from it. No unit counts revisions of its own: a `-rev.<n>` a manifest still names is a placeholder like
+  any other, never raised, and a contract change, a client's among them, moves no manifest's version; a consumer
+  tells one build of a sibling from another by its commit.
 - **Where each kind runs.** The owner's own deployment runs the nightly track, and may be pinned to a beta or a
   release candidate. The desktop apps take their updates on one of three channels: `stable`, stable releases
   alone; `preview`, alphas, betas, release candidates and stable releases; and `nightly`, every kind. A
