@@ -1001,7 +1001,7 @@
   "info": {
     "description": "The routes the receiving side serves and a provider calls, as the chat protocol defines them, so no receiving side grows a variant: a message handed over (live, edited or read back), the files a gathering message promised, the rooms a provider may read back and whether one is listened to, word that kept pictures, a message's reactions or its deletion changed, and who is typing or reachable now. Paths are relative to the base address the provider is configured with, and a service may mount them under a prefix of its own. Bodies are JSON; bytes inside them are base64. Times are integers of epoch milliseconds. Every failure is answered in the error shape with its status.",
     "title": "bmo-chat receiving-side routes",
-    "version": "0.1.0-rev.10"
+    "version": "0.0.0"
   },
   "openapi": "3.1.0",
   "paths": {
