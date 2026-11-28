@@ -195,6 +195,7 @@ fn declaration() -> (ChatDeclaration, Value) {
       ranges: ChatNumberRanges::default(),
     },
     speakers: false,
+    registration: None,
   };
   let wire = json!({
     "key": "platform", "label": "Platform", "configured": null,

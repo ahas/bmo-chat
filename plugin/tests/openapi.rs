@@ -410,6 +410,7 @@ fn declaration() -> ChatDeclaration {
       ranges: ChatNumberRanges::default(),
     },
     speakers: true,
+    registration: None,
   }
 }
 

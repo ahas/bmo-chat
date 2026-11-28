@@ -394,6 +394,7 @@ macro_rules! fixtures {
               },
             },
             speakers: true,
+            registration: None,
           },
           ChatDeclaration {
             key: "unset".into(),
@@ -415,6 +416,7 @@ macro_rules! fixtures {
               ranges: ChatNumberRanges::default(),
             },
             speakers: false,
+            registration: None,
           },
         ]
       }

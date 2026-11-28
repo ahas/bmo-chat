@@ -190,6 +190,7 @@ A provider declares itself and the base holds no record of it anywhere else:
 | `shows` | what a person reading this provider's rooms sees beyond what the provider sends; null where it shows only what it carries |
 | `numbering` | its `ChatNumbering` |
 | `speakers` | whether a send may name a speaker other than the one the room is answered by |
+| `registration` | the app registration a person's own account needs before it reads on the provider, where it needs one: `url`, where it is made, and `fields`, the values it gives, which the person keeps among their secrets; left out where it needs none |
 
 ### Health
 

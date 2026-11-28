@@ -332,6 +332,7 @@ fn declaration() {
       },
     },
     speakers: true,
+    registration: None,
   };
   crosses(
     &declaration,

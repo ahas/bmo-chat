@@ -29,4 +29,15 @@ pub struct ChatDeclaration {
   pub numbering: ChatNumbering,
   /// Whether a send may name a speaker other than the one the room is answered by.
   pub speakers: bool,
+  /// The app registration a person's own account needs before it reads on this provider, where it needs one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub registration: Option<ChatRegistration>,
+}
+
+/// An app registration a provider needs of a person: where it is made, and the values it gives, which the person
+/// keeps among their secrets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatRegistration {
+  pub url: String,
+  pub fields: Vec<String>,
 }

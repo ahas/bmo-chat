@@ -213,6 +213,11 @@ pub trait ChatProvider: Send + Sync {
     (!self.can().contains(&capability)).then(|| self.unsupported(capability))
   }
 
+  /// The app registration a person's own account needs before it reads on this provider; none by default.
+  fn registration(&self) -> Option<crate::ChatRegistration> {
+    None
+  }
+
   /// The provider's self-declaration, gathered from its members as they stand now.
   fn declaration(&self) -> ChatDeclaration {
     ChatDeclaration {
@@ -225,6 +230,7 @@ pub trait ChatProvider: Send + Sync {
       shows: self.shows(),
       numbering: self.numbering(),
       speakers: self.speakers(),
+      registration: self.registration(),
     }
   }
 }
