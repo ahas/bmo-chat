@@ -432,6 +432,17 @@
             },
             "type": "array"
           },
+          "node_probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatNodeProbe"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How a person's node is asked whether it holds what the provider reads a person's account through there, where\nthe provider reads one through the node at all."
+          },
           "numbering": {
             "$ref": "#/components/schemas/ChatNumbering"
           },
@@ -670,6 +681,30 @@
             "type": "string"
           }
         ]
+      },
+      "ChatNodeProbe": {
+        "description": "The commands a person's node is asked with whether it holds what the provider reads a person's account through\nthere, one for each shell a node takes a command in, each exiting 0 where it does; `missing` says what the person\ninstalls or signs into where it does not.",
+        "properties": {
+          "linux": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "missing": {
+            "type": "string"
+          },
+          "powershell": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "missing"
+        ],
+        "type": "object"
       },
       "ChatNumberRange": {
         "description": "The numbers a provider assigns in one space: from `first` to `last`, both included.",

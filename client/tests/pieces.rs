@@ -292,6 +292,7 @@ fn declaration() {
     },
     speakers: true,
     registration: None,
+    node_probe: None,
   };
   crosses(
     &declaration,

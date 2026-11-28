@@ -395,6 +395,7 @@ macro_rules! fixtures {
             },
             speakers: true,
             registration: None,
+            node_probe: None,
           },
           ChatDeclaration {
             key: "unset".into(),
@@ -417,6 +418,7 @@ macro_rules! fixtures {
             },
             speakers: false,
             registration: None,
+            node_probe: None,
           },
         ]
       }

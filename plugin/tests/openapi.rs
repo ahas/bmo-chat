@@ -411,6 +411,7 @@ fn declaration() -> ChatDeclaration {
     },
     speakers: true,
     registration: None,
+    node_probe: None,
   }
 }
 

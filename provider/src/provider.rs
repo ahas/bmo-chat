@@ -213,6 +213,12 @@ pub trait ChatProvider: Send + Sync {
     (!self.can().contains(&capability)).then(|| self.unsupported(capability))
   }
 
+  /// How a person's node is asked whether it holds what this provider reads a person's account through there; none
+  /// by default, for a provider that reads no account through a node.
+  fn node_probe(&self) -> Option<crate::ChatNodeProbe> {
+    None
+  }
+
   /// The app registration a person's own account needs before it reads on this provider; none by default.
   fn registration(&self) -> Option<crate::ChatRegistration> {
     None
@@ -231,6 +237,7 @@ pub trait ChatProvider: Send + Sync {
       numbering: self.numbering(),
       speakers: self.speakers(),
       registration: self.registration(),
+      node_probe: self.node_probe(),
     }
   }
 }

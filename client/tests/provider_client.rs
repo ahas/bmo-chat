@@ -196,6 +196,7 @@ fn declaration() -> (ChatDeclaration, Value) {
     },
     speakers: false,
     registration: None,
+    node_probe: None,
   };
   let wire = json!({
     "key": "platform", "label": "Platform", "configured": null,

@@ -33,6 +33,23 @@ pub struct ChatDeclaration {
   /// The app registration a person's own account needs before it reads on this provider, where it needs one.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub registration: Option<ChatRegistration>,
+  /// How a person's node is asked whether it holds what the provider reads a person's account through there, where
+  /// the provider reads one through the node at all.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub node_probe: Option<ChatNodeProbe>,
+}
+
+/// The commands a person's node is asked with whether it holds what the provider reads a person's account through
+/// there, one for each shell a node takes a command in, each exiting 0 where it does; `missing` says what the person
+/// installs or signs into where it does not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatNodeProbe {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub powershell: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub linux: Option<String>,
+  pub missing: String,
 }
 
 /// An app registration a provider needs of a person: where it is made, and the values it gives, which the person

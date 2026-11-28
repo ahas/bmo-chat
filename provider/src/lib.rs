@@ -36,7 +36,7 @@ pub use capability::{ChatCapability, ChatVerb};
 pub use contacts::{
   ChatContact, ChatContactKind, ChatStart, ChatStartRequest, ChatStartResult, ContactsQuery,
 };
-pub use declaration::{ChatDeclaration, ChatRegistration};
+pub use declaration::{ChatDeclaration, ChatNodeProbe, ChatRegistration};
 pub use dialect::{ChatDialect, ChatDialectDeclaration, ChatDialectLimits, ChatMarkup};
 pub use error::{ErrorCode, RETRY_AFTER_SECONDS, WireError};
 pub use file_body::{FileBody, StoredFile};
