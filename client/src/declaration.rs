@@ -40,8 +40,8 @@ pub struct ChatDeclaration {
 }
 
 /// The commands a person's node is asked with whether it holds what the provider reads a person's account through
-/// there, one for each shell a node takes a command in, each exiting 0 where it does; `missing` says what the person
-/// installs or signs into where it does not.
+/// there, one for each shell a node takes a command in, each exiting 0 where it does and 1 where it does not, any
+/// other end telling nothing; `missing` says what the person installs or signs into where it does not.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatNodeProbe {
