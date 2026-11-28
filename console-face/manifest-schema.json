@@ -47,6 +47,19 @@
       "minLength": 1,
       "type": "string"
     },
+    "layerUses": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "description": "What of the layer the bundle uses, as the bundle build wrote it: each module it imports, with the names it imports of it.",
+      "propertyNames": {
+        "type": "string"
+      },
+      "type": "object"
+    },
     "name": {
       "description": "The bundle's name: its words' namespace.",
       "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",

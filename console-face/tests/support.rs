@@ -40,7 +40,10 @@ impl Built {
     built.write("chunk-a1b2c3.js", "export const part = 1;");
     built.write("assets/mark-d4e5f6.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
     built.write("words.json", &json!({ "en": { "sample": { "title": "Sample" } } }).to_string());
-    built.write("layer.json", &json!({ "layer": LAYER }).to_string());
+    built.write(
+      "layer.json",
+      &json!({ "layer": LAYER, "uses": { "bmo-ui/app/domain/island": ["island"] } }).to_string(),
+    );
     built
   }
 

@@ -29,6 +29,11 @@ async fn the_served_manifest_reads_through_the_contract_with_the_layer_and_paths
 
   let read = read_manifest(&manifest, &pinned_release()).unwrap_or_else(|why| panic!("{why}"));
   assert_eq!(read["layer"], LAYER);
+  assert_eq!(
+    read["layerUses"],
+    json!({ "bmo-ui/app/domain/island": ["island"] }),
+    "what the bundle uses of the layer"
+  );
   assert_eq!(read["relays"], json!([]), "the reading fills the defaults");
   for field in ["bundle", "stylesheet", "words"] {
     assert!(

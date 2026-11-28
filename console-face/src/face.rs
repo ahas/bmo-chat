@@ -26,7 +26,7 @@ pub const CONSOLE_MANIFEST_ROUTE: &str = "/console-manifest";
 pub const CONSOLE_FILES_PREFIX: &str = "/console/";
 
 /// The fields of the manifest the face fills from the bundle folder, which a declaration never names.
-const FILLED: [&str; 4] = ["layer", "bundle", "stylesheet", "words"];
+const FILLED: [&str; 5] = ["layer", "layerUses", "bundle", "stylesheet", "words"];
 
 /// A file whose path follows its bytes is kept for good.
 const KEPT_FOR_GOOD: &str = "private, max-age=31536000, immutable";
@@ -69,6 +69,9 @@ impl ConsoleFace {
 
     let read = bundle.read()?;
     manifest.insert("layer".to_owned(), Value::String(read.layer));
+    if let Some(uses) = read.uses {
+      manifest.insert("layerUses".to_owned(), uses);
+    }
     manifest.insert("bundle".to_owned(), Value::String(format!("{CONSOLE_FILES_PREFIX}{}", read.module)));
     if let Some(stylesheet) = &read.stylesheet {
       manifest

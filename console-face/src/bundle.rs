@@ -44,7 +44,7 @@ impl BundleFolder {
 
   /// Every file of the folder as the face answers it.
   pub(crate) fn read(&self) -> Result<Bundle, ConsoleFaceError> {
-    let layer = self.layer()?;
+    let (layer, uses) = self.layer()?;
     let module = self.named("module", &self.module)?;
     let stylesheet = self.stylesheet.as_deref().map(|file| self.named("stylesheet", file)).transpose()?;
     let words_file = self.named("words", &self.words)?;
@@ -78,6 +78,7 @@ impl BundleFolder {
 
     Ok(Bundle {
       layer,
+      uses,
       module: module.name,
       stylesheet: stylesheet.map(|named| named.name),
       words_name: words_file.name,
@@ -86,18 +87,22 @@ impl BundleFolder {
     })
   }
 
-  fn layer(&self) -> Result<String, ConsoleFaceError> {
+  // The layer the bundle was built on, and what of it the bundle uses where the build wrote that, each module of
+  // the layer with the names imported of it.
+  fn layer(&self) -> Result<(String, Option<Value>), ConsoleFaceError> {
     let bytes = read_bytes(&self.folder.join(LAYER_FILE))?;
     let read: Value = serde_json::from_slice(&bytes).map_err(|why| ConsoleFaceError::Malformed {
       what: LAYER_FILE.to_owned(),
       why: format!("is not JSON: {why}"),
     })?;
-    read.get("layer").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| {
+    let layer = read.get("layer").and_then(Value::as_str).map(str::to_owned).ok_or_else(|| {
       ConsoleFaceError::Malformed {
         what: LAYER_FILE.to_owned(),
         why: "names no layer".to_owned(),
       }
-    })
+    })?;
+
+    Ok((layer, read.get("uses").filter(|uses| uses.is_object()).cloned()))
   }
 
   // A named file, answered in the folder it stands in under its kind and its bytes' digest, with the extension
@@ -154,6 +159,8 @@ impl BundleFolder {
 /// The folder as the face answers it.
 pub(crate) struct Bundle {
   pub layer: String,
+  /// What of the layer the bundle uses, where its build wrote that: each module with the names imported of it.
+  pub uses: Option<Value>,
   pub module: String,
   pub stylesheet: Option<String>,
   pub words_name: String,

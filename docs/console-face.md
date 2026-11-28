@@ -20,7 +20,7 @@ flowchart TD
 ## What a service supplies
 
 - **One declaration**, a JSON object holding every manifest field the service decides: everything the
-  contract's manifest names but `layer`, `bundle`, `stylesheet` and `words`. A declaration that names one of
+  contract's manifest names but `layer`, `layerUses`, `bundle`, `stylesheet` and `words`. A declaration that names one of
   those four is refused, since the crate fills them.
 - **The bundle build's folder**, as bmo-ui's bundle build writes it: the module, the stylesheet where the bundle
   has one, the chunks and other files the module loads, `layer.json`, and the words file. The service names
@@ -34,6 +34,9 @@ flowchart TD
 ## What the crate fills in
 
 - **`layer`** is read from `layer.json` in the folder, as the bundle build wrote it, never from the declaration.
+- **`layerUses`** is read from the same file where the bundle build wrote its `uses`: each module of the layer the
+  bundle imports, with the names it imports of it, which a console reads to attach a bundle built on a release
+  other than its own (bmo-ui's `docs/console-bundles.md`). A file that names none leaves the field out.
 - **`bundle`, `stylesheet` and `words`** are paths under `/console/` made from each file's bytes, in the folder
   the file stands in: the file's kind, a dash, the first sixteen hexadecimal digits of the bytes' sha256, and
   the file's own extension. A file
