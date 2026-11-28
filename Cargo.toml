@@ -1,7 +1,7 @@
 # The workspace: the base libraries, the harness plugin, and the repository's own package at the root, which
 # publishes nothing and holds the checks that span the crates in `tests/`.
 [workspace]
-members = ["provider", "client", "plugin", "console-face", "secret-shapes"]
+members = ["provider", "client", "plugin", "console-face", "secret-shapes", "chain"]
 resolver = "3"
 
 [workspace.package]

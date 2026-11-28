@@ -543,6 +543,13 @@ repository (`secret-shapes.md`), taken by path, and keeps no list of shapes or r
 marker a run is replaced by is the unit's word; a shape every unit should take out is added to the crate's
 list.
 
+## The delegation chain
+
+A Rust unit that judges what a person or a unit may do asks the account service's delegation chain through the
+`bmo-chain` crate of this repository (`chain.md`), taken by path, and writes no client of the chain's routes of
+its own. The kinds it declares, what it does where a kind stands undeclared or the service cannot be reached,
+and the value that stands where the chain says nothing are the unit's own.
+
 ## The order units are fixed in
 
 A unit's API is fixed before the units that call it take it, and each stage takes what the stages before it

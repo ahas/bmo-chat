@@ -247,6 +247,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-chain"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "bmo-chat"
 version = "0.0.0"
 dependencies = [

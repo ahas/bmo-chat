@@ -15,6 +15,7 @@ too.
 | `bmo-chat-plugin` | `plugin/` | a coding harness | the `bmo-chat` command, whose `mcp` verb serves the harness tools over MCP for any provider, the `bmo-chat` skill, and the OpenAPI documents |
 | `bmo-console-face` | `console-face/` | a service that brings a console screen | its manifest, its bundle's files and the guard around them, by bmo-ui's console contract, and the reading of a manifest through bmo-ui's release for tests |
 | `bmo-secret-shapes` | `secret-shapes/` | a unit that keeps or forwards words a person or an agent wrote | the shapes a secret's run is written in, and the reading that replaces each such run by the reader's marker |
+| `bmo-chain` | `chain/` | a unit that judges what a person or a unit may do | a client of the account service's delegation chain: its kinds declared, a kind resolved for a person or a unit, and a link's entry read or written in a caller's name |
 
 No library depends on another. Each states the wire shapes on its own, and the root package's tests
 check that the two agree. The plugin depends on bmo-chat-client alone.
@@ -33,6 +34,8 @@ check that the two agree. The plugin depends on bmo-chat-client alone.
 - `docs/console-face.md`: what the console face takes from a service, what it fills in and what it answers.
 - `docs/secret-shapes.md`: the secret shapes, the order they are read in, and what the reading takes and
   answers.
+- `docs/chain.md`: the delegation chain's client, what it asks of the account service and what it leaves to
+  the unit that asks.
 - `docs/conventions.md`: the common wire format, the API design and the upstream and downstream rules every
   bmo repository follows.
 - `docs/PERSONAL-DATA.md`: what personal data never goes into the repository, and the check that reads every
@@ -45,7 +48,7 @@ in `BMO_CHAT_TOKEN` or `--token`. The skill is `plugin/skills/bmo-chat/SKILL.md`
 
 ## Layout
 
-- `provider/`, `client/`, `plugin/`, `console-face/`, `secret-shapes/`: the five crates, each with its own `src/`
+- `provider/`, `client/`, `plugin/`, `console-face/`, `secret-shapes/`, `chain/`: the six crates, each with its own `src/`
   and `tests/`.
 - `tests/`: checks that span the repository, run as the root package's tests.
 - `shared-versions.toml`: the registry crates every Rust unit takes at one version and one feature set, the
